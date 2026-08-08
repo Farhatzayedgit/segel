@@ -864,6 +864,16 @@ function render(){
   if(!UI.user) return;
   renderNav();
   var v = document.getElementById("view"), h="";
+
+  /* شاشة عرض أي ورقة مطبوعة (كشوف، شهادات، قصاصات) */
+  if(UI.sub && UI.sub.paper){
+    v.innerHTML = '<button class="btn ghost sm noprint" data-act="back" style="margin-bottom:10px">→ رجوع</button>'+
+      '<div class="noprint" style="margin-bottom:10px"><button class="btn" data-act="print">⎙ طباعة</button></div>'+
+      UI.sub.paper;
+    window.scrollTo(0,0);
+    return;
+  }
+
   switch(UI.tab){
     case "today":      h = viewToday(); break;
     case "duty":       h = viewDuty(); break;
@@ -5248,9 +5258,8 @@ function pinSheet(){
   });
   t += '</tbody></table>';
   paper(pWrap("كشف كلمات السر — سري", t)+
-    '<div class="card"><div class="bd"><div class="note bad">الورقة دي سرية. سلّم كل واحد كلمة سره ووقّع، ومتسيبهاش في مكان مفتوح.</div></div></div>');
-  UI.tab = "settings";
-  render();
+    '<div class="card"><div class="bd"><div class="note bad">الورقة دي سرية. '+
+    'سلّم كل واحد كلمة سره ووقّع، ومتسيبهاش في مكان مفتوح.</div></div></div>');
 }
 /* قصاصات منفصلة تقصها وتوزعها */
 function pinSlips(){
@@ -5268,8 +5277,6 @@ function pinSlips(){
       '</div></div>';
   });
   paper(h+'</div>');
-  UI.tab = "settings";
-  render();
 }
 
 Object.assign(ACTS, {
