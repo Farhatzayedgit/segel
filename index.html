@@ -221,6 +221,7 @@ table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
 @keyframes up{from{transform:translateY(22px);opacity:.6}}
 @keyframes pop{from{transform:scale(.97);opacity:.6}}
 .modal.wide{max-width:960px}
+.pinmsg{font-size:11.5px;font-weight:600;margin-top:4px;min-height:15px}
 .syncpill{
   font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;
   background:var(--line-2);color:var(--muted)
@@ -294,7 +295,8 @@ table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
   .card{box-shadow:none;border:1px solid #999;break-inside:avoid;margin-bottom:8px}
   table.tbl th{background:#eee!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .print-hd{display:block!important;text-align:center;margin-bottom:12px;border-bottom:2px solid #000;padding-bottom:8px}
-  .syncpill{
+  .pinmsg{font-size:11.5px;font-weight:600;margin-top:4px;min-height:15px}
+.syncpill{
   font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;
   background:var(--line-2);color:var(--muted)
 }
@@ -704,9 +706,9 @@ function absState(absDays){
 /* ---------- بيانات ابتدائية ---------- */
 function seed(){
   var d = blankDB();
-  d.users.push({id:uid("u"), name:"مدير المدرسة", role:"manager", pin:"1111"});
-  d.users.push({id:uid("u"), name:"وكيل شئون الطلاب", role:"deputy", pin:"2222"});
-  d.users.push({id:uid("u"), name:"وكيل شئون العاملين", role:"admin", pin:"3333"});
+  d.users.push({id:uid("u"), name:"مدير المدرسة", role:"manager", pin:"481502"});
+  d.users.push({id:uid("u"), name:"وكيل شئون الطلاب", role:"deputy", pin:"736914"});
+  d.users.push({id:uid("u"), name:"وكيل شئون العاملين", role:"admin", pin:"259487"});
   return d;
 }
 /* ============================================================
@@ -1163,7 +1165,12 @@ function viewTeacher(id){
     '<div style="flex:1;min-width:110px"><h3 style="font-size:17px">'+esc(t.name)+'</h3>'+
     '<small style="color:var(--muted)">'+esc(t.subject||"بدون تخصص")+(t.phone?' · '+esc(t.phone):'')+'</small></div>'+
     (isDep?'<button class="btn ghost sm" data-act="editTeacher" data-id="'+t.id+'">تعديل</button>':'')+'</div>';
-  if(u) h += '<div class="bd"><div class="note">حساب الدخول: <b>'+esc(u.name)+'</b> — الرقم السري <b>'+esc(u.pin)+'</b>. يقدر يشوف فصوله ويسجّل الغياب والدرجات لمواده بس.</div></div>';
+  if(u){
+    var canSee = UI.user.role==="manager" || UI.user.role==="admin" || UI.user.role==="deputy";
+    h += '<div class="bd"><div class="note">حساب الدخول جاهز. المعلم بيفتح اللينك ويكتب رقمه السري على طول، '+
+      'ويشوف فصوله ومواده بس.'+
+      (canSee? ' الرقم السري: <b style="letter-spacing:.12em">'+esc(u.pin)+'</b>' : '')+'</div></div>';
+  }
   h += '</div>';
 
   h += '<div class="card"><div class="hd"><h3>الفصول والمواد المُسندة ('+a.length+')</h3>'+
@@ -1437,7 +1444,8 @@ function viewSettings(){
     '<button class="btn ghost sm" data-act="addUser">+ حساب</button></div><div class="bd flush">';
   DB.users.forEach(function(u){
     h += '<div class="list-item"><span class="av">'+esc(ROLES[u.role]?ROLES[u.role].av:"؟")+'</span>'+
-      '<span class="tx"><b>'+esc(u.name)+'</b><small>'+esc(ROLES[u.role]?ROLES[u.role].name:u.role)+' · الرقم السري '+esc(u.pin)+'</small></span>'+
+      '<span class="tx"><b>'+esc(u.name)+'</b><small>'+esc(ROLES[u.role]?ROLES[u.role].name:u.role)+
+        ' · رقم من '+String(u.pin||"").length+' خانات'+(pinCheck(u.pin,u.id)?' · <span style="color:var(--danger)">يحتاج تغيير</span>':'')+'</small></span>'+
       '<button class="btn ghost sm" data-act="editUser" data-id="'+u.id+'">تعديل</button></div>';
   });
   h += '</div></div>';
@@ -2002,7 +2010,7 @@ function saveTeacher(){
   t.name = name; t.subject = val("t_sub").trim(); t.phone = val("t_ph").trim();
   var u = userOfTeacher(t.id);
   if(!u){ u = {id:uid("u"), role:"teacher", teacherId:t.id}; DB.users.push(u); }
-  u.name = name; u.pin = val("t_pin").trim() || "1234";
+  u.name = name; u.pin = toEnDigits(val("t_pin")).trim() || genPin();
   save(); closeModal(); render(); toast("اتحفظ");
 }
 
@@ -3262,7 +3270,9 @@ function impTeachers(recs){
     var u = userOfTeacher(t.id);
     if(!u){ u = {id:uid("u"), role:"teacher", teacherId:t.id}; DB.users.push(u); }
     u.name = name;
-    u.pin = (o.pin? toEnDigits(o.pin).replace(/\D/g,"") : "") || u.pin || "1234";
+    var wanted = o.pin ? toEnDigits(o.pin).replace(/\D/g,"") : "";
+    if(wanted && !pinCheck(wanted, u.id)) u.pin = wanted;
+    else if(!u.pin || pinCheck(u.pin, u.id)) u.pin = genPin();
   });
   return r;
 }
@@ -3441,7 +3451,7 @@ function impAssign(recs){
       t = {id:uid("t"), name:cleanName(o.teacher||""), subject:cleanName(o.subject||"")};
       if(!t.name){ r.err.push("سطر "+(i+1)+": مفيش اسم معلم"); return; }
       DB.teachers.push(t);
-      DB.users.push({id:uid("u"), role:"teacher", teacherId:t.id, name:t.name, pin:"1234"});
+      DB.users.push({id:uid("u"), role:"teacher", teacherId:t.id, name:t.name, pin:genPin()});
     }
     var c = findClassByName(o.cls);
     if(!c){ r.err.push("سطر "+(i+1)+": الفصل «"+(o.cls||"")+"» مش موجود"); return; }
@@ -5434,6 +5444,352 @@ document.addEventListener("change", function(e){
     toast(el.value ? "اتسجّل البديل" : "اتشال البديل");
   }
 });
+/* ============================================================
+   الدخول بالرقم السري الشخصي
+   شاشة واحدة: خانة رقم سري. الرقم نفسه هو الهوية.
+   • كل موظف ليه رقم فريد — البرنامج بيمنع التكرار
+   • بيمنع الأرقام الضعيفة (متتالية / مكررة / تواريخ ميلاد شائعة)
+   • تأخير تصاعدي بعد المحاولات الغلط ضد التخمين
+   ============================================================ */
+
+var PIN_LEN = 6;
+
+/* ---------- توليد وفحص الأرقام ---------- */
+function allPins(){
+  var m = {};
+  DB.users.forEach(function(u){ if(u.pin) m[String(u.pin)] = u; });
+  return m;
+}
+function pinOwner(pin, exceptUserId){
+  var p = String(pin);
+  for(var i=0;i<DB.users.length;i++){
+    var u = DB.users[i];
+    if(u.id===exceptUserId) continue;
+    if(String(u.pin)===p) return u;
+  }
+  return null;
+}
+/* رقم ضعيف: متتالي، مكرر، أو من قائمة الأرقام الشائعة */
+var WEAK_PINS = ["000000","111111","123456","654321","121212","112233","123123",
+                 "999999","555555","666666","101010","202020","123321","696969",
+                 "1234","0000","1111","2222","1122","4321"];
+function pinWeak(pin){
+  var p = toEnDigits(String(pin));
+  if(WEAK_PINS.indexOf(p)>=0) return "رقم شائع وسهل التخمين";
+  if(/^(\d)\1+$/.test(p)) return "كل الأرقام متشابهة";
+  var up=true, down=true;
+  for(var i=1;i<p.length;i++){
+    if(Number(p[i]) !== Number(p[i-1])+1) up = false;
+    if(Number(p[i]) !== Number(p[i-1])-1) down = false;
+  }
+  if(up || down) return "أرقام متتالية";
+  if(/^(\d\d)\1+$/.test(p)) return "نمط مكرر";
+  if(/^(19|20)\d\d$/.test(p) && p.length===4) return "سنة ميلادية سهلة التخمين";
+  return null;
+}
+/* الفحص الكامل: بيرجع رسالة الخطأ أو null لو الرقم صالح */
+function pinCheck(pin, exceptUserId){
+  var p = toEnDigits(String(pin||"")).trim();
+  if(!/^\d+$/.test(p)) return "الرقم السري لازم يكون أرقام بس";
+  if(p.length < PIN_LEN) return "الرقم السري لازم "+PIN_LEN+" أرقام على الأقل";
+  if(p.length > 12) return "الرقم طويل أوي — "+PIN_LEN+" لـ ١٢ رقم";
+  var w = pinWeak(p);
+  if(w) return "الرقم ده مايصلحش: "+w;
+  var owner = pinOwner(p, exceptUserId);
+  if(owner) return "الرقم ده مستخدم بالفعل لحساب تاني — اختار رقم غيره";
+  return null;
+}
+function genPin(){
+  for(var tries=0; tries<500; tries++){
+    var p = "";
+    for(var i=0;i<PIN_LEN;i++) p += Math.floor(Math.random()*10);
+    if(p[0]==="0") continue;
+    if(pinWeak(p)) continue;
+    if(pinOwner(p, null)) continue;
+    return p;
+  }
+  return String(Date.now()).slice(-PIN_LEN);
+}
+/* أرقام الحسابات القديمة القصيرة/المكررة محتاجة تغيير */
+function weakUsers(){
+  var seen = {}, dup = {};
+  DB.users.forEach(function(u){
+    var p = String(u.pin||"");
+    if(seen[p]) dup[p] = 1;
+    seen[p] = 1;
+  });
+  return DB.users.filter(function(u){
+    var p = String(u.pin||"");
+    return p.length < PIN_LEN || pinWeak(p) || dup[p];
+  });
+}
+
+/* ---------- حماية من التخمين ---------- */
+var TRY_KEY = "segel_tries_v1";
+function tries(){
+  try{
+    var o = JSON.parse(window.localStorage.getItem(TRY_KEY) || "{}");
+    return { n: num(o.n,0), at: num(o.at,0) };
+  }catch(e){ return { n:0, at:0 }; }
+}
+function setTries(n){
+  try{ window.localStorage.setItem(TRY_KEY, JSON.stringify({n:n, at:Date.now()})); }catch(e){}
+}
+/* التأخير بيزيد: 3 محاولات مجانية، بعدها 5ث، 15ث، 60ث، 5د */
+function lockLeft(){
+  var t = tries();
+  if(t.n < 3) return 0;
+  var waits = [5, 15, 60, 300];
+  var w = waits[Math.min(t.n-3, waits.length-1)] * 1000;
+  var left = t.at + w - Date.now();
+  return left > 0 ? Math.ceil(left/1000) : 0;
+}
+
+/* ---------- شاشة الدخول الجديدة ---------- */
+function renderLogin(){
+  var el = document.getElementById("loginYear");
+  if(el) el.textContent = DB.meta.school + " · " + DB.meta.year;
+  var box = document.getElementById("loginCard");
+  if(!box) return;
+
+  var lock = lockLeft();
+  var h = '<div style="font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:9px;text-align:center">'+
+    'اكتب رقمك السري للدخول</div>'+
+    '<input type="password" id="pin" inputmode="numeric" autocomplete="off" '+
+      'placeholder="••••••" '+(lock?'disabled ':'')+
+      'style="text-align:center;letter-spacing:.5em;font-size:20px;padding:13px 11px;font-family:Cairo,sans-serif">'+
+    '<button class="btn block" data-lact="go" style="margin-top:10px"'+(lock?' disabled':'')+'>دخول</button>';
+
+  if(lock){
+    h += '<div class="note bad" id="lockNote" style="margin-top:11px;text-align:center">'+
+      'محاولات كتير غلط. استنى <b id="lockSec">'+lock+'</b> ثانية.</div>';
+  }else if(tries().n > 0){
+    h += '<div class="note warn" style="margin-top:11px;text-align:center;font-size:12px">'+
+      'الرقم غلط. لو نسيته، وكيل شئون العاملين يقدر يشوفه لك.</div>';
+  }
+
+  var c = syncCfgLoad();
+  var linked = !!(c && c.enabled && c.code);
+  h += '<div style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line-2);text-align:center">'+
+    (linked
+      ? '<div style="font-size:11.5px;color:var(--muted)">مربوط بمدرسة <b>'+esc(c.code)+'</b> · '+
+        '<button data-lact="invp" style="color:var(--ink-2);font-weight:600;font-size:11.5px;text-decoration:underline">تغيير</button></div>'
+      : '<button data-lact="invp" style="color:var(--ink-2);font-weight:600;font-size:13px">جهاز جديد؟ الصق كود الربط</button>')+
+    '</div>';
+  box.innerHTML = h;
+
+  var p = document.getElementById("pin");
+  if(p && !lock){
+    p.focus();
+    p.onkeydown = function(e){ if(e.key==="Enter") doLogin(); };
+  }
+  if(lock) startLockTimer();
+}
+function startLockTimer(){
+  clearInterval(renderLogin._t);
+  renderLogin._t = setInterval(function(){
+    var left = lockLeft();
+    var el = document.getElementById("lockSec");
+    if(!el){ clearInterval(renderLogin._t); return; }
+    if(left <= 0){ clearInterval(renderLogin._t); setTries(0); renderLogin(); return; }
+    el.textContent = left;
+  }, 1000);
+}
+function doLogin(){
+  if(lockLeft() > 0) return;
+  var el = document.getElementById("pin");
+  var v = toEnDigits((el ? el.value : "")).trim();
+  if(!v){ toast("اكتب رقمك السري"); return; }
+
+  var u = null;
+  for(var i=0;i<DB.users.length;i++){
+    if(String(DB.users[i].pin) === v){ u = DB.users[i]; break; }
+  }
+  if(!u){
+    setTries(tries().n + 1);
+    if(el){ el.value = ""; }
+    renderLogin();
+    toast("الرقم السري غير صحيح");
+    return;
+  }
+  setTries(0);
+  UI.user = u;
+  UI.tab = (NAV[u.role] && NAV[u.role][0][0]) || "settings";
+  UI.sub = null;
+  document.getElementById("login").classList.add("off");
+  document.getElementById("app").classList.add("on");
+  document.getElementById("hdSchool").textContent = DB.meta.school;
+  document.getElementById("hdUser").textContent = u.name + " · " + (ROLES[u.role] ? ROLES[u.role].name : "");
+  render();
+}
+function logout(){
+  UI.user = null; UI.sub = null;
+  document.getElementById("app").classList.remove("on");
+  document.getElementById("login").classList.remove("off");
+  renderLogin();
+}
+
+/* ============================================================
+   إدارة الأرقام السرية داخل البرنامج
+   ============================================================ */
+/* حقل رقم سري بزر توليد وفحص فوري */
+function pinField(id, value, exceptId){
+  return '<label class="f"><span>الرقم السري ('+PIN_LEN+' أرقام على الأقل)</span>'+
+    '<div style="display:flex;gap:7px">'+
+    '<input type="text" id="'+id+'" inputmode="numeric" value="'+esc(value||"")+'" '+
+      'data-act="pinLive" data-except="'+esc(exceptId||"")+'" data-msg="'+id+'_msg" '+
+      'style="flex:1;letter-spacing:.15em;font-variant-numeric:tabular-nums">'+
+    '<button class="btn ghost" data-act="pinGen" data-for="'+id+'" data-msg="'+id+'_msg">توليد</button>'+
+    '</div><div id="'+id+'_msg" class="pinmsg"></div></label>';
+}
+function pinMsgHTML(err, pin){
+  if(!pin) return '';
+  if(err) return '<span style="color:var(--danger)">✕ '+esc(err)+'</span>';
+  return '<span style="color:var(--seal)">✓ رقم صالح وغير مستخدم</span>';
+}
+
+/* ---------- بطاقة الأرقام في الإعدادات ---------- */
+function pinsCard(){
+  var weak = weakUsers();
+  var h = '<div class="card"><div class="hd"><h3>الأرقام السرية والدخول</h3>'+
+    '<span class="tag '+(weak.length?"bad":"ok")+'">'+(weak.length? weak.length+" يحتاج تغيير" : "كله سليم")+'</span></div><div class="bd">'+
+    '<div class="note">الدخول بقى برقم سري واحد بس — من غير قايمة أسماء. الرقم نفسه هو اللي بيحدد صاحب الحساب، '+
+    'عشان كده لازم كل واحد يكون له رقم مختلف تمامًا، و'+PIN_LEN+' أرقام على الأقل عشان محدش يخمّنه.</div>';
+
+  if(weak.length){
+    h += '<div class="note bad"><b>'+weak.length+' حساب أرقامه ضعيفة أو مكررة</b> — أي حد يقدر يخمّنها ويدخل مكانهم. '+
+      'اضغط الزرار تحت وهيتولّد أرقام جديدة قوية للكل، وتطبعها وتوزعها.</div>'+
+      '<button class="btn danger block" data-act="fixPins" style="margin-bottom:11px">توليد أرقام جديدة للحسابات الضعيفة ('+weak.length+')</button>';
+  }
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn ghost" data-act="pinSheet">كشف الأرقام للطباعة</button>'+
+    '<button class="btn ghost" data-act="pinSlips">قصاصات لكل موظف</button>'+
+    '</div></div></div>';
+  return h;
+}
+/* كشف الأرقام — يشوفه المدير ووكيل شئون العاملين بس */
+function pinSheet(){
+  var rows = DB.users.slice().sort(function(a,b){
+    var o = {manager:0,deputy:1,admin:2,teacher:3,student:4};
+    return (o[a.role]-o[b.role]) || sortAr(a.name,b.name);
+  });
+  var t = '<table class="tbl"><thead><tr><th>م</th><th>الاسم</th><th>الصفة</th>'+
+    '<th>الرقم السري</th><th>الحالة</th><th>توقيع الاستلام</th></tr></thead><tbody>';
+  rows.forEach(function(u,i){
+    var err = pinCheck(u.pin, u.id);
+    t += '<tr><td class="rownum">'+(i+1)+'</td><td><b style="font-weight:600">'+esc(u.name)+'</b></td>'+
+      '<td>'+esc(ROLES[u.role]?ROLES[u.role].name:u.role)+'</td>'+
+      '<td class="num" style="font-size:16px;letter-spacing:.12em"><b>'+esc(u.pin)+'</b></td>'+
+      '<td>'+(err?'<span class="tag bad">ضعيف</span>':'<span class="tag ok">سليم</span>')+'</td>'+
+      '<td style="min-width:110px"></td></tr>';
+  });
+  t += '</tbody></table>';
+  paper(pWrap("كشف الأرقام السرية — سري", t)+
+    '<div class="card"><div class="bd"><div class="note bad">الورقة دي سرية. سلّم كل واحد رقمه ووقّع، ومتسيبهاش في مكان مفتوح.</div></div></div>');
+  UI.tab = "settings";
+  render();
+}
+/* قصاصات منفصلة تقصها وتوزعها */
+function pinSlips(){
+  var h = '<div class="note noprint">اطبع الصفحة واقص كل قصاصة وسلّمها لصاحبها.</div><div style="margin-top:10px">';
+  DB.users.forEach(function(u){
+    h += '<div class="card" style="break-inside:avoid;margin-bottom:8px"><div class="bd" style="text-align:center">'+
+      '<div style="font-size:11px;color:var(--muted)">'+esc(DB.meta.school)+'</div>'+
+      '<div style="font-weight:700;font-size:15px;margin:3px 0">'+esc(u.name)+'</div>'+
+      '<div style="font-size:12px;color:var(--muted)">'+esc(ROLES[u.role]?ROLES[u.role].name:u.role)+'</div>'+
+      '<div style="margin:9px 0;padding:9px;background:var(--line-2);border-radius:9px">'+
+        '<div style="font-size:11px;color:var(--muted)">الرقم السري</div>'+
+        '<div style="font-size:26px;font-weight:800;letter-spacing:.2em;font-family:Cairo,sans-serif">'+esc(u.pin)+'</div>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--muted)">افتح لينك البرنامج واكتب الرقم ده — هيفتح حسابك على طول.<br>متديهوش لحد.</div>'+
+      '</div></div>';
+  });
+  paper(h+'</div>');
+  UI.tab = "settings";
+  render();
+}
+
+Object.assign(ACTS, {
+  pinGen: function(el){
+    var f = document.getElementById(el.dataset.for);
+    if(!f) return;
+    f.value = genPin();
+    var m = document.getElementById(el.dataset.msg);
+    if(m) m.innerHTML = pinMsgHTML(null, f.value);
+  },
+  pinLive: function(){},
+  fixPins: function(){
+    var weak = weakUsers();
+    if(!weak.length){ toast("مفيش أرقام ضعيفة"); return; }
+    if(!confirm("هيتولّد رقم جديد لـ "+weak.length+" حساب. الأرقام القديمة مش هتشتغل تاني. متأكد؟")) return;
+    weak.forEach(function(u){ u.pin = genPin(); });
+    saveNow(); render();
+    toast("اتولّدت "+weak.length+" أرقام — اطبع الكشف ووزّعه");
+  },
+  pinSheet: pinSheet,
+  pinSlips: pinSlips
+});
+
+/* فحص فوري وأنت بتكتب */
+document.addEventListener("input", function(e){
+  var el = e.target;
+  if(!el || !el.dataset || el.dataset.act!=="pinLive") return;
+  var msg = document.getElementById(el.dataset.msg);
+  if(!msg) return;
+  var v = toEnDigits(el.value).trim();
+  msg.innerHTML = pinMsgHTML(v? pinCheck(v, el.dataset.except||null) : null, v);
+});
+
+/* ---------- استبدال حقول الرقم القديمة ---------- */
+var _modalTeacherBase = modalTeacher;
+modalTeacher = function(id){
+  _modalTeacherBase(id);
+  var t = id ? teacherById(id) : null;
+  var u = t ? userOfTeacher(t.id) : null;
+  var old = document.getElementById("t_pin");
+  if(!old) return;
+  var wrap = old.closest("label");
+  if(!wrap) return;
+  var cur = u ? u.pin : genPin();
+  wrap.outerHTML = pinField("t_pin", cur, u? u.id : "") +
+    '<div class="note">الرقم ده هو اللي المعلم هيدخل بيه — مفيش قايمة أسماء، بيكتب رقمه وبس.</div>';
+};
+var _saveTeacherBase = saveTeacher;
+saveTeacher = function(){
+  var id = MODAL.dataset.tid;
+  var t = id ? teacherById(id) : null;
+  var u = t ? userOfTeacher(t.id) : null;
+  var p = toEnDigits(val("t_pin")).trim();
+  var err = pinCheck(p, u ? u.id : null);
+  if(err){ toast(err); return; }
+  _saveTeacherBase();
+};
+var _modalUserBase = modalUser;
+modalUser = function(id){
+  _modalUserBase(id);
+  var old = document.getElementById("u_p");
+  if(!old) return;
+  var wrap = old.closest("label");
+  if(!wrap) return;
+  var u = id ? byId(DB.users, id) : null;
+  wrap.outerHTML = pinField("u_p", u ? u.pin : genPin(), id||"");
+};
+var _saveUserBase = saveUser;
+saveUser = function(){
+  var id = MODAL.dataset.uid;
+  var p = toEnDigits(val("u_p")).trim();
+  var err = pinCheck(p, id || null);
+  if(err){ toast(err); return; }
+  _saveUserBase();
+};
+
+/* بطاقة الأرقام جوه الإعدادات */
+var _settingsPinBase = viewSettings;
+viewSettings = function(){
+  var h = _settingsPinBase();
+  var marker = '<div class="card"><div class="hd"><h3>حسابات الدخول</h3>';
+  return h.indexOf(marker)>=0 ? h.replace(marker, pinsCard()+marker) : pinsCard()+h;
+};
 </script>
 </body>
 </html>
