@@ -3999,7 +3999,10 @@ function syncCard(){
   }else{
     h += '<div class="note '+(SYNC.on?"":"warn")+'">'+
       (SYNC.on ? 'المزامنة شغالة على كود المدرسة <b>'+esc(c.code)+'</b>. أي تعديل بيوصل باقي الأجهزة في ثواني.'
-               : 'الإعدادات محفوظة بس المزامنة مقفولة. اضغط «تشغيل المزامنة».')+'</div>';
+               : 'الإعدادات محفوظة بس المزامنة مقفولة. اضغط «حفظ وتشغيل».')+'</div>'+
+      '<div class="note warn">عايز تنقل الجهاز ده لمدرسة تانية؟ غيّر <b>كود المدرسة</b> و<b>إعدادات فايربيز</b> '+
+      'تحت واضغط «حفظ وتشغيل». وعايز توقف المزامنة خالص؟ اضغط «فصل الجهاز عن المدرسة». '+
+      'في الحالتين بيانات المدرسة الحالية بتفضل على السحابة زي ما هي.</div>';
   }
   h += '<label class="f"><span>كود المدرسة (نفس الكود على كل الأجهزة)</span>'+
     '<input type="text" id="sy_code" value="'+esc(c.code||"")+'" placeholder="مثال: nile-2027"></label>'+
@@ -4009,6 +4012,7 @@ function syncCard(){
     '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="btn" data-act="syncSave">حفظ وتشغيل</button>'+
     (SYNC.on?'<button class="btn ghost" data-act="syncOff">إيقاف المزامنة</button>':'')+
+    (has?'<button class="btn ghost" data-act="invUnlink" style="color:var(--danger)">فصل الجهاز عن المدرسة</button>':'')+
     (SYNC.on?'<button class="btn seal" data-act="syncInvite">دعوة جهاز جديد</button>':'')+
     '<button class="btn ghost" data-act="syncHelp">خطوات الربط</button>'+
     (SYNC.on?'<button class="btn ghost" data-act="syncForce">رفع بيانات الجهاز ده للسحابة</button>':'')+
@@ -4154,13 +4158,48 @@ function copyFrom(id, okMsg){
   toast(ok ? okMsg : "اختار النص وانسخه يدويًا");
 }
 function modalInvitePaste(){
-  openModal(mHead("ربط الجهاز بمدرستك")+
-    '<div class="mb"><div class="note">الصق كود الربط اللي وصلك من وكيل شئون الطلاب. '+
-    'بعد الربط هتلاقي اسمك في قائمة الدخول وتدخل برقمك السري.</div>'+
-    '<label class="f"><span>كود الربط</span>'+
-    '<textarea id="invIn" style="min-height:120px;direction:ltr;font-size:11px" placeholder="SEGEL-..."></textarea></label>'+
-    '</div>'+mFoot("ربط الجهاز","invApply"));
+  var c = syncCfgLoad();
+  var linked = !!(c && c.enabled && c.code && cfgValid(c.cfg));
+  var h = mHead(linked ? "الاتصال بالمدرسة" : "ربط الجهاز بمدرستك") + '<div class="mb">';
+  if(linked){
+    h += '<div class="note"><b>الجهاز ده مربوط حاليًا بمدرسة:</b><br>'+
+      '<span style="font-size:15px;font-weight:700;font-family:Cairo,sans-serif;direction:ltr;display:inline-block;margin-top:4px">'+
+      esc(c.code)+'</span></div>'+
+      '<div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:12px 0 7px">عايز تعمل إيه؟</div>'+
+      '<button class="who" data-act="invShowPaste" style="margin-bottom:7px">'+
+      '<span class="av">⇄</span><span class="tx"><b>الانتقال لمدرسة تانية</b>'+
+      '<small>الصق كود ربط المدرسة الجديدة</small></span><span class="chev">\u2039</span></button>'+
+      '<button class="who" data-act="invUnlink" style="margin-bottom:7px;border-color:#f0cdca">'+
+      '<span class="av" style="background:var(--danger)">\u2715</span>'+
+      '<span class="tx"><b>فصل الجهاز عن المدرسة</b>'+
+      '<small>يشتغل محليًا على الجهاز ده بس، من غير مزامنة</small></span><span class="chev">\u2039</span></button>'+
+      '<div id="invPasteBox" style="display:none">'+
+      '<label class="f" style="margin-top:10px"><span>كود ربط المدرسة الجديدة</span>'+
+      '<textarea id="invIn" style="min-height:110px;direction:ltr;font-size:11px" placeholder="SEGEL-..."></textarea></label>'+
+      '<div class="note warn"><b>مهم:</b> بيانات المدرسة الحالية هتفضل موجودة على السحابة زي ما هي، '+
+      'والجهاز ده بس هو اللي هينتقل. لو عايز تحتفظ بنسخة، خد نسخة احتياطية من الإعدادات الأول.</div>'+
+      '<button class="btn seal block" data-act="invApply">الانتقال للمدرسة الجديدة</button></div>';
+    h += '</div><div class="mf"><button class="btn ghost" data-act="close">إغلاق</button></div>';
+  }else{
+    h += '<div class="note">الصق كود الربط اللي وصلك من وكيل شئون الطلاب. '+
+      'بعد الربط هتلاقي اسمك في قائمة الدخول وتدخل برقمك السري.</div>'+
+      '<label class="f"><span>كود الربط</span>'+
+      '<textarea id="invIn" style="min-height:120px;direction:ltr;font-size:11px" placeholder="SEGEL-..."></textarea></label>'+
+      '</div>' + mFoot("ربط الجهاز","invApply");
+  }
+  openModal(h);
   MODAL.classList.add("wide");
+}
+function unlinkSchool(){
+  if(!confirm("هيفصل الجهاز ده عن المدرسة ويوقف المزامنة. البيانات على السحابة مش هتتمسح. متأكد؟")) return;
+  syncStop();
+  var c = syncCfgLoad() || {};
+  c.enabled = false;
+  delete c.code;
+  delete c.cfg;
+  syncCfgSave(c);
+  toast("اتفصل الجهاز عن المدرسة");
+  if(UI.user){ render(); } else { renderLogin(); }
 }
 
 Object.assign(ACTS, {
@@ -4168,6 +4207,11 @@ Object.assign(ACTS, {
   invCopy: function(){ copyFrom("invOut","اتنسخ الكود"); },
   invCopyMsg: function(){ copyFrom("invMsg","اتنسخت الرسالة"); },
   invPaste: modalInvitePaste,
+  invShowPaste: function(){
+    var b = document.getElementById("invPasteBox");
+    if(b){ b.style.display = "block"; var t = document.getElementById("invIn"); if(t) t.focus(); }
+  },
+  invUnlink: function(){ closeModal(); unlinkSchool(); },
   invApply: function(){
     if(!applyInvite(val("invIn"))) return;
     MODAL.classList.remove("wide");
@@ -4194,7 +4238,7 @@ renderLogin = function(){
     '<div style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line-2);text-align:center">'+
     (linked
       ? '<div style="font-size:11.5px;color:var(--muted)">مربوط بمدرسة <b>'+esc(c.code)+'</b> · '+
-        '<button data-lact="invp" style="color:var(--ink-2);font-weight:600;font-size:11.5px;text-decoration:underline">تغيير</button></div>'
+        '<button data-lact="invp" style="color:var(--ink-2);font-weight:600;font-size:11.5px;text-decoration:underline">تغيير المدرسة</button></div>'
       : '<button data-lact="invp" style="color:var(--ink-2);font-weight:600;font-size:13px">جهاز جديد؟ الصق كود الربط</button>')+
     '</div>');
 };
