@@ -502,7 +502,7 @@ function blankDB(){
     assign:[], schedule:[], attend:{}, marks:{}, behavior:[], notices:[],
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
-    sectors:{}
+    sectors:{}, wishes:[]
   };
 }
 
@@ -517,7 +517,7 @@ function load(){
     DB.absRules = Object.assign(blankDB().absRules, d.absRules||{});
     DB.bac = Object.assign(blankDB().bac, d.bac||{});
     if(!DB.sectors || typeof DB.sectors!=="object") DB.sectors = {};
-    ["users","teachers","classes","subjects","students","assign","schedule","behavior","notices","staff","leaves","locations","dutyPlan","events","holidays"].forEach(function(k){
+    ["users","teachers","classes","subjects","students","assign","schedule","behavior","notices","staff","leaves","locations","dutyPlan","events","holidays","wishes"].forEach(function(k){
       if(!Array.isArray(DB[k])) DB[k]=[];
     });
     if(!DB.attend||typeof DB.attend!=="object") DB.attend={};
@@ -760,11 +760,11 @@ var NAV = {
     ["times","أوقات اليوم","◷"],
     ["dash","المؤشرات","▤"],["subs","الاحتياطي","⇄"],["events","الأحداث","☰"],
     ["absence","غياب الطلاب","!"],["staff","العاملون","✎"],["classes","الفصول","▦"],
-    ["students","الطلاب","👤"],["schedule","الجداول","☷"],
+    ["students","الطلاب","👤"],["wishes","رغبات الطلاب","★"],["schedule","الجداول","☷"],
     ["dailyRep","التقرير اليومي","⎙"],["settings","الإعدادات","⚙"]
   ],
   deputy:[
-    ["today","لوحة اليوم","◉"],["students","الطلاب","👤"],["classes","الفصول","▦"],
+    ["today","لوحة اليوم","◉"],["students","الطلاب","👤"],["wishes","رغبات الطلاب","★"],["classes","الفصول","▦"],
     ["absence","الغياب والإنذارات","!"],["events","الأحداث","☰"],["assign","التكليفات","⇄"],
     ["schedule","الجداول","☷"],["teachers","المعلمون","✎"],
     ["reports","الكشوف","⎙"],["settings","الإعدادات","⚙"]
@@ -872,6 +872,7 @@ function render(){
     case "myduty":     h = viewMyDuty(); break;
     case "calendar":   h = viewCalendar(); break;
     case "times":      h = viewTimes(); break;
+    case "wishes":     h = viewWishes(); break;
     case "dash":       h = viewDash(); break;
     case "staff":      h = (UI.sub&&UI.sub.one) ? viewStaffOne(UI.sub.one) : viewStaff(); break;
     case "staffAtt":   h = viewStaffAtt(); break;
@@ -3704,7 +3705,7 @@ function embeddedCfg(){
 }
 
 /* المجموعات اللي بتتزامن كوحدة واحدة (نادرًا ما تتعدّل من جهازين مع بعض) */
-var BULK = ["meta","weights","bac","control","absRules","users","teachers","classes","subjects","students","assign","schedule","behavior","staff","leaves","locations","dutyPlan","events","holidays","sectors"];
+var BULK = ["meta","weights","bac","control","absRules","users","teachers","classes","subjects","students","assign","schedule","behavior","staff","leaves","locations","dutyPlan","events","holidays","sectors","wishes"];
 /* المجموعات اللي بتتزامن عنصر عنصر (كل معلم بيكتب في خانته) */
 var GRAIN = ["attend","marks","staffAtt","subs","duty"];
 
@@ -3951,7 +3952,7 @@ function onRemote(sn){
   BULK.forEach(function(k){
     if(v[k]===undefined) return;
     var incoming = v[k];
-    if(["users","teachers","classes","subjects","students","assign","schedule","behavior","staff","leaves","locations","dutyPlan","events","holidays"].indexOf(k)>=0){
+    if(["users","teachers","classes","subjects","students","assign","schedule","behavior","staff","leaves","locations","dutyPlan","events","holidays","wishes"].indexOf(k)>=0){
       incoming = Array.isArray(incoming) ? incoming.filter(Boolean) : [];
     }
     if(JSON.stringify(DB[k]) !== JSON.stringify(incoming)){ DB[k] = incoming; changed = true; }
@@ -4996,11 +4997,20 @@ function renderLogin(){
   var box = document.getElementById("loginCard");
   if(!box) return;
 
+  /* شاشة الطالب: تسجيل الرغبات من غير رقم سري */
+  if(UI.wishDone){ box.innerHTML = wishDoneHTML(UI.wishDone); return; }
+  if(UI.stu){
+    box.innerHTML = wishFormHTML();
+    var fn = document.getElementById("w_name");
+    if(fn) fn.focus();
+    return;
+  }
+
   var h = '';
   var picked = UI.sector==="reg" || UI.sector==="srv";
 
   h += '<div style="font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:9px;text-align:center">'+
-    (picked ? 'اكتب رقمك السري للدخول' : 'اختر القسم')+'</div>';
+    (picked ? 'اكتب رقمك السري للدخول' : 'اختر طريقة الدخول')+'</div>';
 
   SECTORS.forEach(function(x){
     h += '<button class="who'+(UI.sector===x.id?" on":"")+'" data-lact="sec" data-s="'+x.id+'">'+
@@ -5025,6 +5035,12 @@ function renderLogin(){
     }
     h += '</div>';
   }
+
+  /* الدخول كطالب */
+  h += '<button class="who" data-lact="stu" style="margin-top:'+(picked?"12px":"7px")+';border-color:var(--gold);background:#fdfaf3">'+
+    '<span class="av" style="background:var(--gold)">ط</span>'+
+    '<span class="tx"><b>الدخول كطالب</b><small>تسجيل رغبات المسار — من غير رقم سري</small></span>'+
+    '<span class="chev">‹</span></button>';
 
   var c = syncCfgLoad();
   var linked = !!(c && c.enabled && c.code);
@@ -6238,7 +6254,7 @@ function migrateSectors(){
   if(Array.isArray(DB.dutyPlan))  DB.dutyPlan.forEach(function(p){ if(!p.sector) p.sector = "reg"; });
   if(Array.isArray(DB.locations)) DB.locations.forEach(function(l){ if(!l.sector) l.sector = "reg"; });
   if(Array.isArray(DB.classes))   DB.classes.forEach(function(c){ if(!c.sector) c.sector = "reg"; });
-  if(Array.isArray(DB.users))     DB.users.forEach(function(u){
+  if(Array.isArray(DB.users)) DB.users.forEach(function(u){
     if(!Array.isArray(u.sectors) || !u.sectors.length) u.sectors = ["reg"];
   });
 }
@@ -6501,6 +6517,441 @@ Object.assign(ACTS, {
       b.textContent = (on?"✓ ":"") + sectorFull(b.dataset.s);
     });
   }
+});
+
+/* ============================================================
+   تسجيل رغبات الطلاب — مسارات البكالوريا المصرية
+   ------------------------------------------------------------
+   الطالب بيدخل من الصفحة الرئيسية من غير رقم سري، يسجّل بياناته
+   ويختار المسار ومادة التخصص. ووكيل شئون الطلاب بيشوف كل
+   التسجيلات ويصدّرها إكسيل أو PDF.
+   ============================================================ */
+
+var WISH_TRACKS = [
+  { id:"med", name:"الطب وعلوم الحياة",      subjects:["الرياضيات","الفيزياء"] },
+  { id:"eng", name:"الهندسة وعلوم الحاسب",   subjects:["الكيمياء","البرمجة"] },
+  { id:"bus", name:"الأعمال",                 subjects:["إدارة أعمال","المحاسبة"] },
+  { id:"art", name:"الآداب والفنون",          subjects:["اللغة الأجنبية الثانية","علم النفس"] }
+];
+function wishTrack(id){
+  for(var i=0;i<WISH_TRACKS.length;i++) if(WISH_TRACKS[i].id===id) return WISH_TRACKS[i];
+  return null;
+}
+function wishTrackName(id){ var t = wishTrack(id); return t ? t.name : "—"; }
+function wishSubjects(id){ var t = wishTrack(id); return t ? t.subjects : []; }
+
+/* تنضيف خفيف: مسافات بس — من غير تحويل الأرقام العربية
+   عشان اسم الفصل يفضل زي ما الطالب كتبه */
+function tidy(v){ return String(v==null?"":v).replace(/\s+/g," ").trim(); }
+function wishesInit(){ if(!Array.isArray(DB.wishes)) DB.wishes = []; }
+function wishByNat(nat, exceptId){
+  wishesInit();
+  var n = toEnDigits(String(nat||"")).replace(/\D/g,"");
+  if(!n) return null;
+  for(var i=0;i<DB.wishes.length;i++){
+    if(DB.wishes[i].id===exceptId) continue;
+    if(String(DB.wishes[i].natId)===n) return DB.wishes[i];
+  }
+  return null;
+}
+/* تحقّق من الرقم القومي المصري: ١٤ رقم، وأول رقم ٢ أو ٣ */
+function natIdCheck(v){
+  var n = toEnDigits(String(v||"")).replace(/\D/g,"");
+  if(!n) return "اكتب الرقم القومي";
+  if(n.length !== 14) return "الرقم القومي لازم ١٤ رقم (المكتوب دلوقتي "+n.length+")";
+  if(n[0]!=="2" && n[0]!=="3") return "الرقم القومي لازم يبدأ بـ ٢ أو ٣";
+  /* بنية الرقم القومي المصري:
+     [0] القرن · [1-2] السنة · [3-4] الشهر · [5-6] اليوم · [7-8] المحافظة · [9-12] المسلسل · [13] التحقق */
+  var m = Number(n.slice(3,5));
+  if(m<1 || m>12) return "شهر الميلاد جوه الرقم القومي مش مظبوط";
+  var d = Number(n.slice(5,7));
+  if(d<1 || d>31) return "يوم الميلاد جوه الرقم القومي مش مظبوط";
+  var gv = Number(n.slice(7,9));
+  if(!((gv>=1 && gv<=35) || gv===88)) return "كود المحافظة جوه الرقم القومي مش مظبوط";
+  return null;
+}
+function nameCheck(v){
+  var s = cleanName(v);
+  if(!s) return "اكتب الاسم";
+  if(s.length < 6) return "اكتب الاسم كامل زي ما هو في شهادة الميلاد";
+  if(s.split(/\s+/).length < 3) return "الاسم لازم يكون ثلاثي على الأقل زي شهادة الميلاد";
+  if(/\d/.test(s)) return "الاسم مفيهوش أرقام";
+  return null;
+}
+
+/* ============================================================
+   شاشة الطالب — من صفحة البداية
+   ============================================================ */
+function wishFormHTML(){
+  var f = UI.wish || {};
+  var trk = f.track || "";
+  var subs = wishSubjects(trk);
+  var h = '';
+
+  h += '<div style="text-align:center;margin-bottom:12px">'+
+    '<div style="font-family:Cairo,sans-serif;font-weight:700;font-size:16px">تسجيل رغبات المسار</div>'+
+    '<div style="font-size:12px;color:var(--muted);line-height:1.7;margin-top:3px">'+
+    'اكتب بياناتك واختار المسار ومادة التخصص.<br>راجع كويس قبل ما تسجّل.</div></div>';
+
+  h += '<label class="f"><span>الاسم رباعي زي ما هو في شهادة الميلاد</span>'+
+    '<input type="text" id="w_name" value="'+esc(f.name||"")+'" placeholder="مثال: أحمد محمد علي حسن"></label>';
+
+  h += '<label class="f"><span>الرقم القومي (١٤ رقم)</span>'+
+    '<input type="text" id="w_nat" inputmode="numeric" maxlength="14" value="'+esc(f.natId||"")+'" '+
+    'style="letter-spacing:.12em;direction:ltr;text-align:center" placeholder="30012345600123"></label>';
+
+  h += '<label class="f"><span>فصلك في السنة السابقة</span>'+
+    '<input type="text" id="w_cls" value="'+esc(f.prevClass||"")+'" placeholder="مثال: ١ / ٣"></label>';
+
+  h += '<label class="f"><span>المسار</span><select id="w_trk">'+
+    '<option value="">— اختر المسار —</option>'+
+    WISH_TRACKS.map(function(t){
+      return '<option value="'+t.id+'"'+(trk===t.id?" selected":"")+'>'+esc(t.name)+'</option>';
+    }).join("")+'</select></label>';
+
+  if(trk){
+    h += '<label class="f"><span>مادة التخصص</span><select id="w_sub">'+
+      '<option value="">— اختر المادة —</option>'+
+      subs.map(function(x){
+        return '<option'+(f.subject===x?" selected":"")+'>'+esc(x)+'</option>';
+      }).join("")+'</select>'+
+      '<div style="font-size:11.5px;color:var(--muted);margin-top:4px">'+
+      'مواد مسار '+esc(wishTrackName(trk))+'</div></label>';
+  }else{
+    h += '<div class="note" style="margin-bottom:10px">اختار المسار الأول عشان تظهر لك مواد التخصص.</div>';
+  }
+
+  h += '<button class="btn block" data-lact="wsave" style="margin-top:4px">تسجيل الرغبة</button>'+
+    '<button class="btn ghost block" data-lact="wback" style="margin-top:8px">رجوع</button>';
+  return h;
+}
+function wishDoneHTML(w){
+  return '<div style="text-align:center">'+
+    '<div style="width:52px;height:52px;margin:0 auto 11px;border-radius:14px;display:grid;place-items:center;'+
+    'background:#e2f0e9;color:#146a4e;font-size:26px">✓</div>'+
+    '<div style="font-family:Cairo,sans-serif;font-weight:700;font-size:17px">اتسجّلت رغبتك</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-top:4px">احتفظ بالبيانات دي</div>'+
+    '</div>'+
+    '<div style="background:#fbfcfa;border:1px solid var(--line);border-radius:11px;padding:12px;margin-top:13px;font-size:13.5px;line-height:2">'+
+    '<div><b>الاسم:</b> '+esc(w.name)+'</div>'+
+    '<div><b>الرقم القومي:</b> <span style="direction:ltr;display:inline-block">'+esc(w.natId)+'</span></div>'+
+    '<div><b>الفصل السابق:</b> '+esc(w.prevClass)+'</div>'+
+    '<div><b>المسار:</b> '+esc(wishTrackName(w.track))+'</div>'+
+    '<div><b>مادة التخصص:</b> '+esc(w.subject)+'</div>'+
+    '<div style="color:var(--muted);font-size:12px"><b>وقت التسجيل:</b> '+esc(fmtDate(w.date))+' '+esc(w.time||"")+'</div>'+
+    '</div>'+
+    '<button class="btn block" data-lact="wnew" style="margin-top:12px">تسجيل طالب آخر</button>'+
+    '<button class="btn ghost block" data-lact="wback" style="margin-top:8px">رجوع للصفحة الرئيسية</button>';
+}
+function readWishForm(){
+  var o = UI.wish || {};
+  var e;
+  e = document.getElementById("w_name"); if(e) o.name = e.value;
+  e = document.getElementById("w_nat");  if(e) o.natId = toEnDigits(e.value).replace(/\D/g,"");
+  e = document.getElementById("w_cls");  if(e) o.prevClass = e.value;
+  e = document.getElementById("w_trk");  if(e) o.track = e.value;
+  e = document.getElementById("w_sub");  if(e) o.subject = e.value;
+  UI.wish = o;
+  return o;
+}
+function saveWish(){
+  wishesInit();
+  var o = readWishForm();
+  var err = nameCheck(o.name);
+  if(err){ toast(err); return; }
+  err = natIdCheck(o.natId);
+  if(err){ toast(err); return; }
+  if(!tidy(o.prevClass)){ toast("اكتب فصلك في السنة السابقة"); return; }
+  if(!o.track){ toast("اختار المسار"); return; }
+  if(!o.subject || wishSubjects(o.track).indexOf(o.subject)<0){ toast("اختار مادة التخصص"); return; }
+
+  var dup = wishByNat(o.natId, null);
+  if(dup){
+    toast("الرقم القومي ده مسجّل قبل كده باسم "+dup.name);
+    return;
+  }
+  var now = new Date();
+  var w = {
+    id: uid("w"),
+    name: cleanName(o.name),
+    natId: o.natId,
+    prevClass: tidy(o.prevClass),
+    track: o.track,
+    subject: o.subject,
+    date: today(),
+    time: (now.getHours()<10?"0":"")+now.getHours()+":"+(now.getMinutes()<10?"0":"")+now.getMinutes()
+  };
+  DB.wishes.push(w);
+  saveNow();
+  UI.wishDone = w;
+  UI.wish = null;
+  renderLogin();
+}
+
+/* ============================================================
+   شاشة وكيل شئون الطلاب
+   ============================================================ */
+function viewWishes(){
+  wishesInit();
+  var f = UI.filters;
+  var all = DB.wishes.slice().sort(function(a,b){
+    return (b.date+(b.time||"")) < (a.date+(a.time||"")) ? -1 : 1;
+  });
+  var list = f.wTrack ? all.filter(function(w){ return w.track===f.wTrack; }) : all;
+  if(f.wq){
+    var q = f.wq.trim();
+    list = list.filter(function(w){
+      return w.name.indexOf(q)>=0 || String(w.natId).indexOf(q)>=0 || String(w.prevClass).indexOf(q)>=0;
+    });
+  }
+  var byTrack = {};
+  all.forEach(function(w){ byTrack[w.track] = (byTrack[w.track]||0)+1; });
+
+  var h = pageHd("رغبات الطلاب", all.length+" طالب سجّل رغبته",
+    '<button class="btn" data-act="wExcel">⬇ تنزيل إكسيل</button>'+
+    '<button class="btn ghost" data-act="wPdf" style="margin-right:6px">⬇ تنزيل PDF</button>');
+
+  if(!all.length){
+    return h + '<div class="card"><div class="bd"><div class="empty"><div class="big">★</div>'+
+      '<b>مفيش تسجيلات لسه</b>'+
+      '<p>الطلاب بيسجّلوا من صفحة البداية بزرار «الدخول كطالب» — من غير رقم سري. '+
+      'ابعتلهم رابط البرنامج وهما هيسجّلوا بنفسهم، والبيانات هتظهر هنا فورًا.</p></div></div></div>';
+  }
+
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("إجمالي المسجّلين", all.length, "طالب","acc")+
+    WISH_TRACKS.map(function(t){
+      return stat(t.name, byTrack[t.id]||0,
+        all.length? Math.round((byTrack[t.id]||0)/all.length*100)+"%" : "", "");
+    }).join("")+'</div>';
+
+  /* توزيع مواد التخصص */
+  h += '<div class="card"><div class="hd"><h3>توزيع مواد التخصص</h3></div><div class="bd">';
+  WISH_TRACKS.forEach(function(t){
+    var n = byTrack[t.id]||0;
+    if(!n) return;
+    h += '<div style="font-size:12.5px;font-weight:700;margin:9px 0 5px;font-family:Cairo,sans-serif">'+esc(t.name)+' ('+n+')</div>';
+    t.subjects.forEach(function(su, i){
+      var c = all.filter(function(w){ return w.track===t.id && w.subject===su; }).length;
+      h += bar(su, c, n, i===0 ? "var(--seal)" : "var(--ink-2)");
+    });
+  });
+  h += '</div></div>';
+
+  h += '<div class="card noprint"><div class="bd">'+
+    '<label class="f" style="margin:0"><span>بحث بالاسم أو الرقم القومي أو الفصل</span>'+
+    '<input type="text" id="wq" value="'+esc(f.wq||"")+'" placeholder="اكتب للبحث…"></label></div></div>';
+
+  h += '<div class="chips noprint"><button class="'+(f.wTrack?"":"on")+'" data-act="wAll">كل المسارات</button>'+
+    WISH_TRACKS.filter(function(t){ return byTrack[t.id]; }).map(function(t){
+      return '<button class="'+(f.wTrack===t.id?"on":"")+'" data-act="wFilter" data-t="'+t.id+'">'+
+        esc(t.name)+' ('+byTrack[t.id]+')</button>';
+    }).join("")+'</div>';
+
+  h += printHd("كشف رغبات الطلاب — مسارات البكالوريا");
+  h += '<div class="card"><div class="hd"><h3>'+list.length+' تسجيل</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الفصل السابق</th>'+
+    '<th>المسار</th><th>مادة التخصص</th><th>تاريخ التسجيل</th><th class="noprint"></th></tr></thead><tbody>';
+  if(!list.length) h += '<tr><td colspan="8"><div class="empty"><b>مفيش نتائج مطابقة</b></div></td></tr>';
+  list.forEach(function(w,i){
+    h += '<tr><td class="rownum">'+(i+1)+'</td>'+
+      '<td><b style="font-weight:600">'+esc(w.name)+'</b></td>'+
+      '<td class="num" style="direction:ltr">'+esc(w.natId)+'</td>'+
+      '<td>'+esc(w.prevClass)+'</td>'+
+      '<td>'+esc(wishTrackName(w.track))+'</td>'+
+      '<td><b style="font-weight:600">'+esc(w.subject)+'</b></td>'+
+      '<td class="num">'+fmtDate(w.date)+(w.time? ' <small style="color:var(--muted)">'+esc(w.time)+'</small>':'')+'</td>'+
+      '<td class="noprint"><button class="btn ghost sm" data-act="wDel" data-id="'+w.id+'" style="color:var(--danger)">حذف</button></td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+
+/* ============================================================
+   التصدير — إكسيل منسّق و PDF
+   ============================================================ */
+function wishRows(){
+  wishesInit();
+  var f = UI.filters || {};
+  var list = DB.wishes.slice().sort(function(a,b){ return sortAr(a.name,b.name); });
+  if(f.wTrack) list = list.filter(function(w){ return w.track===f.wTrack; });
+  return list;
+}
+/* ملف إكسيل حقيقي بتنسيق — بيفتح في إكسيل مباشرة */
+function wishExcel(){
+  var list = wishRows();
+  if(!list.length){ toast("مفيش بيانات للتصدير"); return; }
+  var head = ["م","الاسم رباعي","الرقم القومي","الفصل السابق","المسار","مادة التخصص","تاريخ التسجيل","وقت التسجيل"];
+  var rows = list.map(function(w,i){
+    return [i+1, w.name, w.natId, w.prevClass, wishTrackName(w.track), w.subject, w.date, w.time||""];
+  });
+  var fname = "رغبات-الطلاب-"+today();
+
+  loadXLSX().then(function(X){
+    var aoa = [
+      [DB.meta.moderia||""],
+      [DB.meta.edara||""],
+      [DB.meta.school||""],
+      ["كشف رغبات الطلاب — مسارات البكالوريا المصرية — العام الدراسي "+(DB.meta.year||"")],
+      [],
+      head
+    ].concat(rows);
+    var ws = X.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [{wch:5},{wch:32},{wch:18},{wch:14},{wch:24},{wch:24},{wch:13},{wch:10}];
+    ws["!merges"] = [0,1,2,3].map(function(r){
+      return { s:{r:r,c:0}, e:{r:r,c:head.length-1} };
+    });
+    ws["!rows"] = [{hpt:18},{hpt:18},{hpt:22},{hpt:20},{hpt:8},{hpt:22}];
+    /* تنسيق: عناوين وسط وغامق */
+    for(var r=0;r<6;r++){
+      var ref = X.utils.encode_cell({r:r,c:0});
+      if(ws[ref]) ws[ref].s = { font:{bold:true, sz: r===2?14:11}, alignment:{horizontal:"center"} };
+    }
+    for(var c=0;c<head.length;c++){
+      var hr = X.utils.encode_cell({r:5,c:c});
+      if(ws[hr]) ws[hr].s = {
+        font:{bold:true}, alignment:{horizontal:"center", vertical:"center"},
+        fill:{fgColor:{rgb:"EEF1EC"}},
+        border:{ top:{style:"thin"}, bottom:{style:"thin"}, left:{style:"thin"}, right:{style:"thin"} }
+      };
+    }
+    ws["!ref"] = X.utils.encode_range({s:{r:0,c:0}, e:{r:5+rows.length, c:head.length-1}});
+    var wb = X.utils.book_new();
+    wb.Workbook = { Views:[{ RTL:true }] };
+    X.utils.book_append_sheet(wb, ws, "رغبات الطلاب");
+    X.writeFile(wb, fname+".xlsx");
+    toast("اتنزّل ملف الإكسيل");
+  }).catch(function(){
+    /* من غير إنترنت: CSV بيفتح في إكسيل عادي */
+    var csv = "\uFEFF" + [head].concat(rows).map(function(r){
+      return r.map(function(x){
+        var v = String(x==null?"":x);
+        return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
+      }).join(",");
+    }).join("\n");
+    downloadBlob(csv, fname+".csv", "text/csv;charset=utf-8");
+    toast("اتنزّل CSV — بيفتح في إكسيل عادي");
+  });
+}
+function downloadBlob(content, filename, type){
+  try{
+    var blob = new Blob([content], {type:type});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 400);
+    return true;
+  }catch(e){ toast("التنزيل مش متاح على المتصفح ده"); return false; }
+}
+/* PDF: صفحة منسّقة بتفتح نافذة الطباعة → حفظ كـ PDF */
+function wishPdf(){
+  var list = wishRows();
+  if(!list.length){ toast("مفيش بيانات للتصدير"); return; }
+  var byTrack = {};
+  DB.wishes.forEach(function(w){ byTrack[w.track] = (byTrack[w.track]||0)+1; });
+
+  var html = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8">'+
+    '<title>رغبات الطلاب — '+esc(DB.meta.school||"")+'</title>'+
+    '<style>'+
+    '@page{size:A4;margin:12mm}'+
+    'body{font-family:"Cairo","Tahoma",sans-serif;color:#0d2b3e;margin:0;font-size:12px}'+
+    '.hd{text-align:center;border-bottom:2px solid #0d2b3e;padding-bottom:8px;margin-bottom:10px}'+
+    '.hd .s{font-size:10px;color:#5d6b72}'+
+    '.hd .n{font-size:15px;font-weight:700}'+
+    '.hd .t{font-size:13px;font-weight:600;margin-top:2px}'+
+    '.sum{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}'+
+    '.sum div{flex:1;min-width:110px;border:1px solid #d5dbd4;border-radius:7px;padding:6px 9px}'+
+    '.sum b{display:block;font-size:16px}'+
+    '.sum span{font-size:10px;color:#5d6b72}'+
+    'table{width:100%;border-collapse:collapse;font-size:11px}'+
+    'th{background:#eef1ec;border:1px solid #9aa89e;padding:6px 5px;font-size:10.5px}'+
+    'td{border:1px solid #c9d1c8;padding:5px;text-align:center}'+
+    'td.r{text-align:right}'+
+    'tr{page-break-inside:avoid}'+
+    'thead{display:table-header-group}'+
+    '.ft{display:flex;justify-content:space-between;font-size:11px;margin-top:18px}'+
+    '.cr{text-align:center;font-size:9.5px;color:#5d6b72;margin-top:14px;border-top:1px solid #d5dbd4;padding-top:7px}'+
+    '</style></head><body>'+
+    '<div class="hd"><div class="s">'+esc(DB.meta.moderia||"")+' — '+esc(DB.meta.edara||"")+'</div>'+
+    '<div class="n">'+esc(DB.meta.school||"")+'</div>'+
+    '<div class="t">كشف رغبات الطلاب — مسارات البكالوريا المصرية</div>'+
+    '<div class="s">العام الدراسي '+esc(DB.meta.year||"")+' — تاريخ الطباعة '+fmtDate(today())+'</div></div>'+
+    '<div class="sum"><div><b>'+list.length+'</b><span>إجمالي المسجّلين</span></div>'+
+    WISH_TRACKS.map(function(t){
+      return '<div><b>'+(byTrack[t.id]||0)+'</b><span>'+esc(t.name)+'</span></div>';
+    }).join("")+'</div>'+
+    '<table><thead><tr><th style="width:28px">م</th><th>الاسم رباعي</th>'+
+    '<th style="width:100px">الرقم القومي</th><th style="width:60px">الفصل السابق</th>'+
+    '<th style="width:120px">المسار</th><th style="width:110px">مادة التخصص</th>'+
+    '<th style="width:65px">التاريخ</th></tr></thead><tbody>';
+  list.forEach(function(w,i){
+    html += '<tr><td>'+(i+1)+'</td><td class="r">'+esc(w.name)+'</td>'+
+      '<td style="direction:ltr">'+esc(w.natId)+'</td><td>'+esc(w.prevClass)+'</td>'+
+      '<td>'+esc(wishTrackName(w.track))+'</td><td>'+esc(w.subject)+'</td>'+
+      '<td>'+esc(w.date)+'</td></tr>';
+  });
+  html += '</tbody></table>'+
+    '<div class="ft"><span>وكيل شئون الطلاب: ................</span>'+
+    '<span>مدير المدرسة: ................</span></div>'+
+    '<div class="cr">للتواصل : farhatzayed2018@gmail.com<br>برمجه / فرحات زايد — إهداء لمنظومه التعليم الثانوي</div>'+
+    '</body></html>';
+
+  var w = window.open("", "_blank");
+  if(!w){
+    downloadBlob(html, "رغبات-الطلاب-"+today()+".html", "text/html;charset=utf-8");
+    toast("المتصفح منع النافذة — اتنزّل الملف، افتحه واطبعه PDF");
+    return;
+  }
+  w.document.write(html);
+  w.document.close();
+  setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 500);
+  toast("اختار «حفظ كـ PDF» من نافذة الطباعة");
+}
+
+Object.assign(ACTS, {
+  wAll:    function(){ UI.filters.wTrack = ""; render(); },
+  wFilter: function(el){ UI.filters.wTrack = el.dataset.t; render(); },
+  wExcel:  wishExcel,
+  wPdf:    wishPdf,
+  wDel: function(el){
+    if(!confirm("حذف التسجيل ده؟")) return;
+    wishesInit();
+    DB.wishes = DB.wishes.filter(function(w){ return w.id!==el.dataset.id; });
+    save(); render(); toast("اتحذف");
+  }
+});
+
+/* بحث فوري في شاشة الرغبات */
+document.addEventListener("input", function(e){
+  if(!e.target || e.target.id!=="wq") return;
+  UI.filters.wq = e.target.value;
+  clearTimeout(ACTS._wq);
+  ACTS._wq = setTimeout(function(){
+    var pos = e.target.selectionStart;
+    render();
+    var n = document.getElementById("wq");
+    if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(err){} }
+  }, 280);
+});
+/* تحديث مواد التخصص لما المسار يتغيّر */
+document.addEventListener("change", function(e){
+  if(!e.target || e.target.id!=="w_trk") return;
+  readWishForm();
+  UI.wish.subject = "";
+  renderLogin();
+});
+/* أزرار شاشة الطالب */
+document.addEventListener("click", function(e){
+  var el = e.target.closest ? e.target.closest("[data-lact]") : null;
+  if(!el) return;
+  var a = el.dataset.lact;
+  if(a==="stu"){ e.preventDefault(); UI.stu = true; UI.wishDone = null; UI.wish = UI.wish || {}; renderLogin(); }
+  if(a==="wback"){ e.preventDefault(); UI.stu = false; UI.wishDone = null; UI.wish = null; renderLogin(); }
+  if(a==="wnew"){ e.preventDefault(); UI.wishDone = null; UI.wish = {}; renderLogin(); }
+  if(a==="wsave"){ e.preventDefault(); saveWish(); }
 });
 </script>
 </body>
