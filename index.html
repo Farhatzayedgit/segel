@@ -436,12 +436,39 @@ var WEEKLY_COUNT = 12;              /* عدد التقييمات الأسبوع�
 var ATT = {P:"حاضر", A:"غائب", E:"غياب بعذر", L:"متأخر"};
 
 var ROLES = {
-  manager:{name:"مدير المدرسة",        av:"مد"},
-  deputy: {name:"وكيل شئون الطلاب",    av:"وك"},
-  teacher:{name:"معلم",                 av:"مع"},
-  admin:  {name:"وكيل شئون العاملين",   av:"عا"},
-  student:{name:"طالب / ولي أمر",       av:"طا"}
+  manager:{name:"مدير المدرسة",       av:"مد"},
+  deputy: {name:"وكيل شئون الطلاب",   av:"طل"},
+  admin:  {name:"وكيل شئون العاملين", av:"عا"},
+  teacher:{name:"معلم",                av:"مع"},
+  student:{name:"طالب / ولي أمر",      av:"طا"}
 };
+
+/* ---------- التقويم الدراسي ----------
+   الأسبوع الدراسي العادي: الأحد → الخميس
+   أسبوع الامتحانات: السبت → الخميس
+   والإجازات الرسمية بيحددها المدير، واليوم اللي فيها بيتوقف فيه الشغل كله. */
+function schoolDayIdx(){
+  return DB.meta.weekMode==="exams" ? [0,1,2,3,4,5] : [1,2,3,4,5];
+}
+function isSchoolDayIdx(i){ return schoolDayIdx().indexOf(Number(i))>=0; }
+function holidayOn(date){
+  if(!Array.isArray(DB.holidays)) return null;
+  for(var i=0;i<DB.holidays.length;i++){
+    var h = DB.holidays[i];
+    if(date >= h.from && date <= (h.to||h.from)) return h;
+  }
+  return null;
+}
+/* حالة اليوم: شغل ولا إجازة ولا خارج الأسبوع الدراسي */
+function dayStatus(date){
+  var dw = dayOfWeek(date);
+  var hol = holidayOn(date);
+  if(hol) return { ok:false, kind:"holiday", name:hol.name || "إجازة رسمية", day:dw };
+  if(dw===6) return { ok:false, kind:"weekend", name:"الجمعة — عطلة أسبوعية", day:dw };
+  if(!isSchoolDayIdx(dw)) return { ok:false, kind:"weekend",
+    name:DAYS[dw]+" — خارج الأسبوع الدراسي ("+(DB.meta.weekMode==="exams"?"السبت للخميس":"الأحد للخميس")+")", day:dw };
+  return { ok:true, kind:"school", name:DAYS[dw], day:dw };
+}
 
 /* ---------- التخزين ---------- */
 var KEY = "segel_school_v1";
@@ -466,14 +493,15 @@ function blankDB(){
     v:1,
     meta:{ school:"مدرسة ....... الثانوية", edara:"إدارة ....... التعليمية",
            moderia:"مديرية التربية والتعليم بـ .......",
-           year:"2026 / 2027", term:1 },
+           year:"2026 / 2027", term:1, weekMode:"normal" },
     weights:{ fin:30, m1:15, m2:15, beh:10, note:15, weekly:15 },
     bac:{ m1Max:50, m2Max:50, passPct:50, target:600 },
     control:{ passPct:50, writtenMinPct:25, failLimit:3, seatStart:1001, roomSize:30, roomStart:1 },
     absRules:{ warn1:5, warn2:10, danger:15, denyPct:15 },
     users:[], teachers:[], classes:[], subjects:[], students:[],
     assign:[], schedule:[], attend:{}, marks:{}, behavior:[], notices:[],
-    staff:[], leaves:[], staffAtt:{}, subs:{}
+    staff:[], leaves:[], staffAtt:{}, subs:{},
+    locations:[], dutyPlan:[], duty:{}, events:[], holidays:[]
   };
 }
 
@@ -488,14 +516,23 @@ function load(){
     DB.absRules = Object.assign(blankDB().absRules, d.absRules||{});
     DB.bac = Object.assign(blankDB().bac, d.bac||{});
     DB.control = Object.assign(blankDB().control, d.control||{});
-    ["users","teachers","classes","subjects","students","assign","schedule","behavior","notices","staff","leaves"].forEach(function(k){
+    ["users","teachers","classes","subjects","students","assign","schedule","behavior","notices","staff","leaves","locations","dutyPlan","events","holidays"].forEach(function(k){
       if(!Array.isArray(DB[k])) DB[k]=[];
     });
     if(!DB.attend||typeof DB.attend!=="object") DB.attend={};
     if(!DB.marks ||typeof DB.marks !=="object") DB.marks={};
     if(!DB.staffAtt||typeof DB.staffAtt!=="object") DB.staffAtt={};
     if(!DB.subs   ||typeof DB.subs   !=="object") DB.subs={};
+    if(!DB.duty   ||typeof DB.duty   !=="object") DB.duty={};
+    fixRoles();
   }catch(e){ DB = seed(); }
+}
+/* أدوار قديمة اتلغت: الإشراف بقى مهمة تتوزّع مش حساب مستقل */
+function fixRoles(){
+  if(!Array.isArray(DB.users)) return;
+  DB.users.forEach(function(u){
+    if(!ROLES[u.role]) u.role = u.teacherId ? "teacher" : "admin";
+  });
 }
 var saveT=null;
 function save(){
@@ -717,25 +754,41 @@ function seed(){
 
 var NAV = {
   manager:[
-    ["dash","لوحة المدير","▤"],["control","الكنترول","▣"],["students","الطلاب","👤"],["classes","الفصول","▦"],
-    ["teachers","المعلمون","✎"],["absence","الغياب","!"],["schedule","الجداول","☷"],["settings","الإعدادات","⚙"]
+    ["today","لوحة اليوم","◉"],["duty","توزيع الإشراف","⌂"],["calendar","التقويم الدراسي","▦"],
+    ["dash","المؤشرات","▤"],["subs","الاحتياطي","⇄"],["events","الأحداث","☰"],
+    ["absence","غياب الطلاب","!"],["staff","العاملون","✎"],["classes","الفصول","▦"],
+    ["students","الطلاب","👤"],["schedule","الجداول","☷"],["control","الكنترول","▣"],
+    ["dailyRep","التقرير اليومي","⎙"],["settings","الإعدادات","⚙"]
   ],
   deputy:[
-    ["students","الطلاب","👤"],["classes","الفصول","▦"],["control","الكنترول","▣"],["teachers","المعلمون","✎"],
-    ["assign","التكليفات","⇄"],["schedule","الجداول","☷"],["absence","الغياب","!"],
+    ["today","لوحة اليوم","◉"],["students","الطلاب","👤"],["classes","الفصول","▦"],
+    ["absence","الغياب والإنذارات","!"],["events","الأحداث","☰"],["assign","التكليفات","⇄"],
+    ["schedule","الجداول","☷"],["teachers","المعلمون","✎"],["control","الكنترول","▣"],
     ["reports","الكشوف","⎙"],["settings","الإعدادات","⚙"]
+  ],
+  admin:[
+    ["today","لوحة اليوم","◉"],["staffAtt","حضور العاملين","✓"],["subs","الاحتياطي","⇄"],
+    ["duty","توزيع الإشراف","⌂"],["staff","العاملون","✎"],["leaves","الإجازات","☰"],
+    ["schedule","الجداول","☷"],["dailyRep","التقرير اليومي","⎙"],["staffStats","الإحصائيات","▤"]
   ],
   teacher:[
     ["myclasses","فصولي","▦"],["myschedule","جدولي","☷"],["mystudents","طلابي","👤"]
-  ],
-  admin:[
-    ["staff","العاملون","✎"],["staffAtt","حضور العاملين","✓"],["subs","الاحتياطي","⇄"],
-    ["leaves","الإجازات","☰"],["staffStats","الإحصائيات","▤"],["schedule","الجداول","☷"]
   ],
   student:[
     ["mygrades","درجاتي","★"],["myattend","حضوري","✓"],["mysched","جدولي","☷"]
   ]
 };
+
+/* التنقل الفعلي: تبويب «الإشراف» بيظهر للمعلم في يوم مناوبته بس */
+function navFor(u){
+  var items = (NAV[u.role] || []).slice();
+  if(u.role==="teacher" && u.teacherId){
+    var d = myDutyToday();
+    if(d.any) items.splice(1, 0, ["myduty","الإشراف","⌂"]);
+    else if(myDutyWeek().length) items.push(["myduty","إشرافي","⌂"]);
+  }
+  return items;
+}
 
 /* ---------- الدخول ---------- */
 function renderLogin(){
@@ -792,7 +845,7 @@ function logout(){
 
 /* ---------- التنقل ---------- */
 function renderNav(){
-  var items = NAV[UI.user.role] || [];
+  var items = navFor(UI.user);
   var s="", b="";
   items.forEach(function(it){
     var on = UI.tab===it[0] ? " on" : "";
@@ -809,6 +862,12 @@ function render(){
   renderNav();
   var v = document.getElementById("view"), h="";
   switch(UI.tab){
+    case "today":      h = viewToday(); break;
+    case "duty":       h = viewDuty(); break;
+    case "events":     h = viewEvents(); break;
+    case "dailyRep":   h = viewDailyReport(); break;
+    case "myduty":     h = viewMyDuty(); break;
+    case "calendar":   h = viewCalendar(); break;
     case "dash":       h = viewDash(); break;
     case "control":    h = (UI.sub&&UI.sub.student) ? ctStudentSheet(UI.sub.student) : viewControl(); break;
     case "staff":      h = (UI.sub&&UI.sub.one) ? viewStaffOne(UI.sub.one) : viewStaff(); break;
@@ -1250,7 +1309,8 @@ function viewSchedule(){
     '</div><div class="bd"><div class="tbl-wrap"><table class="sched"><thead><tr><th>اليوم</th>';
   for(var p=1;p<=PERIODS;p++) h += '<th>الحصة '+p+'</th>';
   h += '</tr></thead><tbody>';
-  DAYS.forEach(function(dn, di){
+  schoolDayIdx().forEach(function(di){
+    var dn = DAYS[di];
     h += '<tr><th style="min-width:56px">'+esc(dn)+'</th>';
     for(var p=1;p<=PERIODS;p++){
       var s = schedCell(cid, di, p);
@@ -1261,6 +1321,27 @@ function viewSchedule(){
     h += '</tr>';
   });
   h += '</tbody></table></div></div></div>';
+
+  /* تغطية المواد — داخل وخارج المجموع */
+  if(isDep){
+    var rows = coverageReport().filter(function(r){ return r.cls.id===cid; });
+    var noT = rows.filter(function(r){ return !r.teacher; }).length;
+    var noH = rows.filter(function(r){ return r.hrs===0; }).length;
+    h += '<div class="card"><div class="hd"><h3>تغطية مواد الفصل</h3>'+
+      '<span class="tag '+((noT||noH)?"bad":"ok")+'">'+((noT||noH)? noT+' بدون معلم · '+noH+' بدون حصص' : 'مكتملة')+'</span></div>'+
+      '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+      '<th>المادة</th><th>النوع</th><th>المعلم</th><th>حصص أسبوعية</th></tr></thead><tbody>';
+    if(!rows.length) h += '<tr><td colspan="4"><div class="empty"><b>مفيش مواد للفصل</b></div></td></tr>';
+    rows.forEach(function(r){
+      h += '<tr><td><b style="font-weight:600">'+esc(r.su.name)+'</b></td>'+
+        '<td>'+(r.su.counted?'<span class="tag info">داخل المجموع</span>':'<span class="tag">خارج المجموع</span>')+'</td>'+
+        '<td>'+(r.teacher? esc(r.teacher) : '<span class="tag bad">بدون معلم</span>')+'</td>'+
+        '<td class="num">'+(r.hrs? r.hrs : '<span class="tag warn">٠</span>')+'</td></tr>';
+    });
+    h += '</tbody></table></div></div></div>';
+    h += '<div class="note noprint">المواد خارج المجموع (التربية الدينية والوطنية والرياضية والأنشطة) '+
+      'ليها نفس التوزيع والاحتياطي زي أي مادة — لازم يكون لها معلم وحصص في الجدول.</div>';
+  }
   return h;
 }
 
@@ -1529,17 +1610,19 @@ function tabAttendance(a, c){
   var rec = DB.attend[k] || {};
   var studs = studentsOf(c.id);
   var dw = dayOfWeek(date);
+  var dsA = dayStatus(date);
   var h = '';
   h += '<div class="card noprint"><div class="bd">'+
     '<div class="grid2"><label class="f"><span>تاريخ اليوم</span><input type="date" id="attDate" value="'+esc(date)+'"></label>'+
     '<div style="align-self:end;padding-bottom:10px"><div style="font-size:12px;color:var(--muted)">اليوم</div>'+
-    '<div style="font-weight:700">'+esc(dw>=0&&dw<6?DAYS[dw]:"الجمعة")+'</div></div></div>'+
+    '<div style="font-weight:700">'+esc(dsA.name)+'</div></div></div>'+
     '<div style="display:flex;gap:7px;flex-wrap:wrap">'+
     '<button class="btn ghost sm" data-act="attAll" data-v="P">تحديد الكل حاضر</button>'+
     '<button class="btn ghost sm" data-act="attAll" data-v="A">تحديد الكل غائب</button>'+
     '<button class="btn ghost sm" data-act="attClear" style="color:var(--danger)">مسح اليوم</button>'+
     impBtn("attendance",{classId:c.id},"استيراد غياب من إكسيل")+'</div></div></div>';
 
+  if(!dsA.ok) return h + holidayBlock(dsA, "مفيش رصد غياب في اليوم ده. غيّر التاريخ لو بترصد يوم فات.");
   if(!studs.length) return h+'<div class="card"><div class="bd"><div class="empty"><b>الفصل فاضي</b><p>الوكيل لسه ما سكّنش طلاب على الفصل ده.</p></div></div></div>';
 
   var cP=0,cA=0,cE=0,cL=0;
@@ -1735,7 +1818,8 @@ function viewMySchedule(){
     '<table class="sched"><thead><tr><th>اليوم</th>';
   for(var p=1;p<=PERIODS;p++) h += '<th>'+p+'</th>';
   h += '</tr></thead><tbody>';
-  DAYS.forEach(function(dn,di){
+  schoolDayIdx().forEach(function(di){
+    var dn = DAYS[di];
     h += '<tr><th style="min-width:52px">'+esc(dn)+'</th>';
     for(var p=1;p<=PERIODS;p++){
       var found=null;
@@ -2341,6 +2425,8 @@ function restoreFromText(text){
   }
   if(!d || !Array.isArray(d.students) || !Array.isArray(d.users)){ toast("النسخة ناقصة — مفيهاش طلاب أو حسابات"); return false; }
   DB = Object.assign(blankDB(), d);
+  DB.meta = Object.assign(blankDB().meta, d.meta||{});
+  fixRoles();
   saveNow();
   toast("اتسترجع "+DB.students.length+" طالب و "+DB.classes.length+" فصل");
   logout();
@@ -3575,9 +3661,9 @@ function embeddedCfg(){
 }
 
 /* المجموعات اللي بتتزامن كوحدة واحدة (نادرًا ما تتعدّل من جهازين مع بعض) */
-var BULK = ["meta","weights","bac","control","absRules","users","teachers","classes","subjects","students","assign","schedule","behavior","staff","leaves"];
+var BULK = ["meta","weights","bac","control","absRules","users","teachers","classes","subjects","students","assign","schedule","behavior","staff","leaves","locations","dutyPlan","events","holidays"];
 /* المجموعات اللي بتتزامن عنصر عنصر (كل معلم بيكتب في خانته) */
-var GRAIN = ["attend","marks","staffAtt","subs"];
+var GRAIN = ["attend","marks","staffAtt","subs","duty"];
 
 var SYNC = {
   on:false, cfg:null, code:"", dev:"", status:"off", msg:"",
@@ -3822,7 +3908,7 @@ function onRemote(sn){
   BULK.forEach(function(k){
     if(v[k]===undefined) return;
     var incoming = v[k];
-    if(["users","teachers","classes","subjects","students","assign","schedule","behavior","staff","leaves"].indexOf(k)>=0){
+    if(["users","teachers","classes","subjects","students","assign","schedule","behavior","staff","leaves","locations","dutyPlan","events","holidays"].indexOf(k)>=0){
       incoming = Array.isArray(incoming) ? incoming.filter(Boolean) : [];
     }
     if(JSON.stringify(DB[k]) !== JSON.stringify(incoming)){ DB[k] = incoming; changed = true; }
@@ -4988,7 +5074,13 @@ function viewStaffAtt(){
   var c = {P:0,A:0,L:0,V:0,M:0};
   list.forEach(function(s){ if(rec[s.id]) c[rec[s.id]]++; });
 
-  var h = pageHd("حضور وانصراف العاملين", fmtDate(date));
+  var dsx = dayStatus(date);
+  var h = pageHd("حضور وانصراف العاملين", (dsx.ok? dsx.name+" ":"")+fmtDate(date));
+  if(!dsx.ok){
+    h += '<div class="card noprint"><div class="bd">'+
+      '<label class="f" style="margin:0"><span>التاريخ</span><input type="date" id="sattDate" value="'+esc(date)+'"></label></div></div>';
+    return h + holidayBlock(dsx, "مفيش رصد حضور في اليوم ده.");
+  }
   h += '<div class="card noprint"><div class="bd">'+
     '<label class="f"><span>التاريخ</span><input type="date" id="sattDate" value="'+esc(date)+'"></label>'+
     '<div style="display:flex;gap:7px;flex-wrap:wrap">'+
@@ -5034,7 +5126,8 @@ function viewSubs(){
   h += '<div class="card noprint"><div class="bd">'+
     '<label class="f" style="margin:0"><span>التاريخ</span><input type="date" id="subDate" value="'+esc(date)+'"></label></div></div>';
 
-  if(dw<0 || dw>5) return h+'<div class="card"><div class="bd"><div class="empty"><b>اليوم ده إجازة</b><p>اختار يوم دراسي.</p></div></div></div>';
+  var ds = dayStatus(date);
+  if(!ds.ok) return h + holidayBlock(ds, "مفيش حصص ولا احتياطي في اليوم ده.");
 
   if(!absentIds.length){
     return h + '<div class="card"><div class="bd"><div class="empty"><div class="big">✓</div>'+
@@ -5614,7 +5707,8 @@ function doLogin(){
   }
   setTries(0);
   UI.user = u;
-  UI.tab = (NAV[u.role] && NAV[u.role][0][0]) || "settings";
+  var nv = navFor(u);
+  UI.tab = (nv[0] && nv[0][0]) || "settings";
   UI.sub = null;
   document.getElementById("login").classList.add("off");
   document.getElementById("app").classList.add("on");
@@ -5790,6 +5884,868 @@ viewSettings = function(){
   var marker = '<div class="card"><div class="hd"><h3>حسابات الدخول</h3>';
   return h.indexOf(marker)>=0 ? h.replace(marker, pinsCard()+marker) : pinsCard()+h;
 };
+/* ============================================================
+   منظومة الإشراف والتشغيل اليومي
+   الخط الواصل بين المدير ووكيلَي الشئون والمشرف العام والمشرفين
+   والمعلمين — كل واحد بيغذّي الجزء اللي بعده في نفس اللحظة.
+   ============================================================ */
+
+var POST_KINDS = [
+  {id:"floor",   name:"دور"},
+  {id:"yard",    name:"حوش / فناء"},
+  {id:"gate",    name:"بوابة"},
+  {id:"canteen", name:"مقصف"},
+  {id:"stairs",  name:"سلالم"},
+  {id:"lab",     name:"معمل / مكتبة"},
+  {id:"mosque",  name:"مصلى"},
+  {id:"other",   name:"موقع آخر"}
+];
+var EVENT_TYPES = [
+  {id:"late",     name:"تأخر صباحي",        c:"warn",  behavior:"ملاحظة"},
+  {id:"skip",     name:"هروب من حصة",        c:"bad",   behavior:"سلبي"},
+  {id:"discip",   name:"مخالفة سلوكية",      c:"bad",   behavior:"سلبي"},
+  {id:"fight",    name:"مشاجرة",             c:"bad",   behavior:"سلبي"},
+  {id:"damage",   name:"تلفيات",             c:"bad",   behavior:"سلبي"},
+  {id:"uniform",  name:"مخالفة الزي",        c:"warn",  behavior:"ملاحظة"},
+  {id:"health",   name:"حالة مرضية / إصابة", c:"info",  behavior:null},
+  {id:"praise",   name:"موقف مشرّف",         c:"ok",    behavior:"إيجابي"},
+  {id:"clean",    name:"ملاحظة نظافة",       c:"info",  behavior:null},
+  {id:"other",    name:"ملاحظة أخرى",        c:"info",  behavior:null}
+];
+function evType(id){ for(var i=0;i<EVENT_TYPES.length;i++) if(EVENT_TYPES[i].id===id) return EVENT_TYPES[i]; return EVENT_TYPES[EVENT_TYPES.length-1]; }
+function postKindName(k){ for(var i=0;i<POST_KINDS.length;i++) if(POST_KINDS[i].id===k) return POST_KINDS[i].name; return "موقع"; }
+
+function supInit(){
+  if(!Array.isArray(DB.locations)) DB.locations = [];
+  if(!Array.isArray(DB.dutyPlan))  DB.dutyPlan  = [];
+  if(!Array.isArray(DB.events))    DB.events    = [];
+  if(!DB.duty || typeof DB.duty!=="object") DB.duty = {};
+  staffInit();
+}
+function locById(id){ supInit(); for(var i=0;i<DB.locations.length;i++) if(DB.locations[i].id===id) return DB.locations[i]; return null; }
+function locName(id){ var l = locById(id); return l? l.name : "—"; }
+
+/* اليوم الشغّال في كل شاشات الإشراف */
+function supDate(){ return (UI.sub && UI.sub.d) || today(); }
+function dutyOf(date){
+  supInit();
+  if(!DB.duty[date]) DB.duty[date] = { general:"", posts:{}, notes:"", closed:false };
+  var d = DB.duty[date];
+  if(!d.posts || typeof d.posts!=="object") d.posts = {};
+  return d;
+}
+/* المناوب المخطط له في اليوم ده من الجدول الأسبوعي */
+function plannedGeneral(day){
+  supInit();
+  var p = DB.dutyPlan.filter(function(x){ return x.kind==="general" && x.day===day; })[0];
+  return p ? p.staffId : "";
+}
+function plannedPost(day, locId){
+  supInit();
+  var p = DB.dutyPlan.filter(function(x){ return x.kind==="post" && x.day===day && x.locationId===locId; })[0];
+  return p ? p.staffId : "";
+}
+/* المشرف الفعلي: اللي اتسجّل اليوم، وإلا اللي في الخطة */
+function generalToday(date){
+  var d = dutyOf(date), dw = dayOfWeek(date);
+  return d.general || plannedGeneral(dw);
+}
+function postToday(date, locId){
+  var d = dutyOf(date), dw = dayOfWeek(date);
+  return d.posts[locId] || plannedPost(dw, locId);
+}
+
+/* ---------- مؤشرات اليوم ---------- */
+function dayPulse(date){
+  supInit();
+  var dw = dayOfWeek(date);
+  var rec = staffAttOf(date);
+
+  /* العاملون */
+  var all = staffAll(), sAbs = [], sPres = 0;
+  all.forEach(function(s){
+    var v = rec[s.id];
+    if(v==="A" || v==="V" || v==="M") sAbs.push({s:s, v:v});
+    else if(v) sPres++;
+  });
+
+  /* الطلاب */
+  var stTot = 0, stAbs = 0, notRecorded = [];
+  DB.classes.forEach(function(c){
+    var studs = studentsOf(c.id);
+    if(!studs.length) return;
+    var r = DB.attend[attKey(c.id, date)];
+    if(!r || !Object.keys(r).length){ notRecorded.push(c); return; }
+    studs.forEach(function(s){
+      if(!(s.id in r)) return;
+      stTot++;
+      if(r[s.id]==="A") stAbs++;
+    });
+  });
+
+  /* الحصص المكشوفة */
+  var gaps = [], covered = 0;
+  if(dw>=0 && dw<6){
+    sAbs.forEach(function(x){
+      if(x.s.kind!=="teacher") return;
+      periodsOn(x.s.teacherId, dw).forEach(function(p){
+        var sub = DB.subs[subKey(date, p.id)];
+        if(sub) covered++;
+        gaps.push({staff:x.s, sched:p, reason:x.v, sub:sub||""});
+      });
+    });
+  }
+
+  /* مواقع الإشراف بدون مشرف */
+  var noPost = DB.locations.filter(function(l){ return !postToday(date, l.id); });
+
+  /* الأحداث */
+  var evs = DB.events.filter(function(e){ return e.date===date; });
+
+  return {
+    day:dw, staff:{all:all.length, present:sPres, absent:sAbs},
+    students:{recorded:stTot, absent:stAbs,
+              rate: stTot? Math.round((stTot-stAbs)/stTot*1000)/10 : null,
+              notRecorded:notRecorded},
+    gaps:gaps, covered:covered, uncovered:gaps.length-covered,
+    noPost:noPost, events:evs,
+    general: generalToday(date)
+  };
+}
+
+/* ============================================================
+   لوحة اليوم — الشاشة الرئيسية للتشغيل
+   ============================================================ */
+function viewToday(){
+  supInit();
+  var date = supDate(), p = dayPulse(date);
+  var dw = p.day;
+  var gen = p.general ? staffById(p.general) : null;
+  var role = UI.user.role;
+  var canRun = role==="manager" || role==="supervisor" || role==="admin";
+
+  var h = pageHd("لوحة اليوم", (dw>=0&&dw<6? DAYS[dw]+" ":"")+fmtDate(date));
+  h += '<div class="card noprint"><div class="bd" style="display:flex;gap:9px;flex-wrap:wrap;align-items:end">'+
+    '<label class="f" style="flex:1;min-width:150px;margin:0"><span>التاريخ</span>'+
+    '<input type="date" id="supDate" value="'+esc(date)+'"></label>'+
+    '<button class="btn ghost" data-act="supToday">النهاردة</button>'+
+    '</div></div>';
+
+  var ds0 = dayStatus(date);
+  if(!ds0.ok) return h + holidayBlock(ds0);
+
+  /* المشرف العام */
+  h += '<div class="card"><div class="hd"><div style="flex:1"><span class="eyebrow">المناوبة</span>'+
+    '<h3>المشرف العام اليومي</h3></div>'+
+    (canRun?'<button class="btn ghost sm noprint" data-act="setGeneral" data-d="'+date+'">'+(gen?"تغيير":"تعيين")+'</button>':'')+
+    '</div><div class="bd">'+
+    (gen
+      ? '<div class="list-item" style="border:0;padding:0"><span class="av">'+esc(initials(gen.name))+'</span>'+
+        '<span class="tx"><b>'+esc(gen.name)+'</b><small>'+esc(gen.job)+
+        (dutyOf(date).general?'':' · حسب جدول الإشراف الأسبوعي')+'</small></span></div>'
+      : '<div class="note bad">مفيش مشرف عام معيَّن النهاردة. '+
+        (canRun?'عيّنه دلوقتي أو اضبط جدول الإشراف الأسبوعي.':'كلّم المدير أو وكيل شئون العاملين.')+'</div>')+
+    '</div></div>';
+
+  /* المؤشرات */
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("حضور العاملين", p.staff.all - p.staff.absent.length + " / " + p.staff.all,
+         p.staff.absent.length? p.staff.absent.length+" غائب":"مفيش غياب", p.staff.absent.length?"acc-b":"acc")+
+    stat("غياب الطلاب", p.students.absent, p.students.rate===null? "لسه ما اترصدش" : "نسبة حضور "+p.students.rate+"%",
+         p.students.absent?"acc-g":"acc")+
+    stat("حصص مكشوفة", p.uncovered, p.gaps.length? "من "+p.gaps.length+" حصة":"مفيش", p.uncovered?"acc-b":"acc")+
+    stat("مواقع بدون مشرف", p.noPost.length, "موقع", p.noPost.length?"acc-b":"acc")+
+    stat("أحداث اليوم", p.events.length, "مسجّل", p.events.length?"acc-g":"")+
+    stat("فصول ما رصدتش", p.students.notRecorded.length, "غياب الطلاب", p.students.notRecorded.length?"acc-b":"acc")+
+    '</div>';
+
+  /* ما يحتاج تدخّل */
+  var todo = [];
+  if(p.uncovered) todo.push(['subs', p.uncovered+' حصة محتاجة معلم احتياطي', 'الفصول دي هتفضل من غير معلم لو ما اتغطّتش']);
+  if(p.noPost.length) todo.push(['duty', p.noPost.length+' موقع من غير مشرف', esc(p.noPost.map(function(l){return l.name;}).join("، "))]);
+  if(p.students.notRecorded.length) todo.push(['absence', p.students.notRecorded.length+' فصل ما رصدش غياب الطلاب',
+    esc(p.students.notRecorded.map(function(c){return c.name;}).join("، "))]);
+  if(!p.staff.absent.length && !Object.keys(staffAttOf(date)).length)
+    todo.push(['staffAtt','حضور العاملين لسه ما اترصدش','من غيره الاحتياطي مش هيشتغل']);
+
+  if(todo.length){
+    h += '<div class="card"><div class="hd"><h3>محتاج تدخّل</h3><span class="tag bad">'+todo.length+'</span></div><div class="bd flush">';
+    todo.forEach(function(t){
+      h += '<button class="list-item" data-act="tab" data-tab="'+t[0]+'">'+
+        '<span class="av" style="background:#f8e5e3;color:var(--danger)">!</span>'+
+        '<span class="tx"><b>'+esc(t[1])+'</b><small>'+t[2]+'</small></span><span class="chev">‹</span></button>';
+    });
+    h += '</div></div>';
+  }else{
+    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">✓</div>'+
+      '<b>اليوم ماشي تمام</b><p>الحضور مرصود، والمواقع مغطّاة، ومفيش حصص مكشوفة.</p></div></div></div>';
+  }
+
+  /* غياب العاملين */
+  h += '<div class="card"><div class="hd"><h3>غياب العاملين النهاردة</h3>'+
+    '<button class="btn ghost sm noprint" data-act="tab" data-tab="staffAtt">رصد الحضور</button></div><div class="bd flush">';
+  if(!p.staff.absent.length) h += '<div class="empty"><b>مفيش غياب</b></div>';
+  p.staff.absent.forEach(function(x){
+    var per = x.s.kind==="teacher" ? periodsOn(x.s.teacherId, dw).length : 0;
+    h += '<div class="list-item"><span class="av">'+esc(initials(x.s.name))+'</span>'+
+      '<span class="tx"><b>'+esc(x.s.name)+'</b><small>'+esc(x.s.job)+(per?' · '+per+' حصة محتاجة تغطية':'')+'</small></span>'+
+      '<span class="tag '+(x.v==="A"?"bad":"info")+'">'+esc(STAFF_ATT[x.v])+'</span></div>';
+  });
+  h += '</div></div>';
+
+  /* مواقع الإشراف */
+  h += '<div class="card"><div class="hd"><h3>مواقع الإشراف النهاردة</h3>'+
+    (canRun?'<button class="btn ghost sm noprint" data-act="tab" data-tab="duty">الجدول الأسبوعي</button>':'')+
+    '</div><div class="bd flush">';
+  if(!DB.locations.length) h += '<div class="empty"><b>مفيش مواقع مسجّلة</b>'+
+    '<p>عرّف الأدوار والأحواش والبوابات من جدول الإشراف، وبعدها وزّع المشرفين عليها.</p>'+
+    (canRun?'<button class="btn" data-act="tab" data-tab="duty">جدول الإشراف</button>':'')+'</div>';
+  DB.locations.forEach(function(l){
+    var sid = postToday(date, l.id);
+    var s = sid ? staffById(sid) : null;
+    h += '<div class="list-item"><span class="av">'+esc(postKindName(l.kind).charAt(0))+'</span>'+
+      '<span class="tx"><b>'+esc(l.name)+'</b><small>'+esc(postKindName(l.kind))+'</small></span>'+
+      (s? '<span class="tag ok">'+esc(s.name)+'</span>' : '<span class="tag bad">بدون مشرف</span>')+
+      (canRun?'<button class="btn ghost sm noprint" data-act="setPost" data-d="'+date+'" data-l="'+l.id+'">تعيين</button>':'')+
+      '</div>';
+  });
+  h += '</div></div>';
+
+  /* أحداث اليوم */
+  h += '<div class="card"><div class="hd"><h3>أحداث اليوم</h3>'+
+    '<button class="btn ghost sm noprint" data-act="addEvent" data-d="'+date+'">+ تسجيل حدث</button></div><div class="bd flush">';
+  if(!p.events.length) h += '<div class="empty"><b>مفيش أحداث مسجّلة</b><p>المشرفون بيسجّلوا المخالفات والملاحظات من هنا.</p></div>';
+  p.events.slice(0,8).forEach(function(e){
+    var t = evType(e.type);
+    h += '<div class="list-item"><span class="tag '+t.c+'">'+esc(t.name)+'</span>'+
+      '<span class="tx"><b style="font-weight:500">'+esc(e.note||"—")+'</b>'+
+      '<small>'+(e.time?esc(e.time)+' · ':'')+(e.locationId?esc(locName(e.locationId))+' · ':'')+esc(e.by||"")+'</small></span></div>';
+  });
+  if(p.events.length>8) h += '<button class="list-item" data-act="tab" data-tab="events">'+
+    '<span class="tx"><b>وباقي '+(p.events.length-8)+' حدث</b></span><span class="chev">‹</span></button>';
+  h += '</div></div>';
+
+  h += '<button class="btn block noprint" data-act="tab" data-tab="dailyRep">عرض التقرير اليومي للطباعة</button>';
+  return h;
+}
+
+/* ============================================================
+   جدول الإشراف الأسبوعي
+   ============================================================ */
+function viewDuty(){
+  supInit();
+  var h = pageHd("توزيع الإشراف الأسبوعي",
+    "المدير بيختار المشرف العام لكل يوم، والمشرفين ومكان إشراف كل واحد. "+
+    "الأسبوع دلوقتي: "+(DB.meta.weekMode==="exams"?"السبت → الخميس (امتحانات)":"الأحد → الخميس"),
+    '<button class="btn" data-act="addLoc">+ موقع إشراف</button>');
+
+  /* المناوبة العامة */
+  h += printHd("جدول الإشراف الأسبوعي");
+  h += '<div class="card"><div class="hd"><h3>المشرف العام اليومي</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    schoolDayIdx().map(function(i){ return '<th>'+esc(DAYS[i])+'</th>'; }).join("")+'</tr></thead><tbody><tr>';
+  schoolDayIdx().forEach(function(i){
+    var sid = plannedGeneral(i);
+    var s = sid ? staffById(sid) : null;
+    h += '<td style="cursor:pointer;min-width:110px" data-act="planGen" data-day="'+i+'">'+
+      (s? '<b style="font-weight:600">'+esc(s.name)+'</b><br><small style="color:var(--muted)">'+esc(s.job)+'</small>'
+        : '<span style="color:var(--danger)">+ تعيين</span>')+'</td>';
+  });
+  h += '</tr></tbody></table></div></div></div>';
+
+  /* المواقع */
+  if(!DB.locations.length){
+    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">⌂</div>'+
+      '<b>عرّف مواقع الإشراف الأول</b>'+
+      '<p>الأدوار والأحواش والبوابات والمقصف — كل موقع محتاج مشرف. اضغط «+ موقع إشراف».</p>'+
+      '<button class="btn" data-act="quickLocs">إنشاء المواقع الشائعة بضغطة</button></div></div></div>';
+    return h;
+  }
+  h += '<div class="card"><div class="hd"><h3>توزيع المشرفين على المواقع</h3>'+
+    '<small style="color:var(--muted)">اضغط على أي خانة للتعيين</small></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>الموقع</th>'+
+    schoolDayIdx().map(function(i){ return '<th>'+esc(DAYS[i])+'</th>'; }).join("")+'<th></th></tr></thead><tbody>';
+  DB.locations.forEach(function(l){
+    h += '<tr><td style="min-width:120px"><b style="font-weight:600">'+esc(l.name)+'</b>'+
+      '<br><small style="color:var(--muted)">'+esc(postKindName(l.kind))+'</small></td>';
+    schoolDayIdx().forEach(function(i){
+      var sid = plannedPost(i, l.id);
+      var s = sid ? staffById(sid) : null;
+      h += '<td style="cursor:pointer;min-width:100px" data-act="planPost" data-day="'+i+'" data-l="'+l.id+'">'+
+        (s? '<small style="font-weight:600">'+esc(s.name)+'</small>' : '<small style="color:#c2cac1">+</small>')+'</td>';
+    });
+    h += '<td><button class="btn ghost sm noprint" data-act="delLoc" data-id="'+l.id+'" style="color:var(--danger)">حذف</button></td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  h += '<div class="note noprint">التعيين هنا خطة أسبوعية ثابتة. لو حد غاب في يوم معيّن، غيّر مشرف اليوم ده من «لوحة اليوم» من غير ما تلمس الخطة.</div>';
+  return h;
+}
+
+/* ============================================================
+   سجل الأحداث
+   ============================================================ */
+function viewEvents(){
+  supInit();
+  var f = UI.filters;
+  var list = DB.events.slice().sort(function(a,b){
+    return (b.date+(b.time||"")) < (a.date+(a.time||"")) ? -1 : 1;
+  });
+  if(f.evType) list = list.filter(function(e){ return e.type===f.evType; });
+  if(f.evDate) list = list.filter(function(e){ return e.date===f.evDate; });
+
+  var byType = {};
+  DB.events.forEach(function(e){ byType[e.type] = (byType[e.type]||0)+1; });
+
+  var h = pageHd("سجل الأحداث والمخالفات", DB.events.length+" حدث مسجّل",
+    '<button class="btn" data-act="addEvent">+ تسجيل حدث</button>');
+
+  h += '<div class="chips noprint"><button class="'+(f.evType?"":"on")+'" data-act="evAll">الكل</button>'+
+    EVENT_TYPES.filter(function(t){ return byType[t.id]; }).map(function(t){
+      return '<button class="'+(f.evType===t.id?"on":"")+'" data-act="evFilter" data-t="'+t.id+'">'+
+        esc(t.name)+' ('+byType[t.id]+')</button>';
+    }).join("")+'</div>';
+
+  h += printHd("سجل الأحداث والمخالفات");
+  h += '<div class="card"><div class="hd"><h3>'+list.length+' حدث</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>م</th><th>التاريخ</th><th>الوقت</th><th>النوع</th><th>الموقع</th>'+
+    '<th>الطلاب</th><th>البيان</th><th>الإجراء</th><th>المسجِّل</th><th></th></tr></thead><tbody>';
+  if(!list.length) h += '<tr><td colspan="10"><div class="empty"><div class="big">☰</div><b>مفيش أحداث</b>'+
+    '<p>المشرف بيسجّل هنا المخالفات والتأخر والحالات المرضية والمواقف المشرّفة. '+
+    'وأي حدث مرتبط بطالب بينزل تلقائي في سجل سلوكه.</p></div></td></tr>';
+  list.forEach(function(e,i){
+    var t = evType(e.type);
+    var names = (e.students||[]).map(function(id){ var s=studentById(id); return s?s.name:""; }).filter(Boolean);
+    h += '<tr><td class="rownum">'+(i+1)+'</td><td class="num">'+fmtDate(e.date)+'</td>'+
+      '<td class="num">'+esc(e.time||"—")+'</td>'+
+      '<td><span class="tag '+t.c+'">'+esc(t.name)+'</span></td>'+
+      '<td>'+esc(e.locationId? locName(e.locationId) : "—")+'</td>'+
+      '<td><small>'+esc(names.join("، ")||"—")+'</small></td>'+
+      '<td>'+esc(e.note||"—")+'</td><td><small>'+esc(e.action||"—")+'</small></td>'+
+      '<td><small>'+esc(e.by||"")+'</small></td>'+
+      '<td><button class="btn ghost sm noprint" data-act="delEvent" data-id="'+e.id+'" style="color:var(--danger)">حذف</button></td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+
+/* ============================================================
+   التقرير اليومي
+   ============================================================ */
+function viewDailyReport(){
+  supInit();
+  var date = supDate(), p = dayPulse(date), dw = p.day;
+  var gen = p.general ? staffById(p.general) : null;
+  var d = dutyOf(date);
+
+  var h = pageHd("التقرير اليومي", fmtDate(date));
+  h += '<div class="card noprint"><div class="bd" style="display:flex;gap:9px;flex-wrap:wrap;align-items:end">'+
+    '<label class="f" style="flex:1;min-width:150px;margin:0"><span>التاريخ</span>'+
+    '<input type="date" id="supDate" value="'+esc(date)+'"></label>'+
+    '<button class="btn" data-act="print">⎙ طباعة التقرير</button></div></div>';
+
+  var dsr = dayStatus(date);
+  if(!dsr.ok) return h + holidayBlock(dsr, "التقرير اليومي بيتعمل لأيام الدراسة بس.");
+
+  h += printHd("التقرير اليومي للمشرف العام");
+  h += '<div class="card"><div class="bd">'+
+    '<div class="grid2">'+
+      kv("اليوم والتاريخ", DAYS[dw]+" "+fmtDate(date))+
+      kv("المشرف العام", gen? gen.name : "لم يُعيَّن")+
+    '</div></div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>أولًا: العاملون</h3></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>البيان</th><th>العدد</th><th>الأسماء</th></tr></thead><tbody>'+
+    '<tr><td>إجمالي العاملين</td><td class="num">'+p.staff.all+'</td><td></td></tr>'+
+    '<tr><td>الحاضرون</td><td class="num">'+(p.staff.all-p.staff.absent.length)+'</td><td></td></tr>'+
+    '<tr><td>الغائبون</td><td class="num"><b>'+p.staff.absent.filter(function(x){return x.v==="A";}).length+'</b></td>'+
+      '<td><small>'+esc(p.staff.absent.filter(function(x){return x.v==="A";}).map(function(x){return x.s.name;}).join("، ")||"—")+'</small></td></tr>'+
+    '<tr><td>في إجازة</td><td class="num">'+p.staff.absent.filter(function(x){return x.v==="V";}).length+'</td>'+
+      '<td><small>'+esc(p.staff.absent.filter(function(x){return x.v==="V";}).map(function(x){return x.s.name;}).join("، ")||"—")+'</small></td></tr>'+
+    '<tr><td>في مأمورية</td><td class="num">'+p.staff.absent.filter(function(x){return x.v==="M";}).length+'</td>'+
+      '<td><small>'+esc(p.staff.absent.filter(function(x){return x.v==="M";}).map(function(x){return x.s.name;}).join("، ")||"—")+'</small></td></tr>'+
+    '</tbody></table></div></div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>ثانيًا: الطلاب</h3></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>الفصل</th><th>المقيَّد</th><th>الحاضر</th><th>الغائب</th><th>نسبة الحضور</th></tr></thead><tbody>';
+  var tR=0, tA=0;
+  DB.classes.slice().sort(function(a,b){ return a.level-b.level||sortAr(a.name,b.name); }).forEach(function(c){
+    var studs = studentsOf(c.id);
+    if(!studs.length) return;
+    var r = DB.attend[attKey(c.id, date)] || {};
+    var rec = 0, abs = 0;
+    studs.forEach(function(s){ if(s.id in r){ rec++; if(r[s.id]==="A") abs++; } });
+    tR += rec; tA += abs;
+    h += '<tr><td><b style="font-weight:600">'+esc(c.name)+'</b></td><td class="num">'+studs.length+'</td>'+
+      '<td class="num">'+(rec? rec-abs : "—")+'</td><td class="num">'+(rec? abs : "—")+'</td>'+
+      '<td class="num">'+(rec? Math.round((rec-abs)/rec*1000)/10+"%" : '<span class="tag bad">لم يُرصد</span>')+'</td></tr>';
+  });
+  h += '<tr style="background:#f4f6f3"><td><b>الإجمالي</b></td><td class="num"><b>'+
+    DB.students.filter(function(s){return s.status!=="left";}).length+'</b></td>'+
+    '<td class="num"><b>'+(tR-tA)+'</b></td><td class="num"><b>'+tA+'</b></td>'+
+    '<td class="num"><b>'+(tR? Math.round((tR-tA)/tR*1000)/10+"%":"—")+'</b></td></tr>';
+  h += '</tbody></table></div></div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>ثالثًا: الحصص والاحتياطي</h3></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>الحصة</th><th>الفصل</th><th>المادة</th><th>المعلم الغائب</th>'+
+    '<th>المعلم البديل</th></tr></thead><tbody>';
+  if(!p.gaps.length) h += '<tr><td colspan="5"><div class="empty"><b>مفيش حصص محتاجة تغطية</b></div></td></tr>';
+  p.gaps.sort(function(a,b){ return a.sched.period-b.sched.period; }).forEach(function(g){
+    h += '<tr><td class="num">'+g.sched.period+'</td><td>'+esc(className(g.sched.classId))+'</td>'+
+      '<td>'+esc(subjName(g.sched.subjectId))+'</td><td>'+esc(g.staff.name)+'</td>'+
+      '<td>'+(g.sub? esc(teacherName(g.sub)) : '<span class="tag bad">لم تُغطَّ</span>')+'</td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>رابعًا: مواقع الإشراف</h3></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>الموقع</th><th>النوع</th><th>المشرف</th></tr></thead><tbody>';
+  if(!DB.locations.length) h += '<tr><td colspan="3"><div class="empty"><b>مفيش مواقع مسجّلة</b></div></td></tr>';
+  DB.locations.forEach(function(l){
+    var sid = postToday(date, l.id), s = sid? staffById(sid) : null;
+    h += '<tr><td><b style="font-weight:600">'+esc(l.name)+'</b></td><td>'+esc(postKindName(l.kind))+'</td>'+
+      '<td>'+(s? esc(s.name) : '<span class="tag bad">بدون مشرف</span>')+'</td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>خامسًا: الأحداث والملاحظات</h3></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>الوقت</th><th>النوع</th><th>الموقع</th><th>البيان</th><th>الإجراء</th></tr></thead><tbody>';
+  if(!p.events.length) h += '<tr><td colspan="5"><div class="empty"><b>مفيش أحداث</b></div></td></tr>';
+  p.events.forEach(function(e){
+    h += '<tr><td class="num">'+esc(e.time||"—")+'</td><td>'+esc(evType(e.type).name)+'</td>'+
+      '<td>'+esc(e.locationId? locName(e.locationId):"—")+'</td>'+
+      '<td>'+esc(e.note||"")+'</td><td>'+esc(e.action||"—")+'</td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>سادسًا: ملاحظات المشرف العام</h3></div><div class="bd">'+
+    '<textarea id="dutyNotes" style="min-height:90px" placeholder="اكتب ملاحظاتك على سير اليوم…">'+esc(d.notes||"")+'</textarea>'+
+    '<button class="btn noprint" data-act="saveNotes" data-d="'+date+'" style="margin-top:8px">حفظ الملاحظات</button>'+
+    '<div style="display:flex;justify-content:space-between;font-size:12px;margin-top:22px">'+
+    '<span>المشرف العام: ................</span><span>وكيل شئون العاملين: ................</span>'+
+    '<span>مدير المدرسة: ................</span></div></div></div>';
+  return h;
+}
+
+/* ============================================================
+   النوافذ والإجراءات
+   ============================================================ */
+function staffPickHTML(id, cur, label){
+  var all = staffAll();
+  return '<label class="f"><span>'+esc(label||"المشرف")+'</span><select id="'+id+'">'+
+    '<option value="">— بدون —</option>'+
+    all.map(function(s){ return '<option value="'+s.id+'"'+(cur===s.id?" selected":"")+'>'+
+      esc(s.name)+' — '+esc(s.job)+'</option>'; }).join("")+'</select></label>';
+}
+function modalLoc(){
+  openModal(mHead("إضافة موقع إشراف")+
+    '<div class="mb">'+
+    '<label class="f"><span>اسم الموقع</span><input type="text" id="lc_n" placeholder="مثال: الدور الثاني"></label>'+
+    '<label class="f"><span>النوع</span><select id="lc_k">'+
+      POST_KINDS.map(function(k){ return '<option value="'+k.id+'">'+esc(k.name)+'</option>'; }).join("")+
+    '</select></label>'+
+    '<div class="note">المواقع دي هي اللي المشرفون هيتوزّعوا عليها في الجدول الأسبوعي، '+
+    'ولوحة اليوم هتنبّهك على أي موقع من غير مشرف.</div></div>'+
+    mFoot("إضافة","saveLoc"));
+}
+function modalEvent(date){
+  supInit();
+  var d = date || supDate();
+  var studs = DB.students.filter(function(s){ return s.status!=="left"; })
+    .sort(function(a,b){ return sortAr(a.name,b.name); });
+  var now = new Date();
+  var hh = now.getHours(), mm = now.getMinutes();
+  openModal(mHead("تسجيل حدث")+
+    '<div class="mb">'+
+    '<div class="grid2">'+
+    '<label class="f"><span>التاريخ</span><input type="date" id="ev_d" value="'+esc(d)+'"></label>'+
+    '<label class="f"><span>الوقت</span><input type="text" id="ev_t" value="'+(hh<10?"0":"")+hh+':'+(mm<10?"0":"")+mm+'"></label>'+
+    '</div>'+
+    '<label class="f"><span>نوع الحدث</span><select id="ev_ty">'+
+      EVENT_TYPES.map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join("")+
+    '</select></label>'+
+    '<label class="f"><span>الموقع</span><select id="ev_l"><option value="">— غير محدد —</option>'+
+      DB.locations.map(function(l){ return '<option value="'+l.id+'">'+esc(l.name)+'</option>'; }).join("")+
+    '</select></label>'+
+    '<label class="f"><span>الطالب (اختياري)</span><select id="ev_s"><option value="">— بدون طالب —</option>'+
+      studs.map(function(s){ return '<option value="'+s.id+'">'+esc(s.name)+' — '+esc(className(s.classId))+'</option>'; }).join("")+
+    '</select></label>'+
+    '<label class="f"><span>البيان</span><textarea id="ev_n" placeholder="وصف مختصر لما حصل"></textarea></label>'+
+    '<label class="f"><span>الإجراء المتخذ</span><input type="text" id="ev_a" placeholder="مثال: إنذار شفهي واستدعاء ولي الأمر"></label>'+
+    '<div class="note">لو اخترت طالب، الحدث هينزل تلقائي في سجل سلوكه ووكيل شئون الطلاب هيشوفه.</div>'+
+    '</div>'+mFoot("تسجيل","saveEvent"));
+}
+
+Object.assign(ACTS, {
+  supToday: function(){ UI.sub = Object.assign({}, UI.sub, {d: today()}); render(); },
+  addLoc: function(){ modalLoc(); },
+  saveLoc: function(){
+    supInit();
+    var n = val("lc_n").trim();
+    if(!n){ toast("اكتب اسم الموقع"); return; }
+    DB.locations.push({id:uid("loc"), name:n, kind:val("lc_k")});
+    save(); closeModal(); render(); toast("اتضاف");
+  },
+  delLoc: function(el){
+    if(!confirm("حذف الموقع وتوزيعه؟")) return;
+    supInit();
+    var id = el.dataset.id;
+    DB.locations = DB.locations.filter(function(l){ return l.id!==id; });
+    DB.dutyPlan = DB.dutyPlan.filter(function(p){ return p.locationId!==id; });
+    save(); render(); toast("اتحذف");
+  },
+  quickLocs: function(){
+    supInit();
+    var base = [["الدور الأرضي","floor"],["الدور الأول","floor"],["الدور الثاني","floor"],
+                ["الحوش الرئيسي","yard"],["البوابة","gate"],["المقصف","canteen"],["السلالم","stairs"]];
+    var n = 0;
+    base.forEach(function(b){
+      if(DB.locations.some(function(l){ return normAr(l.name)===normAr(b[0]); })) return;
+      DB.locations.push({id:uid("loc"), name:b[0], kind:b[1]}); n++;
+    });
+    save(); render(); toast("اتضاف "+n+" موقع — عدّلهم على حسب مدرستك");
+  },
+  planGen: function(el){
+    supInit();
+    var day = Number(el.dataset.day);
+    openModal(mHead("المشرف العام يوم "+DAYS[day])+
+      '<div class="mb">'+staffPickHTML("dp_s", plannedGeneral(day), "المشرف العام")+
+      '<div class="note">ده التعيين الأسبوعي الثابت. تقدر تغيّره ليوم واحد بس من لوحة اليوم.</div></div>'+
+      mFoot("حفظ","savePlanGen"));
+    MODAL.dataset.day = day;
+  },
+  savePlanGen: function(){
+    supInit();
+    var day = Number(MODAL.dataset.day), sid = val("dp_s");
+    DB.dutyPlan = DB.dutyPlan.filter(function(p){ return !(p.kind==="general" && p.day===day); });
+    if(sid) DB.dutyPlan.push({id:uid("dp"), kind:"general", day:day, staffId:sid});
+    save(); closeModal(); render(); toast("اتحفظ");
+  },
+  planPost: function(el){
+    supInit();
+    var day = Number(el.dataset.day), lid = el.dataset.l;
+    openModal(mHead(locName(lid)+" — "+DAYS[day])+
+      '<div class="mb">'+staffPickHTML("dp_s", plannedPost(day, lid), "المشرف المسؤول")+'</div>'+
+      mFoot("حفظ","savePlanPost"));
+    MODAL.dataset.day = day; MODAL.dataset.loc = lid;
+  },
+  savePlanPost: function(){
+    supInit();
+    var day = Number(MODAL.dataset.day), lid = MODAL.dataset.loc, sid = val("dp_s");
+    DB.dutyPlan = DB.dutyPlan.filter(function(p){ return !(p.kind==="post" && p.day===day && p.locationId===lid); });
+    if(sid) DB.dutyPlan.push({id:uid("dp"), kind:"post", day:day, locationId:lid, staffId:sid});
+    save(); closeModal(); render(); toast("اتحفظ");
+  },
+  setGeneral: function(el){
+    var d = el.dataset.d;
+    openModal(mHead("المشرف العام — "+fmtDate(d))+
+      '<div class="mb">'+staffPickHTML("dg_s", generalToday(d), "المشرف العام النهاردة")+
+      '<div class="note">ده تعيين لليوم ده بس، مش هيغيّر الجدول الأسبوعي.</div></div>'+
+      mFoot("حفظ","saveGeneral"));
+    MODAL.dataset.d = d;
+  },
+  saveGeneral: function(){
+    var d = MODAL.dataset.d;
+    dutyOf(d).general = val("dg_s");
+    save(); closeModal(); render(); toast("اتحفظ");
+  },
+  setPost: function(el){
+    var d = el.dataset.d, lid = el.dataset.l;
+    openModal(mHead(locName(lid)+" — "+fmtDate(d))+
+      '<div class="mb">'+staffPickHTML("dg_s", postToday(d, lid), "مشرف الموقع النهاردة")+'</div>'+
+      mFoot("حفظ","savePostDay"));
+    MODAL.dataset.d = d; MODAL.dataset.loc = lid;
+  },
+  savePostDay: function(){
+    var d = MODAL.dataset.d, lid = MODAL.dataset.loc, v = val("dg_s");
+    var duty = dutyOf(d);
+    if(v) duty.posts[lid] = v; else delete duty.posts[lid];
+    save(); closeModal(); render(); toast("اتحفظ");
+  },
+  addEvent: function(el){ modalEvent(el.dataset.d); },
+  saveEvent: function(){
+    supInit();
+    var note = val("ev_n").trim();
+    var ty = val("ev_ty");
+    if(!note){ toast("اكتب بيان الحدث"); return; }
+    var sid = val("ev_s");
+    var e = { id:uid("ev"), date:val("ev_d"), time:val("ev_t").trim(), type:ty,
+              locationId:val("ev_l"), students: sid? [sid]:[], note:note,
+              action:val("ev_a").trim(), by:UI.user.name };
+    DB.events.push(e);
+    /* الربط بسجل سلوك الطالب */
+    var t = evType(ty);
+    if(sid && t.behavior){
+      DB.behavior.push({id:uid("b"), studentId:sid, type:t.behavior, date:e.date,
+                        note:t.name+(e.note?": "+e.note:"")+(e.action?" — "+e.action:""),
+                        by:UI.user.name, eventId:e.id});
+    }
+    save(); closeModal(); render(); toast("اتسجّل");
+  },
+  delEvent: function(el){
+    supInit();
+    var id = el.dataset.id;
+    DB.events = DB.events.filter(function(e){ return e.id!==id; });
+    DB.behavior = DB.behavior.filter(function(b){ return b.eventId!==id; });
+    save(); render(); toast("اتحذف");
+  },
+  evAll: function(){ UI.filters.evType=""; render(); },
+  evFilter: function(el){ UI.filters.evType = el.dataset.t; render(); },
+  saveNotes: function(el){
+    dutyOf(el.dataset.d).notes = val("dutyNotes");
+    saveNow(); toast("اتحفظت الملاحظات");
+  }
+});
+
+document.addEventListener("change", function(e){
+  if(e.target && e.target.id==="supDate"){
+    UI.sub = Object.assign({}, UI.sub, {d: e.target.value});
+    render();
+  }
+});
+
+/* ============================================================
+   شاشة المعلم: إشرافي + حصص الاحتياطي المكلّف بيها
+   ============================================================ */
+function viewMyDuty(){
+  supInit();
+  var tid = myTeacherId();
+  if(!tid) return '<div class="card"><div class="bd"><div class="empty"><b>حسابك مش مربوط بملف معلم</b></div></div></div>';
+  var sid = "T"+tid;
+  var date = supDate(), ds = dayStatus(date);
+  var d = myDutyToday();
+  var week = myDutyWeek();
+
+  var h = pageHd("الإشراف", ds.ok ? ds.name+" "+fmtDate(date) : ds.name);
+
+  if(!ds.ok){
+    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">☾</div>'+
+      '<b>'+esc(ds.name)+'</b><p>مفيش إشراف النهاردة.</p></div></div></div>';
+  }else if(date===today() && d.any){
+    h += '<div class="card" style="border-right:3px solid var(--gold)"><div class="hd">'+
+      '<div style="flex:1"><span class="eyebrow">مناوبتك النهاردة</span>'+
+      '<h3>'+(d.general? "المشرف العام اليومي" : "مشرف موقع")+'</h3></div></div><div class="bd">';
+    if(d.general){
+      var p = dayPulse(date);
+      h += '<div class="note">إنت مسؤول عن سير اليوم كله: متابعة الطابور، والحصص المكشوفة، '+
+        'والمشرفين على المواقع، وتسجيل أي حدث.</div>'+
+        '<div class="stats">'+
+        stat("غياب العاملين", p.staff.absent.length, "عامل", p.staff.absent.length?"acc-b":"acc")+
+        stat("حصص مكشوفة", p.uncovered, "محتاجة بديل", p.uncovered?"acc-b":"acc")+
+        stat("مواقع بدون مشرف", p.noPost.length, "موقع", p.noPost.length?"acc-b":"acc")+
+        stat("أحداث اليوم", p.events.length, "مسجّل","")+
+        '</div>';
+      if(p.gaps.length){
+        h += '<div class="tbl-wrap" style="margin-top:11px"><table class="tbl"><thead><tr>'+
+          '<th>الحصة</th><th>الفصل</th><th>المعلم الغائب</th><th>البديل</th></tr></thead><tbody>';
+        p.gaps.sort(function(a,b){ return a.sched.period-b.sched.period; }).forEach(function(g){
+          h += '<tr><td class="num">'+g.sched.period+'</td><td>'+esc(className(g.sched.classId))+'</td>'+
+            '<td>'+esc(g.staff.name)+'</td>'+
+            '<td>'+(g.sub? esc(teacherName(g.sub)) : '<span class="tag bad">لم تُغطَّ</span>')+'</td></tr>';
+        });
+        h += '</tbody></table></div>';
+      }
+      if(p.noPost.length) h += '<div class="note bad" style="margin-top:10px"><b>مواقع من غير مشرف:</b> '+
+        esc(p.noPost.map(function(l){ return l.name; }).join("، "))+'</div>';
+    }
+    if(d.posts.length){
+      h += '<div class="note '+(d.general?"":"warn")+'" style="margin-top:'+(d.general?"10px":"0")+'">'+
+        '<b>موقع إشرافك:</b> '+esc(d.posts.map(function(l){ return l.name+" ("+postKindName(l.kind)+")"; }).join("، "))+'</div>';
+    }
+    h += '<button class="btn block" data-act="addEvent" data-d="'+date+'" style="margin-top:11px">+ تسجيل حدث أو مخالفة</button>'+
+      '</div></div>';
+
+    var mine = DB.events.filter(function(e){ return e.date===date && e.by===UI.user.name; });
+    if(mine.length){
+      h += '<div class="card"><div class="hd"><h3>اللي سجّلته النهاردة ('+mine.length+')</h3></div><div class="bd flush">';
+      mine.forEach(function(e){
+        var t = evType(e.type);
+        h += '<div class="list-item"><span class="tag '+t.c+'">'+esc(t.name)+'</span>'+
+          '<span class="tx"><b style="font-weight:500">'+esc(e.note)+'</b><small>'+
+          (e.time?esc(e.time)+' · ':'')+(e.locationId?esc(locName(e.locationId)):'')+'</small></span></div>';
+      });
+      h += '</div></div>';
+    }
+  }else if(date===today()){
+    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">◔</div>'+
+      '<b>مفيش مناوبة عليك النهاردة</b><p>مناوباتك الأسبوعية موضحة تحت.</p></div></div></div>';
+  }
+
+  h += '<div class="card"><div class="hd"><h3>جدول إشرافي الأسبوعي</h3>'+
+    '<span class="tag '+(week.length?"info":"")+'">'+week.length+' مناوبة</span></div><div class="bd flush">';
+  if(!week.length) h += '<div class="empty"><b>مفيش مناوبات مكلّف بيها</b>'+
+    '<p>المدير هو اللي بيوزّع الإشراف من شاشة «توزيع الإشراف».</p></div>';
+  week.sort(function(a,b){ return a.day-b.day; }).forEach(function(p){
+    h += '<div class="list-item"><span class="av">'+esc(DAYS[p.day].slice(0,3))+'</span>'+
+      '<span class="tx"><b>'+esc(DAYS[p.day])+'</b><small>'+
+      (p.kind==="general" ? 'المشرف العام اليومي — مسؤول عن سير اليوم كله'
+                          : 'الموقع: '+esc(locName(p.locationId)))+'</small></span>'+
+      '<span class="tag '+(p.kind==="general"?"gold":"info")+'">'+(p.kind==="general"?"مشرف عام":"مشرف موقع")+'</span></div>';
+  });
+  h += '</div></div>';
+
+  var subsToday = [];
+  for(var k in DB.subs){
+    var parts = k.split("|");
+    if(parts[0]!==date || DB.subs[k]!==tid) continue;
+    var sc = null;
+    DB.schedule.forEach(function(x){ if(x.id===parts[1]) sc = x; });
+    if(sc) subsToday.push(sc);
+  }
+  if(subsToday.length){
+    h += '<div class="card"><div class="hd"><h3>حصص احتياطي مكلّف بيها</h3></div><div class="bd flush">';
+    subsToday.sort(function(a,b){ return a.period-b.period; }).forEach(function(sc){
+      h += '<div class="list-item"><span class="av">'+sc.period+'</span>'+
+        '<span class="tx"><b>'+esc(className(sc.classId))+' — '+esc(subjName(sc.subjectId))+'</b>'+
+        '<small>الحصة '+sc.period+' — بديلًا عن '+esc(teacherName(sc.teacherId))+'</small></span></div>';
+    });
+    h += '</div></div>';
+  }
+  return h;
+}
+
+/* توزيع الحصص: كشف تغطية كل الفصول والمواد (داخل وخارج المجموع) */
+function coverageReport(){
+  var rows = [];
+  DB.classes.forEach(function(c){
+    var subs = DB.subjects.filter(function(x){ return x.classId===c.id; });
+    subs.forEach(function(su){
+      var a = DB.assign.filter(function(x){ return x.classId===c.id && x.subjectId===su.id; })[0];
+      var hrs = DB.schedule.filter(function(x){ return x.classId===c.id && x.subjectId===su.id; }).length;
+      rows.push({ cls:c, su:su, teacher: a? teacherName(a.teacherId) : null, hrs:hrs });
+    });
+  });
+  return rows;
+}
+
+/* ============================================================
+   التقويم الدراسي — نظام الأسبوع والإجازات الرسمية (المدير)
+   ============================================================ */
+function viewCalendar(){
+  supInit();
+  if(!Array.isArray(DB.holidays)) DB.holidays = [];
+  var mode = DB.meta.weekMode==="exams" ? "exams" : "normal";
+  var hs = DB.holidays.slice().sort(function(a,b){ return a.from<b.from?-1:1; });
+  var t = today();
+  var upcoming = hs.filter(function(h){ return (h.to||h.from) >= t; });
+
+  var h = pageHd("التقويم الدراسي", "نظام الأسبوع والإجازات الرسمية",
+    '<button class="btn" data-act="addHoliday">+ إجازة رسمية</button>');
+
+  h += '<div class="card"><div class="hd"><h3>الأسبوع الدراسي</h3></div><div class="bd">'+
+    '<div class="note">اختار النظام الشغّال دلوقتي. البرنامج بيوقف كل شغل اليوم اللي بره الأسبوع الدراسي — '+
+    'مفيش رصد غياب ولا إشراف ولا احتياطي، والتقارير بتقول إنه إجازة.</div>'+
+    '<div style="display:grid;gap:9px">'+
+    weekOpt("normal","أيام الدراسة العادية","الأحد → الخميس (٥ أيام)", mode)+
+    weekOpt("exams","أيام الامتحانات","السبت → الخميس (٦ أيام)", mode)+
+    '</div></div></div>';
+
+  /* شكل الأسبوع */
+  h += '<div class="card"><div class="hd"><h3>أيام الأسبوع الحالية</h3></div><div class="bd">'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+  DAYS.forEach(function(d,i){
+    var on = isSchoolDayIdx(i);
+    h += '<span class="tag '+(on?"ok":"")+'" style="padding:6px 12px;font-size:12.5px">'+esc(d)+
+      (on?" ✓":" — إجازة")+'</span>';
+  });
+  h += '<span class="tag" style="padding:6px 12px;font-size:12.5px">الجمعة — إجازة</span></div></div></div>';
+
+  if(upcoming.length){
+    h += '<div class="note warn"><b>أقرب إجازة:</b> '+esc(upcoming[0].name)+' — '+
+      fmtDate(upcoming[0].from)+(upcoming[0].to&&upcoming[0].to!==upcoming[0].from? ' إلى '+fmtDate(upcoming[0].to):'')+'</div>';
+  }
+
+  h += printHd("الإجازات الرسمية");
+  h += '<div class="card"><div class="hd"><h3>الإجازات الرسمية ('+hs.length+')</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>م</th><th>المناسبة</th><th>من</th><th>إلى</th><th>عدد الأيام</th><th>الحالة</th><th></th></tr></thead><tbody>';
+  if(!hs.length) h += '<tr><td colspan="7"><div class="empty"><div class="big">▦</div><b>مفيش إجازات مسجّلة</b>'+
+    '<p>سجّل الأعياد والمناسبات الرسمية، والبرنامج هيوقف الشغل فيها تلقائي.</p></div></td></tr>';
+  hs.forEach(function(x,i){
+    var to = x.to || x.from;
+    var st = to < t ? {t:"انتهت", c:""} : (x.from <= t ? {t:"سارية الآن", c:"bad"} : {t:"قادمة", c:"warn"});
+    h += '<tr><td class="rownum">'+(i+1)+'</td><td><b style="font-weight:600">'+esc(x.name)+'</b></td>'+
+      '<td class="num">'+fmtDate(x.from)+'</td><td class="num">'+fmtDate(to)+'</td>'+
+      '<td class="num">'+daysBetween(x.from, to)+'</td>'+
+      '<td><span class="tag '+st.c+'">'+st.t+'</span></td>'+
+      '<td><button class="btn ghost sm noprint" data-act="delHoliday" data-id="'+x.id+'" style="color:var(--danger)">حذف</button></td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+function weekOpt(id, title, sub, cur){
+  return '<button class="who'+(cur===id?" on":"")+'" data-act="setWeek" data-m="'+id+'" style="margin:0">'+
+    '<span class="av">'+(id==="exams"?"٦":"٥")+'</span>'+
+    '<span class="tx"><b>'+esc(title)+'</b><small>'+esc(sub)+'</small></span>'+
+    (cur===id?'<span class="tag ok">شغّال</span>':'')+'</button>';
+}
+
+/* ============================================================
+   مناوبة المعلم
+   ============================================================ */
+function myDutyToday(){
+  supInit();
+  var u = UI.user;
+  if(!u || u.role!=="teacher" || !u.teacherId) return {any:false, general:false, posts:[]};
+  var sid = "T"+u.teacherId;
+  var date = today();
+  if(!dayStatus(date).ok) return {any:false, general:false, posts:[]};
+  var gen = generalToday(date)===sid;
+  var posts = DB.locations.filter(function(l){ return postToday(date, l.id)===sid; });
+  return { any: gen || posts.length>0, general:gen, posts:posts, date:date };
+}
+function myDutyWeek(){
+  supInit();
+  var u = UI.user;
+  if(!u || !u.teacherId) return [];
+  var sid = "T"+u.teacherId;
+  return DB.dutyPlan.filter(function(p){ return p.staffId===sid && isSchoolDayIdx(p.day); });
+}
+
+Object.assign(ACTS, {
+  setWeek: function(el){
+    DB.meta.weekMode = el.dataset.m==="exams" ? "exams" : "normal";
+    saveNow(); render();
+    toast(DB.meta.weekMode==="exams" ? "الأسبوع بقى السبت للخميس" : "الأسبوع بقى الأحد للخميس");
+  },
+  addHoliday: function(){
+    openModal(mHead("إجازة رسمية")+
+      '<div class="mb">'+
+      '<label class="f"><span>المناسبة</span><input type="text" id="ho_n" placeholder="مثال: إجازة عيد الفطر"></label>'+
+      '<div class="grid2">'+
+      '<label class="f"><span>من تاريخ</span><input type="date" id="ho_f" value="'+today()+'"></label>'+
+      '<label class="f"><span>إلى تاريخ</span><input type="date" id="ho_t" value="'+today()+'"></label>'+
+      '</div>'+
+      '<div class="note">الأيام دي هيتوقف فيها كل الشغل: مفيش رصد غياب للطلاب ولا العاملين، '+
+      'ومفيش إشراف ولا احتياطي، والتقارير هتقول إنها إجازة.</div></div>'+
+      mFoot("حفظ","saveHoliday"));
+  },
+  saveHoliday: function(){
+    if(!Array.isArray(DB.holidays)) DB.holidays = [];
+    var n = val("ho_n").trim(), f = val("ho_f"), t = val("ho_t") || f;
+    if(!n){ toast("اكتب اسم المناسبة"); return; }
+    if(!f){ toast("حدد التاريخ"); return; }
+    if(t < f){ toast("تاريخ النهاية قبل البداية"); return; }
+    DB.holidays.push({id:uid("ho"), name:n, from:f, to:t});
+    saveNow(); closeModal(); render();
+    toast("اتسجّلت "+daysBetween(f,t)+" يوم إجازة");
+  },
+  delHoliday: function(el){
+    DB.holidays = (DB.holidays||[]).filter(function(x){ return x.id!==el.dataset.id; });
+    saveNow(); render(); toast("اتحذفت");
+  }
+});
+
+/* ---------- بلوك «اليوم إجازة» الموحّد ---------- */
+function holidayBlock(ds, extra){
+  return '<div class="card"><div class="bd"><div class="empty">'+
+    '<div class="big">'+(ds.kind==="holiday"?"▦":"☾")+'</div>'+
+    '<b>'+esc(ds.name)+'</b>'+
+    '<p>'+esc(extra || "مفيش شغل في اليوم ده — الرصد والإشراف والاحتياطي كلهم متوقفين.")+'</p>'+
+    '</div></div></div>';
+}
 </script>
 </body>
 </html>
