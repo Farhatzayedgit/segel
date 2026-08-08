@@ -1,0 +1,4037 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d2b3e">
+<title>سجل — نظام إدارة المدرسة الثانوية</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0d2b3e;          /* حبر السجلات المدرسية */
+  --ink-2:#1c4a63;
+  --paper:#eef1ec;        /* ورق الكشوف */
+  --panel:#ffffff;
+  --line:#d5dbd4;
+  --line-2:#e8ece7;
+  --seal:#0f6b52;         /* ختم المدرسة */
+  --gold:#b07d1f;
+  --danger:#a5322a;
+  --warn:#c07414;
+  --muted:#5d6b72;
+  --shadow:0 1px 2px rgba(13,43,62,.06),0 8px 24px -12px rgba(13,43,62,.18);
+  --r:12px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:"Readex Pro","Cairo",Tahoma,"Segoe UI",system-ui,sans-serif;
+  background:var(--paper);color:var(--ink);font-size:15px;line-height:1.65;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+h1,h2,h3,h4{font-family:"Cairo","Readex Pro",Tahoma,sans-serif;margin:0;font-weight:700;letter-spacing:-.01em}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+a{color:var(--ink-2)}
+::-webkit-scrollbar{height:8px;width:8px}
+::-webkit-scrollbar-thumb{background:#c6cec5;border-radius:8px}
+
+/* ====== الهيكل ====== */
+.app{display:none}
+.app.on{display:block}
+header.top{
+  position:sticky;top:0;z-index:40;background:var(--ink);color:#fff;
+  padding:10px 14px;display:flex;align-items:center;gap:10px;
+  box-shadow:0 2px 12px rgba(13,43,62,.25)
+}
+header.top .brand{display:flex;align-items:center;gap:9px;min-width:0}
+.seal{
+  width:32px;height:32px;flex:0 0 32px;border-radius:8px;display:grid;place-items:center;
+  background:linear-gradient(160deg,var(--seal),#0a4d3b);color:#fff;font-weight:800;font-size:15px;
+  font-family:"Cairo",sans-serif;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.25)
+}
+header.top h1{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header.top .sub{font-size:11px;opacity:.72;font-weight:400;display:block;line-height:1.3}
+header.top .spacer{flex:1}
+.iconbtn{
+  width:36px;height:36px;border-radius:9px;display:grid;place-items:center;color:#fff;
+  background:rgba(255,255,255,.1);font-size:16px
+}
+.iconbtn:active{background:rgba(255,255,255,.22)}
+
+.wrap{max-width:1180px;margin:0 auto;padding:14px 12px 92px}
+@media(min-width:900px){
+  .wrap{display:grid;grid-template-columns:216px 1fr;gap:18px;padding:18px 18px 40px;align-items:start}
+}
+
+/* ====== التنقل ====== */
+nav.side{display:none}
+@media(min-width:900px){
+  nav.side{display:block;position:sticky;top:74px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:6px;box-shadow:var(--shadow)}
+  nav.side button{
+    display:flex;width:100%;align-items:center;gap:9px;padding:9px 11px;border-radius:9px;
+    font-size:14px;color:var(--muted);text-align:right;font-weight:500
+  }
+  nav.side button.on{background:var(--ink);color:#fff;font-weight:600}
+  nav.side button:not(.on):hover{background:var(--line-2);color:var(--ink)}
+  nav.side .ico{font-size:15px;width:20px;text-align:center}
+  nav.bottom{display:none}
+}
+nav.bottom{
+  position:fixed;bottom:0;right:0;left:0;z-index:45;background:var(--panel);
+  border-top:1px solid var(--line);display:flex;padding:4px 2px calc(4px + env(safe-area-inset-bottom));
+  box-shadow:0 -4px 18px rgba(13,43,62,.08);overflow-x:auto
+}
+nav.bottom button{
+  flex:1 0 auto;min-width:62px;display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:6px 4px;border-radius:9px;font-size:10.5px;color:var(--muted);font-weight:500
+}
+nav.bottom button .ico{font-size:17px;line-height:1.1}
+nav.bottom button.on{color:var(--ink);background:var(--line-2);font-weight:700}
+
+/* ====== البطاقات ====== */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
+.card>.hd{padding:12px 14px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card>.hd h3{font-size:15px;flex:1;min-width:120px}
+.card>.bd{padding:12px 14px}
+.card>.bd.flush{padding:0}
+
+.pagehd{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:2px 2px 12px}
+.pagehd h2{font-size:20px}
+.pagehd p{margin:0;font-size:12.5px;color:var(--muted)}
+.pagehd .spacer{flex:1}
+
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.09em;color:var(--gold);text-transform:uppercase;font-family:"Cairo",sans-serif}
+
+/* ====== الأزرار ====== */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 15px;border-radius:9px;
+  background:var(--ink);color:#fff;font-weight:600;font-size:13.5px;border:1px solid var(--ink);
+  transition:transform .06s
+}
+.btn:active{transform:scale(.97)}
+.btn.ghost{background:var(--panel);color:var(--ink);border-color:var(--line)}
+.btn.ghost:hover{background:var(--line-2)}
+.btn.seal{background:var(--seal);border-color:var(--seal)}
+.btn.danger{background:var(--danger);border-color:var(--danger)}
+.btn.sm{padding:6px 11px;font-size:12.5px;border-radius:8px}
+.btn.block{width:100%}
+.btn[disabled]{opacity:.45;pointer-events:none}
+
+/* ====== الحقول ====== */
+label.f{display:block;margin-bottom:10px}
+label.f>span{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px}
+input[type=text],input[type=number],input[type=date],input[type=password],input[type=tel],select,textarea{
+  width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fbfcfa;outline:none
+}
+input:focus,select:focus,textarea:focus{border-color:var(--ink-2);box-shadow:0 0 0 3px rgba(28,74,99,.13);background:#fff}
+textarea{min-height:70px;resize:vertical}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0 10px}
+@media(max-width:520px){.grid2{grid-template-columns:1fr}}
+
+/* ====== الجداول ====== */
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.tbl{width:100%;border-collapse:collapse;font-size:13.5px;min-width:100%}
+table.tbl th{
+  background:#f4f6f3;font-size:11.5px;font-weight:700;color:var(--muted);text-align:right;
+  padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0
+}
+table.tbl td{padding:9px 10px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+table.tbl tr:last-child td{border-bottom:0}
+table.tbl tbody tr:hover{background:#fafbf9}
+table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.rownum{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+
+/* ====== الشارات ====== */
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:var(--line-2);color:var(--muted);white-space:nowrap}
+.tag.ok{background:#e2f0e9;color:#146a4e}
+.tag.bad{background:#f8e5e3;color:var(--danger)}
+.tag.warn{background:#fbeedb;color:#8a5410}
+.tag.info{background:#e3ecf2;color:var(--ink-2)}
+.tag.gold{background:#f7eeda;color:var(--gold)}
+
+/* ====== الإحصائيات ====== */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 13px;box-shadow:var(--shadow)}
+.stat .k{font-size:11px;color:var(--muted);font-weight:600}
+.stat .v{font-size:25px;font-weight:800;font-family:"Cairo",sans-serif;line-height:1.25;font-variant-numeric:tabular-nums}
+.stat .n{font-size:11px;color:var(--muted)}
+.stat.acc{border-right:3px solid var(--seal)}
+.stat.acc-b{border-right:3px solid var(--danger)}
+.stat.acc-g{border-right:3px solid var(--gold)}
+
+/* ====== القوائم ====== */
+.list-item{display:flex;align-items:center;gap:11px;padding:11px 14px;border-bottom:1px solid var(--line-2);width:100%;text-align:right}
+.list-item:last-child{border-bottom:0}
+.list-item:hover{background:#fafbf9}
+.list-item .av{
+  width:38px;height:38px;flex:0 0 38px;border-radius:10px;display:grid;place-items:center;
+  background:var(--line-2);color:var(--ink);font-weight:700;font-size:14px;font-family:"Cairo",sans-serif
+}
+.list-item .tx{flex:1;min-width:0}
+.list-item .tx b{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-item .tx small{color:var(--muted);font-size:11.5px}
+.chev{color:#b9c2b8;font-size:15px}
+
+.empty{text-align:center;padding:34px 18px;color:var(--muted)}
+.empty .big{font-size:32px;opacity:.35;margin-bottom:6px}
+.empty b{display:block;color:var(--ink);font-size:14px;margin-bottom:3px}
+.empty p{margin:0 0 12px;font-size:12.5px}
+
+/* ====== أزرار الحضور ====== */
+.att-row{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line-2)}
+.att-row .nm{flex:1;min-width:0;font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.att-row .no{color:var(--muted);font-size:11.5px;width:26px;flex:0 0 26px;font-variant-numeric:tabular-nums}
+.seg{display:flex;gap:3px;flex:0 0 auto}
+.seg button{
+  width:34px;height:32px;border-radius:8px;border:1px solid var(--line);background:#fbfcfa;
+  font-size:12px;font-weight:700;color:var(--muted)
+}
+.seg button.on[data-v=P]{background:var(--seal);border-color:var(--seal);color:#fff}
+.seg button.on[data-v=A]{background:var(--danger);border-color:var(--danger);color:#fff}
+.seg button.on[data-v=E]{background:var(--warn);border-color:var(--warn);color:#fff}
+.seg button.on[data-v=L]{background:var(--ink-2);border-color:var(--ink-2);color:#fff}
+
+/* ====== شبكة الدرجات ====== */
+.mk{width:56px;padding:5px 6px;text-align:center;font-variant-numeric:tabular-nums;border-radius:7px}
+.mk.g{width:38px;padding:5px 2px;font-size:12.5px}
+.mk.over{border-color:var(--danger);background:#fdf2f1}
+
+/* ====== الجدول الدراسي ====== */
+.sched{width:100%;border-collapse:separate;border-spacing:3px;font-size:11.5px}
+.sched th{background:#f4f6f3;padding:6px 4px;border-radius:7px;font-size:11px;color:var(--muted);font-weight:700}
+.sched td{background:#fbfcfa;border:1px solid var(--line-2);border-radius:8px;padding:5px 4px;text-align:center;vertical-align:middle;min-width:76px;height:50px}
+.sched td.has{background:#eaf2ee;border-color:#c9ded4}
+.sched td b{display:block;font-size:11.5px;font-weight:700}
+.sched td small{color:var(--muted);font-size:10px}
+.sched td.free{color:#c2cac1}
+
+/* ====== النوافذ ====== */
+.ov{position:fixed;inset:0;background:rgba(13,43,62,.55);z-index:90;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(2px)}
+.ov.on{display:flex}
+@media(min-width:700px){.ov{align-items:center}}
+.modal{
+  background:var(--panel);width:100%;max-width:620px;max-height:92vh;overflow:auto;
+  border-radius:16px 16px 0 0;box-shadow:0 -8px 40px rgba(13,43,62,.3);animation:up .18s ease
+}
+@media(min-width:700px){.modal{border-radius:16px;animation:pop .16s ease}}
+@keyframes up{from{transform:translateY(22px);opacity:.6}}
+@keyframes pop{from{transform:scale(.97);opacity:.6}}
+.modal.wide{max-width:960px}
+.syncpill{
+  font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;
+  background:var(--line-2);color:var(--muted)
+}
+.syncpill.ok{background:#e2f0e9;color:#146a4e}
+.syncpill.push,.syncpill.conn{background:#e3ecf2;color:var(--ink-2)}
+.syncpill.err{background:#f8e5e3;color:var(--danger)}
+.credit{
+  margin:26px 2px 6px;padding:13px 14px;border-top:1px solid var(--line);
+  text-align:center;font-size:12px;color:var(--muted);line-height:2
+}
+.credit a{color:var(--ink-2);font-weight:600;text-decoration:none;word-break:break-all}
+.credit div:last-child{font-weight:600;color:var(--ink)}
+.modal .mh{position:sticky;top:0;background:var(--panel);padding:13px 15px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;gap:8px;z-index:2}
+.modal .mh h3{flex:1;font-size:16px}
+.modal .mh .x{width:32px;height:32px;border-radius:8px;background:var(--line-2);font-size:18px;color:var(--muted);display:grid;place-items:center}
+.modal .mb{padding:14px 15px}
+.modal .mf{position:sticky;bottom:0;background:var(--panel);padding:11px 15px calc(11px + env(safe-area-inset-bottom));border-top:1px solid var(--line-2);display:flex;gap:8px}
+.modal .mf .btn{flex:1}
+
+/* ====== التنبيهات ====== */
+#toast{
+  position:fixed;bottom:84px;right:50%;transform:translateX(50%) translateY(14px);z-index:99;
+  background:var(--ink);color:#fff;padding:10px 17px;border-radius:10px;font-size:13.5px;font-weight:500;
+  box-shadow:0 8px 26px rgba(13,43,62,.35);opacity:0;pointer-events:none;transition:.2s;max-width:88vw;text-align:center
+}
+#toast.on{opacity:1;transform:translateX(50%) translateY(0)}
+
+.note{padding:10px 12px;border-radius:9px;font-size:12.5px;background:#eaf1f5;border:1px solid #cfe0e9;color:var(--ink-2);margin-bottom:11px}
+.note.warn{background:#fdf3e3;border-color:#f0dcb8;color:#7d4d0d}
+.note.bad{background:#fbeceb;border-color:#f0cdca;color:var(--danger)}
+.note b{font-weight:700}
+
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;-webkit-overflow-scrolling:touch}
+.chips button{
+  flex:0 0 auto;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);
+  font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap
+}
+.chips button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ====== شاشة الدخول ====== */
+#login{min-height:100vh;display:grid;place-items:center;padding:22px 16px;
+  background:
+    radial-gradient(1000px 460px at 80% -8%,#17415a 0%,transparent 62%),
+    linear-gradient(168deg,var(--ink) 0%,#081c29 100%)}
+#login.off{display:none}
+.lbox{width:100%;max-width:392px}
+.lhead{text-align:center;margin-bottom:20px;color:#fff}
+.lhead .seal{width:56px;height:56px;flex:0 0 56px;margin:0 auto 12px;font-size:24px;border-radius:15px}
+.lhead h1{font-size:25px;letter-spacing:-.02em}
+.lhead p{margin:5px 0 0;font-size:12.5px;opacity:.66;line-height:1.6}
+.lcard{background:var(--panel);border-radius:16px;padding:16px;box-shadow:0 22px 60px -18px rgba(0,0,0,.55)}
+.who{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;margin-bottom:7px;width:100%;text-align:right;background:#fbfcfa}
+.who:hover{border-color:var(--ink-2);background:#fff}
+.who.on{border-color:var(--ink);background:#f2f5f8;box-shadow:inset 0 0 0 1px var(--ink)}
+.who .av{width:36px;height:36px;flex:0 0 36px;border-radius:10px;display:grid;place-items:center;background:var(--ink);color:#fff;font-weight:700;font-size:14px;font-family:"Cairo",sans-serif}
+.who .tx{flex:1;min-width:0}
+.who .tx b{display:block;font-size:14px;font-weight:600}
+.who .tx small{color:var(--muted);font-size:11.5px}
+.lfoot{text-align:center;margin-top:15px;font-size:11.5px;color:rgba(255,255,255,.5);line-height:1.8}
+
+/* ====== الطباعة ====== */
+@media print{
+  header.top,nav.side,nav.bottom,.noprint,#toast{display:none!important}
+  body{background:#fff;font-size:12px}
+  .wrap{display:block;padding:0;max-width:none}
+  .card{box-shadow:none;border:1px solid #999;break-inside:avoid;margin-bottom:8px}
+  table.tbl th{background:#eee!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .print-hd{display:block!important;text-align:center;margin-bottom:12px;border-bottom:2px solid #000;padding-bottom:8px}
+  .syncpill{
+  font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;
+  background:var(--line-2);color:var(--muted)
+}
+.syncpill.ok{background:#e2f0e9;color:#146a4e}
+.syncpill.push,.syncpill.conn{background:#e3ecf2;color:var(--ink-2)}
+.syncpill.err{background:#f8e5e3;color:var(--danger)}
+.credit{display:block!important;border-top:1px solid #999;margin-top:10px;font-size:10px}
+  @page{margin:12mm}
+}
+.print-hd{display:none}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="lbox">
+    <div class="lhead">
+      <div class="seal">س</div>
+      <h1>سجـل</h1>
+      <p>نظام إدارة المدرسة الثانوية<br><span id="loginYear"></span></p>
+    </div>
+    <div class="lcard" id="loginCard"></div>
+    <div class="lfoot">مبني على آخر قرارات وزارة التربية والتعليم<br>للثانوية العامة ونظام البكالوريا المصرية
+      <div style="margin-top:9px;padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">
+        للتواصل : <a href="mailto:farhatzayed2018@gmail.com" style="color:rgba(255,255,255,.8)">farhatzayed2018@gmail.com</a><br>
+        <b style="color:rgba(255,255,255,.75);font-weight:600">برمجه / فرحات زايد — إهداء لمنظومه التعليم الثانوي</b>
+      </div></div>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <header class="top">
+    <div class="brand">
+      <div class="seal">س</div>
+      <div style="min-width:0">
+        <h1 id="hdSchool">المدرسة</h1>
+        <span class="sub" id="hdUser"></span>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <button class="iconbtn" id="btnPrint" title="طباعة الشاشة">⎙</button>
+    <button class="iconbtn" id="btnOut" title="تسجيل الخروج">⏻</button>
+  </header>
+  <div class="wrap">
+    <nav class="side" id="navSide"></nav>
+    <main id="view"></main>
+  </div>
+  <nav class="bottom" id="navBottom"></nav>
+</div>
+
+<div class="ov" id="ov"><div class="modal" id="modal"></div></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   سجـل — نظام إدارة المدرسة الثانوية (جمهورية مصر العربية)
+   مبني على قرارات وزارة التربية والتعليم:
+   • توزيع درجات الفصل الدراسي للأول والثاني الثانوي:
+     30% امتحان نهاية الفصل + 15% شهر أول + 15% شهر ثانٍ
+     + 10% سلوك ومواظبة + 15% كشكول الحصة والواجب + 15% تقييم أسبوعي
+   • التقييمات الأسبوعية 12 تقييمًا، يُرصد (غ) للغائب ولا يوضع صفر
+   • نظام البكالوريا المصرية بأربعة مسارات
+   ============================================================ */
+
+/* ---------- ثوابت المنظومة التعليمية ---------- */
+var LEVELS = [
+  {id:1, name:"الصف الأول الثانوي",  short:"١ ث"},
+  {id:2, name:"الصف الثاني الثانوي", short:"٢ ث"},
+  {id:3, name:"الصف الثالث الثانوي", short:"٣ ث"}
+];
+
+var SYSTEMS = [
+  {id:"gen", name:"الثانوية العامة"},
+  {id:"bac", name:"البكالوريا المصرية"}
+];
+
+/* مسارات البكالوريا الأربعة */
+var TRACKS_BAC = [
+  {id:"med",  name:"الطب وعلوم الحياة"},
+  {id:"eng",  name:"الهندسة وعلوم الحاسب"},
+  {id:"bus",  name:"الأعمال"},
+  {id:"art",  name:"الآداب والفنون"}
+];
+/* شعب الثانوية العامة */
+var TRACKS_GEN = [
+  {id:"sci",  name:"علمي علوم"},
+  {id:"math", name:"علمي رياضة"},
+  {id:"lit",  name:"أدبي"}
+];
+
+function tracksFor(system, level){
+  if(Number(level) === 1) return [{id:"none", name:"عام (بدون تخصص)"}];
+  return system === "bac" ? TRACKS_BAC : TRACKS_GEN;
+}
+function trackName(system, tid){
+  if(!tid || tid === "none") return "عام";
+  var all = TRACKS_BAC.concat(TRACKS_GEN);
+  for(var i=0;i<all.length;i++) if(all[i].id === tid) return all[i].name;
+  return tid;
+}
+function levelName(l){ for(var i=0;i<LEVELS.length;i++) if(LEVELS[i].id===Number(l)) return LEVELS[i].name; return "—"; }
+function systemName(s){ return s==="bac" ? "البكالوريا المصرية" : "الثانوية العامة"; }
+
+/* المواد المقترحة حسب الصف والنظام والمسار (قابلة للتعديل من الإعدادات) */
+var SUBJECT_PLAN = {
+  "1|any|none":[
+    ["اللغة العربية",100,1],["اللغة الأجنبية الأولى",100,1],["اللغة الأجنبية الثانية",100,1],
+    ["الرياضيات",100,1],["الفيزياء",100,1],["الكيمياء",100,1],["الأحياء",100,1],
+    ["التاريخ",100,1],["الجغرافيا",100,1],["الفلسفة والمنطق",100,1],
+    ["التربية الدينية",100,0],["التربية الوطنية",100,0],["الحاسب الآلي وتكنولوجيا المعلومات",100,0]
+  ],
+  "2|bac|med":[["اللغة العربية",100,1],["اللغة الأجنبية الأولى",100,1],["التاريخ",100,1],["الرياضيات / الفيزياء (تخصص)",100,1],["التربية الدينية",100,0]],
+  "2|bac|eng":[["اللغة العربية",100,1],["اللغة الأجنبية الأولى",100,1],["التاريخ",100,1],["الكيمياء / البرمجة (تخصص)",100,1],["التربية الدينية",100,0]],
+  "2|bac|bus":[["اللغة العربية",100,1],["اللغة الأجنبية الأولى",100,1],["التاريخ",100,1],["المحاسبة / إدارة الأعمال (تخصص)",100,1],["التربية الدينية",100,0]],
+  "2|bac|art":[["اللغة العربية",100,1],["اللغة الأجنبية الأولى",100,1],["التاريخ",100,1],["مادة التخصص",100,1],["التربية الدينية",100,0]],
+  "3|bac|med":[["الكيمياء (مستوى رفيع)",100,1],["الأحياء (مستوى رفيع)",100,1],["التربية الدينية",100,0]],
+  "3|bac|eng":[["الرياضيات (مستوى رفيع)",100,1],["الفيزياء (مستوى رفيع)",100,1],["التربية الدينية",100,0]],
+  "3|bac|bus":[["الاقتصاد (مستوى متقدم)",100,1],["الإحصاء",100,1],["التربية الدينية",100,0]],
+  "3|bac|art":[["الجغرافيا (مستوى رفيع)",100,1],["الإحصاء",100,1],["التربية الدينية",100,0]],
+  "2|gen|sci":[["اللغة العربية",100,1],["اللغة الأجنبية الأولى",100,1],["اللغة الأجنبية الثانية",100,1],["الرياضيات",100,1],["الفيزياء",100,1],["الكيمياء",100,1],["الأحياء",100,1],["التربية الدينية",100,0],["التربية الوطنية",100,0]],
+  "2|gen|math":[["اللغة العربية",100,1],["اللغة الأجنبية الأولى",100,1],["اللغة الأجنبية الثانية",100,1],["الرياضيات البحتة",100,1],["الرياضيات التطبيقية",100,1],["الفيزياء",100,1],["الكيمياء",100,1],["التربية الدينية",100,0],["التربية الوطنية",100,0]],
+  "2|gen|lit":[["اللغة العربية",100,1],["اللغة الأجنبية الأولى",100,1],["اللغة الأجنبية الثانية",100,1],["التاريخ",100,1],["الجغرافيا",100,1],["الفلسفة والمنطق",100,1],["علم النفس والاجتماع",100,1],["التربية الدينية",100,0],["التربية الوطنية",100,0]]
+};
+SUBJECT_PLAN["3|gen|sci"]  = SUBJECT_PLAN["2|gen|sci"];
+SUBJECT_PLAN["3|gen|math"] = SUBJECT_PLAN["2|gen|math"];
+SUBJECT_PLAN["3|gen|lit"]  = SUBJECT_PLAN["2|gen|lit"];
+
+function planFor(level, system, track){
+  if(Number(level)===1) return SUBJECT_PLAN["1|any|none"];
+  return SUBJECT_PLAN[level+"|"+system+"|"+track] || [];
+}
+
+var DAYS = ["السبت","الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس"];
+var PERIODS = 8;
+var WEEKLY_COUNT = 12;              /* عدد التقييمات الأسبوعية للفصل */
+var ATT = {P:"حاضر", A:"غائب", E:"غياب بعذر", L:"متأخر"};
+
+var ROLES = {
+  manager:{name:"مدير المدرسة",        av:"مد"},
+  deputy: {name:"وكيل شئون الطلاب",    av:"وك"},
+  teacher:{name:"معلم",                 av:"مع"},
+  admin:  {name:"إداري / شئون العاملين",av:"إد"},
+  student:{name:"طالب / ولي أمر",       av:"طا"}
+};
+
+/* ---------- التخزين ---------- */
+var KEY = "segel_school_v1";
+var MEM = null;                      /* بديل الذاكرة لو التخزين المحلي متعطل */
+var STORAGE_OK = true;
+
+function rawGet(){
+  try{ return window.localStorage.getItem(KEY); }
+  catch(e){ STORAGE_OK=false; return MEM; }
+}
+function rawSet(v){
+  MEM = v;
+  try{ window.localStorage.setItem(KEY, v); return true; }
+  catch(e){ STORAGE_OK=false; return false; }
+}
+
+var DB = null;
+var UI = { tab:"", sub:null, filters:{}, user:null };
+
+function blankDB(){
+  return {
+    v:1,
+    meta:{ school:"مدرسة ....... الثانوية", edara:"إدارة ....... التعليمية",
+           moderia:"مديرية التربية والتعليم بـ .......",
+           year:"2026 / 2027", term:1 },
+    weights:{ fin:30, m1:15, m2:15, beh:10, note:15, weekly:15 },
+    bac:{ m1Max:50, m2Max:50, passPct:50, target:600 },
+    absRules:{ warn1:5, warn2:10, danger:15, denyPct:15 },
+    users:[], teachers:[], classes:[], subjects:[], students:[],
+    assign:[], schedule:[], attend:{}, marks:{}, behavior:[], notices:[]
+  };
+}
+
+function load(){
+  var s = rawGet();
+  if(!s){ DB = seed(); save(); return; }
+  try{
+    var d = JSON.parse(s);
+    DB = Object.assign(blankDB(), d);
+    DB.meta = Object.assign(blankDB().meta, d.meta||{});
+    DB.weights = Object.assign(blankDB().weights, d.weights||{});
+    DB.absRules = Object.assign(blankDB().absRules, d.absRules||{});
+    DB.bac = Object.assign(blankDB().bac, d.bac||{});
+    ["users","teachers","classes","subjects","students","assign","schedule","behavior","notices"].forEach(function(k){
+      if(!Array.isArray(DB[k])) DB[k]=[];
+    });
+    if(!DB.attend||typeof DB.attend!=="object") DB.attend={};
+    if(!DB.marks ||typeof DB.marks !=="object") DB.marks={};
+  }catch(e){ DB = seed(); }
+}
+var saveT=null;
+function save(){
+  if(saveT) clearTimeout(saveT);
+  saveT = setTimeout(function(){ rawSet(JSON.stringify(DB)); }, 120);
+}
+function saveNow(){ if(saveT) clearTimeout(saveT); return rawSet(JSON.stringify(DB)); }
+
+/* ---------- أدوات عامة ---------- */
+var _n = 0;
+function uid(p){ _n++; return (p||"x") + Date.now().toString(36) + _n.toString(36); }
+function esc(s){
+  return String(s==null?"":s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+function num(v, d){ var x = parseFloat(v); return isFinite(x) ? x : (d===undefined?0:d); }
+function today(){
+  var d=new Date(), m=d.getMonth()+1, y=d.getDate();
+  return d.getFullYear()+"-"+(m<10?"0":"")+m+"-"+(y<10?"0":"")+y;
+}
+function fmtDate(s){
+  if(!s) return "—";
+  var p = String(s).split("-");
+  if(p.length!==3) return s;
+  return p[2]+"/"+p[1]+"/"+p[0];
+}
+function dayOfWeek(s){
+  var d = new Date(s+"T00:00:00");
+  var js = d.getDay();               /* 0=الأحد */
+  return js===6?0:js+1;              /* 0=السبت ... 5=الخميس */
+}
+function initials(name){
+  var p = String(name||"").trim().split(/\s+/);
+  return ((p[0]||"").charAt(0) + (p[1]||"").charAt(0)) || "؟";
+}
+function byId(arr, id){ for(var i=0;i<arr.length;i++) if(arr[i].id===id) return arr[i]; return null; }
+function sortAr(a,b){ return String(a).localeCompare(String(b),"ar"); }
+function pct(a,b){ return b>0 ? Math.round(a/b*1000)/10 : 0; }
+
+function toast(msg){
+  var t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("on");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ t.classList.remove("on"); }, 2400);
+}
+
+/* ---------- استعلامات ---------- */
+function classById(id){ return byId(DB.classes,id); }
+function subjById(id){ return byId(DB.subjects,id); }
+function teacherById(id){ return byId(DB.teachers,id); }
+function studentById(id){ return byId(DB.students,id); }
+function className(id){ var c=classById(id); return c?c.name:"—"; }
+function subjName(id){ var s=subjById(id); return s?s.name:"—"; }
+function teacherName(id){ var t=teacherById(id); return t?t.name:"—"; }
+
+function studentsOf(classId){
+  return DB.students.filter(function(s){ return s.classId===classId && s.status!=="left"; })
+    .sort(function(a,b){ return (a.seat||9999)-(b.seat||9999) || sortAr(a.name,b.name); });
+}
+function assignsOfTeacher(tid){ return DB.assign.filter(function(a){ return a.teacherId===tid; }); }
+function assignsOfClass(cid){ return DB.assign.filter(function(a){ return a.classId===cid; }); }
+
+/* مفاتيح مركّبة */
+function attKey(classId, date){ return classId+"|"+date; }
+function markKey(studentId, subjectId, term){ return studentId+"|"+subjectId+"|"+term; }
+
+function getMark(studentId, subjectId, term){
+  var k = markKey(studentId, subjectId, term);
+  if(!DB.marks[k]) DB.marks[k] = { m1:null, m2:null, beh:null, note:null, fin:null, w:[] };
+  var m = DB.marks[k];
+  if(!Array.isArray(m.w)) m.w = [];
+  return m;
+}
+
+/* ---------- حساب الدرجات وفق قرار الوزارة ---------- */
+/* التقييم الأسبوعي: متوسط التقييمات المرصودة (غ = غياب، لا تُحتسب كصفر
+   لكنها تُخصم من العدد المطلوب حسب تعليمات الوزارة → نحسبها على 12 تقييمًا) */
+function weeklyScore(m){
+  var sum=0, done=0;
+  for(var i=0;i<WEEKLY_COUNT;i++){
+    var v = m.w[i];
+    if(v==="غ" || v==="g"){ done++; continue; }        /* غائب: تُحسب صفرًا في المتوسط */
+    if(v===null || v===undefined || v==="") continue;
+    sum += num(v); done++;
+  }
+  if(done===0) return null;
+  return sum / (WEEKLY_COUNT * 20) * 100;   /* كل تقييم من 20 → النسبة المئوية */
+}
+/* نسبة الحضور للطالب في الفصل الحالي */
+function attendStats(studentId, classId){
+  var tot=0, abs=0, exc=0, late=0;
+  for(var k in DB.attend){
+    if(k.indexOf(classId+"|")!==0) continue;
+    var rec = DB.attend[k];
+    if(!rec || !(studentId in rec)) continue;
+    tot++;
+    var v = rec[studentId];
+    if(v==="A") abs++; else if(v==="E") exc++; else if(v==="L") late++;
+  }
+  return { days:tot, abs:abs, exc:exc, late:late, present:tot-abs-exc,
+           rate: tot? Math.round((tot-abs)/tot*1000)/10 : 100 };
+}
+/* درجة المواظبة تلقائيًا من الحضور (10% حسب القرار) */
+function autoBehavior(studentId, classId, maxBeh){
+  var st = attendStats(studentId, classId);
+  if(st.days===0) return null;
+  var lost = st.abs * (maxBeh / Math.max(DB.absRules.danger,1));
+  var v = maxBeh - lost - (st.late*0.25);
+  return Math.max(0, Math.round(v*4)/4);
+}
+/* ---- البكالوريا المصرية: الصفان الثاني والثالث سنتا شهادة ----
+   قرار الوزارة: مفيش أعمال سنة في البكالوريا. التقييمات الأسبوعية
+   والاختبارات الشهرية شرط دخول (٥٠٪) مش درجات تُضاف للمجموع،
+   والمجموع تراكمي على العامين من ٦٠٠ درجة. */
+function isBacCert(c){ return !!c && c.system==="bac" && Number(c.level)>=2; }
+function classOfSubject(subjectId){ var s=subjById(subjectId); return s? classById(s.classId) : null; }
+
+/* نسبة «سكور» شرط دخول الامتحان */
+function bacScore(m){
+  var b = DB.bac, parts = [];
+  if(m.m1!==null && m.m1!==undefined && m.m1!=="") parts.push(num(m.m1)/Math.max(num(b.m1Max,50),1)*100);
+  if(m.m2!==null && m.m2!==undefined && m.m2!=="") parts.push(num(m.m2)/Math.max(num(b.m2Max,50),1)*100);
+  var ws = weeklyScore(m);
+  if(ws!==null) parts.push(ws);
+  if(!parts.length) return null;
+  var sum = 0; parts.forEach(function(x){ sum += x; });
+  return Math.round(sum/parts.length*10)/10;
+}
+function bacStatus(m){
+  var p = bacScore(m);
+  if(p===null) return {t:"لم يُرصد", c:"", ok:null, pct:null};
+  var need = num(DB.bac.passPct,50);
+  return p>=need ? {t:"مسموح بدخول الامتحان", c:"ok", ok:true, pct:p}
+                 : {t:"أقل من "+need+"٪ — غير مسموح", c:"bad", ok:false, pct:p};
+}
+/* المجموع التراكمي: أعلى محاولة في كل مادة (النظام بيتيح التحسين) */
+function bacCumulative(sid){
+  var best = {};
+  for(var k in DB.marks){
+    if(k.indexOf(sid+"|")!==0) continue;
+    var suid = k.split("|")[1];
+    var su = subjById(suid); if(!su || !su.counted) continue;
+    var c = classById(su.classId); if(!isBacCert(c)) continue;
+    var m = DB.marks[k];
+    if(m.fin===null || m.fin===undefined || m.fin==="") continue;
+    var v = num(m.fin);
+    if(!best[suid] || v > best[suid].v) best[suid] = {v:v, max:num(su.max,100), lvl:Number(c.level)};
+  }
+  var got=0, of=0, y2=0, y3=0, n=0;
+  for(var x in best){
+    got += best[x].v; of += best[x].max; n++;
+    if(best[x].lvl===2) y2 += best[x].v; else y3 += best[x].v;
+  }
+  var st = studentById(sid);
+  var prev = st ? num(st.bacPrev, 0) : 0;
+  return { subjects:n, inSystem:Math.round(got*100)/100, ofSystem:of,
+           y2:Math.round(y2*100)/100, y3:Math.round(y3*100)/100, prev:prev,
+           total:Math.round((got+prev)*100)/100, target:num(DB.bac.target,600) };
+}
+
+/* الدرجة النهائية للمادة في الفصل الدراسي */
+function termTotal(studentId, subjectId, term){
+  var m = getMark(studentId, subjectId, term), w = DB.weights;
+  var s = subjById(subjectId), max = s? num(s.max,100) : 100;
+  var c = s ? classById(s.classId) : null;
+
+  /* البكالوريا: امتحان نهاية العام هو الدرجة الوحيدة الداخلة للمجموع */
+  if(isBacCert(c)){
+    if(m.fin===null || m.fin===undefined || m.fin==="") return null;
+    var f = Math.round(num(m.fin)*100)/100;
+    return { got:f, of:max, max:max, final:f, bac:true };
+  }
+
+  var parts = [
+    [m.fin,  w.fin ], [m.m1, w.m1], [m.m2, w.m2],
+    [m.beh,  w.beh ], [m.note, w.note]
+  ];
+  var got=0, of=0, any=false;
+  for(var i=0;i<parts.length;i++){
+    var v = parts[i][0], wt = parts[i][1];
+    of += wt;
+    if(v!==null && v!==undefined && v!==""){ got += num(v); any=true; }
+  }
+  var ws = weeklyScore(m);
+  of += w.weekly;
+  if(ws!==null){ got += ws * w.weekly/100; any=true; }
+  if(!any) return null;
+  return { got: Math.round(got*100)/100, of: of, max: max,
+           final: Math.round(got/100*max*100)/100 };
+}
+function gradeLabel(p){
+  if(p>=85) return {t:"ممتاز", c:"ok"};
+  if(p>=75) return {t:"جيد جدًا", c:"ok"};
+  if(p>=65) return {t:"جيد", c:"info"};
+  if(p>=50) return {t:"مقبول", c:"warn"};
+  return {t:"ضعيف", c:"bad"};
+}
+/* حالة الغياب مقارنة بلائحة الإنذارات */
+function absState(absDays){
+  var r = DB.absRules;
+  if(absDays >= r.danger) return {t:"خطر الحرمان", c:"bad", lvl:3};
+  if(absDays >= r.warn2)  return {t:"إنذار ثانٍ", c:"bad", lvl:2};
+  if(absDays >= r.warn1)  return {t:"إنذار أول", c:"warn", lvl:1};
+  return {t:"منتظم", c:"ok", lvl:0};
+}
+
+/* ---------- بيانات ابتدائية ---------- */
+function seed(){
+  var d = blankDB();
+  d.users.push({id:uid("u"), name:"مدير المدرسة", role:"manager", pin:"1111"});
+  d.users.push({id:uid("u"), name:"وكيل شئون الطلاب", role:"deputy", pin:"2222"});
+  return d;
+}
+/* ============================================================
+   الواجهة: الدخول، التنقل، وشاشات وكيل شئون الطلاب
+   ============================================================ */
+
+var NAV = {
+  manager:[
+    ["dash","لوحة المدير","▤"],["students","الطلاب","👤"],["classes","الفصول","▦"],
+    ["teachers","المعلمون","✎"],["absence","الغياب","!"],["schedule","الجداول","☷"],["settings","الإعدادات","⚙"]
+  ],
+  deputy:[
+    ["students","الطلاب","👤"],["classes","الفصول","▦"],["teachers","المعلمون","✎"],
+    ["assign","التكليفات","⇄"],["schedule","الجداول","☷"],["absence","الغياب","!"],
+    ["reports","الكشوف","⎙"],["settings","الإعدادات","⚙"]
+  ],
+  teacher:[
+    ["myclasses","فصولي","▦"],["myschedule","جدولي","☷"],["mystudents","طلابي","👤"]
+  ],
+  admin:[
+    ["teachers","المعلمون","✎"],["schedule","الجداول","☷"],["absence","الغياب","!"],["reports","الكشوف","⎙"]
+  ],
+  student:[
+    ["mygrades","درجاتي","★"],["myattend","حضوري","✓"],["mysched","جدولي","☷"]
+  ]
+};
+
+/* ---------- الدخول ---------- */
+function renderLogin(){
+  document.getElementById("loginYear").textContent = DB.meta.school + " · " + DB.meta.year;
+  var box = document.getElementById("loginCard");
+  var users = DB.users.slice().sort(function(a,b){
+    var o = {manager:0,deputy:1,admin:2,teacher:3,student:4};
+    return (o[a.role]-o[b.role]) || sortAr(a.name,b.name);
+  });
+  if(!users.length){
+    box.innerHTML = '<div class="empty"><b>مفيش مستخدمين</b><p>ابدأ بإنشاء حساب وكيل شئون الطلاب.</p>'+
+      '<button class="btn block" data-lact="first">إنشاء أول حساب</button></div>';
+    return;
+  }
+  var h = '<div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">اختر حسابك</div>';
+  h += '<div style="max-height:44vh;overflow:auto;margin:-2px -2px 0;padding:2px">';
+  users.forEach(function(u){
+    h += '<button class="who'+(UI.pick===u.id?" on":"")+'" data-lact="pick" data-id="'+u.id+'">'+
+      '<span class="av">'+esc(ROLES[u.role]?ROLES[u.role].av:"؟")+'</span>'+
+      '<span class="tx"><b>'+esc(u.name)+'</b><small>'+esc(ROLES[u.role]?ROLES[u.role].name:u.role)+
+      (u.role==="teacher"&&u.teacherId?" · "+esc(assignsOfTeacher(u.teacherId).length+" تكليف"):"")+'</small></span>'+
+      '</button>';
+  });
+  h += '</div>';
+  if(UI.pick){
+    h += '<div style="margin-top:12px"><label class="f"><span>الرقم السري</span>'+
+      '<input type="password" id="pin" inputmode="numeric" placeholder="••••" autocomplete="off"></label>'+
+      '<button class="btn block" data-lact="go">دخول</button></div>';
+  }
+  box.innerHTML = h;
+  var p = document.getElementById("pin");
+  if(p){ p.focus(); p.onkeydown = function(e){ if(e.key==="Enter") doLogin(); }; }
+}
+function doLogin(){
+  var u = byId(DB.users, UI.pick);
+  if(!u) return;
+  var v = (document.getElementById("pin")||{}).value || "";
+  if(String(u.pin||"") !== String(v)){ toast("الرقم السري غير صحيح"); return; }
+  UI.user = u;
+  UI.tab = NAV[u.role][0][0];
+  UI.sub = null;
+  document.getElementById("login").classList.add("off");
+  document.getElementById("app").classList.add("on");
+  document.getElementById("hdSchool").textContent = DB.meta.school;
+  document.getElementById("hdUser").textContent = u.name + " · " + (ROLES[u.role]?ROLES[u.role].name:"");
+  render();
+}
+function logout(){
+  UI.user=null; UI.pick=null; UI.sub=null;
+  document.getElementById("app").classList.remove("on");
+  document.getElementById("login").classList.remove("off");
+  renderLogin();
+}
+
+/* ---------- التنقل ---------- */
+function renderNav(){
+  var items = NAV[UI.user.role] || [];
+  var s="", b="";
+  items.forEach(function(it){
+    var on = UI.tab===it[0] ? " on" : "";
+    s += '<button class="'+on.trim()+'" data-act="tab" data-tab="'+it[0]+'"><span class="ico">'+it[2]+'</span>'+esc(it[1])+'</button>';
+    b += '<button class="'+on.trim()+'" data-act="tab" data-tab="'+it[0]+'"><span class="ico">'+it[2]+'</span>'+esc(it[1])+'</button>';
+  });
+  document.getElementById("navSide").innerHTML = s;
+  document.getElementById("navBottom").innerHTML = b;
+}
+
+/* ---------- الموجّه ---------- */
+function render(){
+  if(!UI.user) return;
+  renderNav();
+  var v = document.getElementById("view"), h="";
+  switch(UI.tab){
+    case "dash":       h = viewDash(); break;
+    case "students":   h = UI.sub&&UI.sub.student ? viewStudent(UI.sub.student) : viewStudents(); break;
+    case "classes":    h = UI.sub&&UI.sub.cls ? viewClass(UI.sub.cls) : viewClasses(); break;
+    case "teachers":   h = UI.sub&&UI.sub.teacher ? viewTeacher(UI.sub.teacher) : viewTeachers(); break;
+    case "assign":     h = viewAssign(); break;
+    case "schedule":   h = viewSchedule(); break;
+    case "absence":    h = viewAbsence(); break;
+    case "reports":    h = viewReports(); break;
+    case "settings":   h = viewSettings(); break;
+    case "myclasses":  h = UI.sub&&UI.sub.a ? viewTeachClass(UI.sub.a) : viewMyClasses(); break;
+    case "myschedule": h = viewMySchedule(); break;
+    case "mystudents": h = viewMyStudents(); break;
+    case "mygrades":   h = viewMyGrades(); break;
+    case "myattend":   h = viewMyAttend(); break;
+    case "mysched":    h = viewStudentSched(); break;
+    default:           h = '<div class="empty"><b>الشاشة دي لسه فاضية</b></div>';
+  }
+  v.innerHTML = h;
+  window.scrollTo(0,0);
+}
+function go(tab, sub){ UI.tab=tab; UI.sub=sub||null; render(); }
+function back(){ UI.sub=null; render(); }
+
+function pageHd(title, sub, actions){
+  return '<div class="pagehd noprint"><div><h2>'+esc(title)+'</h2>'+
+    (sub?'<p>'+esc(sub)+'</p>':'')+'</div><div class="spacer"></div>'+(actions||'')+'</div>';
+}
+function backBtn(label){
+  return '<button class="btn ghost sm noprint" data-act="back" style="margin-bottom:10px">→ '+esc(label||"رجوع")+'</button>';
+}
+function printHd(title){
+  return '<div class="print-hd"><div style="font-size:11px">'+esc(DB.meta.moderia)+' — '+esc(DB.meta.edara)+'</div>'+
+    '<div style="font-size:15px;font-weight:700">'+esc(DB.meta.school)+'</div>'+
+    '<div style="font-size:13px;font-weight:600">'+esc(title)+' — العام الدراسي '+esc(DB.meta.year)+
+    ' — الفصل الدراسي '+(DB.meta.term===1?"الأول":"الثاني")+'</div></div>';
+}
+
+/* ============================================================
+   الطـلاب
+   ============================================================ */
+function viewStudents(){
+  var f = UI.filters;
+  var list = DB.students.filter(function(s){
+    if(f.cls && s.classId!==f.cls) return false;
+    if(f.lvl && String(classById(s.classId)&&classById(s.classId).level)!==String(f.lvl)) return false;
+    if(f.q){
+      var q=f.q.trim();
+      if(q && String(s.name).indexOf(q)<0 && String(s.natId||"").indexOf(q)<0 && String(s.seat||"").indexOf(q)<0) return false;
+    }
+    return true;
+  }).sort(function(a,b){ return sortAr(a.name,b.name); });
+
+  var can = UI.user.role!=="student";
+  var h = pageHd("الطلاب", DB.students.length+" طالب مقيَّد في المدرسة",
+    (UI.user.role==="deputy"?'<button class="btn" data-act="addStudent">+ إضافة طالب</button>'+
+      impBtn("students",{},"استيراد من إكسيل")+
+      '<button class="btn ghost sm noprint" data-act="impTpl" data-tg="students" style="margin-right:6px">نموذج جاهز</button>':''));
+
+  h += '<div class="card noprint"><div class="bd">'+
+    '<div class="grid3">'+
+      '<label class="f"><span>بحث بالاسم أو الرقم القومي أو رقم الجلوس</span>'+
+        '<input type="text" id="fq" value="'+esc(f.q||"")+'" placeholder="اكتب للبحث…"></label>'+
+      '<label class="f"><span>الصف</span><select id="flvl">'+optLevels(f.lvl)+'</select></label>'+
+      '<label class="f"><span>الفصل</span><select id="fcls">'+optClasses(f.cls, f.lvl)+'</select></label>'+
+    '</div></div></div>';
+
+  h += printHd("كشف بأسماء الطلاب");
+  h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' طالب</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة الكشف</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>م</th><th>الاسم</th><th>الفصل</th><th>الصف / النظام</th><th>رقم الجلوس</th><th>الغياب</th><th>الحالة</th>'+
+    '</tr></thead><tbody>';
+  if(!list.length){
+    h += '<tr><td colspan="7"><div class="empty"><div class="big">👤</div><b>مفيش طلاب مطابقين</b>'+
+      '<p>'+(DB.students.length?'جرّب تغيّر الفلاتر.':'ابدأ بإضافة الفصول ثم الطلاب.')+'</p></div></td></tr>';
+  }
+  list.forEach(function(s,i){
+    var c = classById(s.classId);
+    var st = attendStats(s.id, s.classId);
+    var a = absState(st.abs);
+    h += '<tr'+(can?' data-act="openStudent" data-id="'+s.id+'" style="cursor:pointer"':'')+'>'+
+      '<td class="rownum">'+(i+1)+'</td>'+
+      '<td><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
+      '<td>'+esc(c?c.name:"— غير مسكّن —")+'</td>'+
+      '<td><small>'+(c?esc(levelName(c.level))+' · '+esc(systemName(c.system)):"—")+'</small></td>'+
+      '<td class="num">'+esc(s.seat||"—")+'</td>'+
+      '<td class="num">'+st.abs+(st.exc?' <small style="color:var(--muted)">(+'+st.exc+' بعذر)</small>':'')+'</td>'+
+      '<td><span class="tag '+a.c+'">'+a.t+'</span></td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+function optLevels(sel){
+  var h = '<option value="">كل الصفوف</option>';
+  LEVELS.forEach(function(l){ h += '<option value="'+l.id+'"'+(String(sel)===String(l.id)?" selected":"")+'>'+esc(l.name)+'</option>'; });
+  return h;
+}
+function optClasses(sel, lvl){
+  var h = '<option value="">كل الفصول</option>';
+  DB.classes.filter(function(c){ return !lvl || String(c.level)===String(lvl); })
+    .sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); })
+    .forEach(function(c){ h += '<option value="'+c.id+'"'+(sel===c.id?" selected":"")+'>'+esc(c.name)+'</option>'; });
+  return h;
+}
+
+function viewStudent(id){
+  var s = studentById(id);
+  if(!s) return '<div class="empty"><b>الطالب مش موجود</b></div>';
+  var c = classById(s.classId);
+  var st = attendStats(s.id, s.classId);
+  var a = absState(st.abs);
+  var isDep = UI.user.role==="deputy";
+
+  var h = backBtn("كل الطلاب");
+  h += printHd("بيان حالة طالب");
+  h += '<div class="card"><div class="hd">'+
+    '<div class="av" style="width:44px;height:44px;flex:0 0 44px;border-radius:12px;display:grid;place-items:center;background:var(--ink);color:#fff;font-weight:700;font-family:Cairo,sans-serif">'+esc(initials(s.name))+'</div>'+
+    '<div style="flex:1;min-width:120px"><h3 style="font-size:17px">'+esc(s.name)+'</h3>'+
+    '<small style="color:var(--muted)">'+(c?esc(c.name)+' · '+esc(levelName(c.level))+' · '+esc(trackName(c.system,c.track)):"غير مسكّن على فصل")+'</small></div>'+
+    (isDep?'<button class="btn ghost sm noprint" data-act="editStudent" data-id="'+s.id+'">تعديل</button>':'')+
+    '</div><div class="bd">'+
+    '<div class="stats">'+
+      stat("أيام الحضور المرصودة", st.days, "يوم","acc")+
+      stat("الغياب بدون عذر", st.abs, a.t, a.lvl?"acc-b":"acc")+
+      stat("الغياب بعذر", st.exc, "يوم","")+
+      stat("نسبة الحضور", st.rate+"%", st.rate>=85?"منتظم":"يحتاج متابعة", st.rate>=85?"acc":"acc-g")+
+    '</div>';
+  if(a.lvl>0){
+    h += '<div class="note '+(a.lvl>=2?"bad":"warn")+'" style="margin-top:11px"><b>'+a.t+':</b> '+
+      'الطالب غاب '+st.abs+' يوم بدون عذر. حد الحرمان في الإعدادات '+DB.absRules.danger+' يوم.'+
+      (isDep?' يُوجَّه إنذار لولي الأمر ويُسجَّل في ملف الطالب.':'')+'</div>';
+  }
+  h += '<div class="grid2" style="margin-top:12px">'+
+    kv("الرقم القومي", s.natId||"—")+kv("رقم الجلوس", s.seat||"—")+
+    kv("ولي الأمر", s.guardian||"—")+kv("هاتف ولي الأمر", s.phone||"—")+
+    kv("تاريخ القيد", fmtDate(s.joined))+kv("الديانة", s.religion||"—")+
+    '</div>';
+  if(s.notes) h += '<div class="note" style="margin-top:6px"><b>ملاحظات:</b> '+esc(s.notes)+'</div>';
+  h += '</div></div>';
+
+  /* الدرجات */
+  var subs = c ? DB.subjects.filter(function(x){ return x.classId===c.id; }) : [];
+  if(isBacCert(c)){ h += studentBacGrades(s, c, subs); return h + studentBehavior(s); }
+  h += '<div class="card"><div class="hd"><h3>الدرجات — الفصل الدراسي '+(DB.meta.term===1?"الأول":"الثاني")+'</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>المادة</th><th>شهر ١</th><th>شهر ٢</th><th>أسبوعي</th><th>كشكول</th><th>سلوك</th><th>نهاية الفصل</th><th>المجموع</th><th>التقدير</th></tr></thead><tbody>';
+  if(!subs.length) h += '<tr><td colspan="9"><div class="empty"><b>مفيش مواد مسجّلة للفصل</b><p>الوكيل بيضيف مواد الفصل من شاشة الفصول.</p></div></td></tr>';
+  subs.forEach(function(su){
+    var m = getMark(s.id, su.id, DB.meta.term);
+    var t = termTotal(s.id, su.id, DB.meta.term);
+    var ws = weeklyScore(m);
+    var p = t ? t.got : null;
+    var g = p!==null ? gradeLabel(p/ (t.of||100) *100) : null;
+    h += '<tr><td><b style="font-weight:600">'+esc(su.name)+'</b>'+(su.counted?'':' <span class="tag">خارج المجموع</span>')+'</td>'+
+      '<td class="num">'+dash(m.m1)+'</td><td class="num">'+dash(m.m2)+'</td>'+
+      '<td class="num">'+(ws===null?"—":Math.round(ws)+"%")+'</td>'+
+      '<td class="num">'+dash(m.note)+'</td><td class="num">'+dash(m.beh)+'</td>'+
+      '<td class="num">'+dash(m.fin)+'</td>'+
+      '<td class="num"><b>'+(t?t.final+" / "+t.max:"—")+'</b></td>'+
+      '<td>'+(g?'<span class="tag '+g.c+'">'+g.t+'</span>':'—')+'</td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+
+  h += studentBehavior(s);
+  return h;
+}
+function studentBehavior(s){
+  var bh = DB.behavior.filter(function(b){ return b.studentId===s.id; }).sort(function(a,b){ return b.date<a.date?-1:1; });
+  var h = '<div class="card"><div class="hd"><h3>سجل السلوك والملاحظات</h3>'+
+    (UI.user.role!=="student"?'<button class="btn ghost sm noprint" data-act="addBehavior" data-id="'+s.id+'">+ ملاحظة</button>':'')+'</div><div class="bd flush">';
+  if(!bh.length) h += '<div class="empty"><b>السجل نظيف</b><p>مفيش ملاحظات مسجّلة على الطالب.</p></div>';
+  bh.forEach(function(b){
+    h += '<div class="list-item"><span class="tag '+(b.type==="سلبي"?"bad":b.type==="إيجابي"?"ok":"info")+'">'+esc(b.type)+'</span>'+
+      '<span class="tx"><b style="font-weight:500">'+esc(b.note)+'</b><small>'+fmtDate(b.date)+' · '+esc(b.by||"")+'</small></span></div>';
+  });
+  return h + '</div></div>';
+}
+/* شاشة درجات طالب البكالوريا — مفيش أعمال سنة، ومجموع تراكمي */
+function studentBacGrades(s, c, subs){
+  var cum = bacCumulative(s.id);
+  var h = '<div class="card"><div class="hd"><div style="flex:1"><span class="eyebrow">شهادة البكالوريا المصرية</span>'+
+    '<h3>المجموع التراكمي</h3></div></div><div class="bd">'+
+    '<div class="note">في البكالوريا مفيش أعمال سنة. الدرجة الوحيدة اللي بتدخل المجموع هي امتحان نهاية العام، '+
+    'والتقييمات الأسبوعية والاختبارات الشهرية شرط لدخول الامتحان. المجموع تراكمي على الصفين الثاني والثالث من '+cum.target+' درجة.</div>'+
+    '<div class="stats">'+
+      stat("المجموع التراكمي", cum.total, "من "+cum.target+" درجة", "acc")+
+      stat("النسبة", cum.target? Math.round(cum.total/cum.target*1000)/10+"%" : "—", "من إجمالي الشهادة","acc-g")+
+      stat("درجات الصف الثاني", cum.prev? cum.prev+" (مُدخلة يدويًا)" : cum.y2, "من 400","")+
+      stat("درجات الصف الثالث", cum.y3, "من 200","")+
+    '</div></div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>المواد — العام الدراسي '+esc(DB.meta.year)+'</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>المادة</th><th>شهر ١</th><th>شهر ٢</th><th>أسبوعي</th>'+
+    '<th>سكور الدخول</th><th>حالة الدخول</th><th>امتحان نهاية العام</th><th>التقدير</th></tr></thead><tbody>';
+  if(!subs.length) h += '<tr><td colspan="8"><div class="empty"><b>مفيش مواد مسجّلة للفصل</b></div></td></tr>';
+  subs.forEach(function(su){
+    var m = getMark(s.id, su.id, DB.meta.term);
+    var ws = weeklyScore(m), bs = bacStatus(m), t = termTotal(s.id, su.id, DB.meta.term);
+    var g = t ? gradeLabel(t.final/Math.max(t.max,1)*100) : null;
+    h += '<tr><td><b style="font-weight:600">'+esc(su.name)+'</b>'+
+      (su.counted?'':' <span class="tag">نجاح ورسوب — خارج المجموع</span>')+'</td>'+
+      '<td class="num">'+dash(m.m1)+'</td><td class="num">'+dash(m.m2)+'</td>'+
+      '<td class="num">'+(ws===null?"—":Math.round(ws)+"%")+'</td>'+
+      '<td class="num"><b>'+(bs.pct===null?"—":bs.pct+"%")+'</b></td>'+
+      '<td>'+(bs.ok===null?'—':'<span class="tag '+bs.c+'">'+bs.t+'</span>')+'</td>'+
+      '<td class="num"><b>'+(t? t.final+" / "+t.max : "—")+'</b></td>'+
+      '<td>'+(g?'<span class="tag '+g.c+'">'+g.t+'</span>':'—')+'</td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+function stat(k,v,n,cls){ return '<div class="stat '+(cls||"")+'"><div class="k">'+esc(k)+'</div><div class="v">'+esc(v)+'</div><div class="n">'+esc(n||"")+'</div></div>'; }
+function kv(k,v){ return '<div style="padding:7px 0;border-bottom:1px solid var(--line-2)"><div style="font-size:11.5px;color:var(--muted)">'+esc(k)+'</div><div style="font-weight:600;font-size:14px">'+esc(v)+'</div></div>'; }
+function dash(v){ return (v===null||v===undefined||v==="") ? "—" : String(v); }
+
+/* ============================================================
+   الفصــول
+   ============================================================ */
+function viewClasses(){
+  var isDep = UI.user.role==="deputy";
+  var h = pageHd("الفصول", DB.classes.length+" فصل",
+    isDep?'<button class="btn" data-act="addClass">+ إضافة فصل</button>'+impBtn("classes",{},"استيراد من إكسيل"):'');
+  if(!DB.classes.length){
+    return h + '<div class="card"><div class="bd"><div class="empty"><div class="big">▦</div>'+
+      '<b>ابدأ بإنشاء الفصول</b><p>كل فصل بيتحدد بالصف والنظام (عام / بكالوريا) والمسار، وبعدها تسكّن عليه الطلاب وتوزّع المعلمين.</p>'+
+      (isDep?'<button class="btn" data-act="addClass">+ إضافة أول فصل</button>'+impBtn("classes",{},"استيراد من إكسيل"):'')+'</div></div></div>';
+  }
+  var byLevel = {};
+  DB.classes.forEach(function(c){ (byLevel[c.level]=byLevel[c.level]||[]).push(c); });
+  LEVELS.forEach(function(l){
+    var arr = (byLevel[l.id]||[]).sort(function(a,b){ return sortAr(a.name,b.name); });
+    if(!arr.length) return;
+    h += '<div class="card"><div class="hd"><h3>'+esc(l.name)+'</h3><span class="tag">'+arr.length+' فصل</span></div><div class="bd flush">';
+    arr.forEach(function(c){
+      var n = studentsOf(c.id).length;
+      var asg = assignsOfClass(c.id).length;
+      h += '<button class="list-item" data-act="openClass" data-id="'+c.id+'">'+
+        '<span class="av">'+esc(c.name.replace(/[^\u0621-\u064A0-9]/g,"").slice(0,2)||"ف")+'</span>'+
+        '<span class="tx"><b>'+esc(c.name)+'</b><small>'+esc(systemName(c.system))+' · '+esc(trackName(c.system,c.track))+
+        ' · '+n+' طالب · '+asg+' مادة مُسندة</small></span><span class="chev">‹</span></button>';
+    });
+    h += '</div></div>';
+  });
+  return h;
+}
+
+function viewClass(id){
+  var c = classById(id);
+  if(!c) return '<div class="empty"><b>الفصل مش موجود</b></div>';
+  var isDep = UI.user.role==="deputy";
+  var studs = studentsOf(c.id);
+  var subs = DB.subjects.filter(function(s){ return s.classId===c.id; });
+  var asg  = assignsOfClass(c.id);
+
+  var h = backBtn("كل الفصول");
+  h += '<div class="card"><div class="hd"><div style="flex:1"><span class="eyebrow">'+esc(levelName(c.level))+'</span>'+
+    '<h3 style="font-size:19px">'+esc(c.name)+'</h3>'+
+    '<small style="color:var(--muted)">'+esc(systemName(c.system))+' · '+esc(trackName(c.system,c.track))+(c.room?' · حجرة '+esc(c.room):'')+'</small>'+
+    (isBacCert(c)?'<div style="margin-top:5px"><span class="tag gold">سنة شهادة — بدون أعمال سنة</span></div>':'')+'</div>'+
+    (isDep?'<button class="btn ghost sm" data-act="editClass" data-id="'+c.id+'">تعديل</button>':'')+'</div>'+
+    '<div class="bd"><div class="stats">'+
+      stat("الطلاب", studs.length, "مسكّن على الفصل","acc")+
+      stat("المواد", subs.length, subs.filter(function(s){return s.counted;}).length+" داخل المجموع","")+
+      stat("المعلمون", asg.length, "تكليف","")+
+      stat("نسبة الحضور", classAttendRate(c.id)+"%", "من بداية العام","acc-g")+
+    '</div></div></div>';
+
+  /* المواد */
+  h += '<div class="card"><div class="hd"><h3>مواد الفصل</h3>'+
+    (isDep?'<button class="btn ghost sm" data-act="autoSubjects" data-id="'+c.id+'">توليد المواد المقررة</button>'+
+      '<button class="btn ghost sm" data-act="addSubject" data-id="'+c.id+'" style="margin-right:6px">+ مادة</button>'+
+      impBtn("subjects",{classId:c.id},"استيراد مواد"):'')+
+    '</div><div class="bd flush">';
+  if(!subs.length) h += '<div class="empty"><b>مفيش مواد</b><p>اضغط «توليد المواد المقررة» عشان يضيف مواد '+esc(trackName(c.system,c.track))+' حسب خطة الوزارة.</p></div>';
+  subs.forEach(function(s){
+    var a = DB.assign.filter(function(x){ return x.classId===c.id && x.subjectId===s.id; });
+    h += '<div class="list-item">'+
+      '<span class="tx"><b>'+esc(s.name)+'</b><small>النهاية العظمى '+s.max+' · '+
+      (s.counted?'داخل المجموع':'خارج المجموع')+' · '+(a.length?'المعلم: '+esc(teacherName(a[0].teacherId)):'<span style="color:var(--danger)">بدون معلم</span>')+'</small></span>'+
+      (isDep?'<button class="btn ghost sm" data-act="assignOne" data-cid="'+c.id+'" data-sid="'+s.id+'">إسناد</button>'+
+        '<button class="btn ghost sm" data-act="delSubject" data-id="'+s.id+'" style="margin-right:5px;color:var(--danger)">حذف</button>':'')+
+      '</div>';
+  });
+  h += '</div></div>';
+
+  /* الطلاب */
+  h += '<div class="card"><div class="hd"><h3>طلاب الفصل ('+studs.length+')</h3>'+
+    (isDep?'<button class="btn ghost sm" data-act="addStudent" data-cid="'+c.id+'">+ طالب</button>'+
+      impBtn("students",{classId:c.id},"استيراد إكسيل"):'')+
+    '</div><div class="bd flush">';
+  if(!studs.length) h += '<div class="empty"><b>الفصل فاضي</b><p>ضيف الطلاب واحد واحد أو الصق قائمة أسماء دفعة واحدة.</p></div>';
+  studs.forEach(function(s,i){
+    var st = attendStats(s.id,c.id), a = absState(st.abs);
+    h += '<button class="list-item" data-act="openStudent" data-id="'+s.id+'">'+
+      '<span class="rownum" style="width:22px;flex:0 0 22px">'+(i+1)+'</span>'+
+      '<span class="tx"><b>'+esc(s.name)+'</b><small>'+(s.seat?'جلوس '+esc(s.seat)+' · ':'')+'غياب '+st.abs+' يوم</small></span>'+
+      (a.lvl?'<span class="tag '+a.c+'">'+a.t+'</span>':'')+'<span class="chev">‹</span></button>';
+  });
+  h += '</div></div>';
+  return h;
+}
+function classAttendRate(cid){
+  var tot=0, pres=0;
+  for(var k in DB.attend){
+    if(k.indexOf(cid+"|")!==0) continue;
+    var r = DB.attend[k];
+    for(var s in r){ tot++; if(r[s]!=="A") pres++; }
+  }
+  return tot? Math.round(pres/tot*1000)/10 : 100;
+}
+
+/* ============================================================
+   المعلمون والتكليفات
+   ============================================================ */
+function viewTeachers(){
+  var isDep = UI.user.role==="deputy" || UI.user.role==="admin";
+  var h = pageHd("المعلمون", DB.teachers.length+" معلم",
+    isDep?'<button class="btn" data-act="addTeacher">+ إضافة معلم</button>'+impBtn("teachers",{},"استيراد من إكسيل"):'');
+  if(!DB.teachers.length){
+    return h+'<div class="card"><div class="bd"><div class="empty"><div class="big">✎</div><b>مفيش معلمين مسجّلين</b>'+
+      '<p>لما تضيف معلم، بيتعمل له حساب دخول تلقائي، ويشوف الفصول اللي تسندها له بس.</p>'+
+      (isDep?'<button class="btn" data-act="addTeacher">+ إضافة أول معلم</button>'+impBtn("teachers",{},"استيراد من إكسيل"):'')+'</div></div></div>';
+  }
+  h += '<div class="card"><div class="bd flush">';
+  DB.teachers.slice().sort(function(a,b){ return sortAr(a.name,b.name); }).forEach(function(t){
+    var a = assignsOfTeacher(t.id);
+    var cls = {}; a.forEach(function(x){ cls[x.classId]=1; });
+    h += '<button class="list-item" data-act="openTeacher" data-id="'+t.id+'">'+
+      '<span class="av">'+esc(initials(t.name))+'</span>'+
+      '<span class="tx"><b>'+esc(t.name)+'</b><small>'+esc(t.subject||"—")+' · '+Object.keys(cls).length+' فصل · '+a.length+' تكليف'+
+      (t.phone?' · '+esc(t.phone):'')+'</small></span><span class="chev">‹</span></button>';
+  });
+  h += '</div></div>';
+  return h;
+}
+
+function viewTeacher(id){
+  var t = teacherById(id);
+  if(!t) return '<div class="empty"><b>المعلم مش موجود</b></div>';
+  var isDep = UI.user.role==="deputy" || UI.user.role==="admin";
+  var a = assignsOfTeacher(t.id);
+  var u = DB.users.filter(function(x){ return x.teacherId===t.id; })[0];
+
+  var h = backBtn("كل المعلمين");
+  h += '<div class="card"><div class="hd">'+
+    '<span class="av" style="width:44px;height:44px;flex:0 0 44px;border-radius:12px;display:grid;place-items:center;background:var(--ink);color:#fff;font-weight:700;font-family:Cairo,sans-serif">'+esc(initials(t.name))+'</span>'+
+    '<div style="flex:1;min-width:110px"><h3 style="font-size:17px">'+esc(t.name)+'</h3>'+
+    '<small style="color:var(--muted)">'+esc(t.subject||"بدون تخصص")+(t.phone?' · '+esc(t.phone):'')+'</small></div>'+
+    (isDep?'<button class="btn ghost sm" data-act="editTeacher" data-id="'+t.id+'">تعديل</button>':'')+'</div>';
+  if(u) h += '<div class="bd"><div class="note">حساب الدخول: <b>'+esc(u.name)+'</b> — الرقم السري <b>'+esc(u.pin)+'</b>. يقدر يشوف فصوله ويسجّل الغياب والدرجات لمواده بس.</div></div>';
+  h += '</div>';
+
+  h += '<div class="card"><div class="hd"><h3>الفصول والمواد المُسندة ('+a.length+')</h3>'+
+    (isDep?'<button class="btn ghost sm" data-act="assignTo" data-id="'+t.id+'">+ إسناد فصل</button>':'')+'</div><div class="bd flush">';
+  if(!a.length) h += '<div class="empty"><b>مفيش تكليفات</b><p>اسند له فصل ومادة عشان تظهر عنده أدوات الغياب والدرجات.</p></div>';
+  a.forEach(function(x){
+    var c = classById(x.classId);
+    h += '<div class="list-item"><span class="tx"><b>'+esc(className(x.classId))+' — '+esc(subjName(x.subjectId))+'</b>'+
+      '<small>'+(c?esc(levelName(c.level))+' · '+esc(trackName(c.system,c.track))+' · '+studentsOf(c.id).length+' طالب':'')+'</small></span>'+
+      (isDep?'<button class="btn ghost sm" data-act="delAssign" data-id="'+x.id+'" style="color:var(--danger)">إلغاء</button>':'')+'</div>';
+  });
+  h += '</div></div>';
+  return h;
+}
+
+function viewAssign(){
+  var h = pageHd("التكليفات", "توزيع المعلمين على الفصول والمواد",
+    '<button class="btn" data-act="assignNew">+ تكليف جديد</button>'+impBtn("assign",{},"استيراد من إكسيل"));
+  if(!DB.assign.length){
+    return h+'<div class="card"><div class="bd"><div class="empty"><div class="big">⇄</div><b>مفيش تكليفات لسه</b>'+
+      '<p>التكليف بيربط معلم بفصل ومادة. أول ما تعمله، المعلم يشوف الفصل ده في «فصولي» ويقدر يسجّل الغياب ويرصد الدرجات.</p>'+
+      '<button class="btn" data-act="assignNew">+ أول تكليف</button>'+impBtn("assign",{},"استيراد من إكسيل")+'</div></div></div>';
+  }
+  var byT = {};
+  DB.assign.forEach(function(a){ (byT[a.teacherId]=byT[a.teacherId]||[]).push(a); });
+  h += '<div class="card"><div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>المعلم</th><th>الفصل</th><th>المادة</th><th>الصف</th><th>الطلاب</th><th></th></tr></thead><tbody>';
+  Object.keys(byT).forEach(function(tid){
+    byT[tid].forEach(function(a,i){
+      var c = classById(a.classId);
+      h += '<tr><td>'+(i===0?'<b style="font-weight:600">'+esc(teacherName(tid))+'</b>':'')+'</td>'+
+        '<td>'+esc(className(a.classId))+'</td><td>'+esc(subjName(a.subjectId))+'</td>'+
+        '<td><small>'+(c?esc(levelName(c.level)):"—")+'</small></td>'+
+        '<td class="num">'+(c?studentsOf(c.id).length:0)+'</td>'+
+        '<td><button class="btn ghost sm" data-act="delAssign" data-id="'+a.id+'" style="color:var(--danger)">إلغاء</button></td></tr>';
+    });
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+/* ============================================================
+   الجداول والغياب والكشوف والإعدادات ولوحة المدير
+   ============================================================ */
+
+/* ---------- جدول الحصص ---------- */
+function schedCell(classId, day, period){
+  for(var i=0;i<DB.schedule.length;i++){
+    var s = DB.schedule[i];
+    if(s.classId===classId && s.day===day && s.period===period) return s;
+  }
+  return null;
+}
+function teacherBusy(teacherId, day, period, ignoreId){
+  for(var i=0;i<DB.schedule.length;i++){
+    var s = DB.schedule[i];
+    if(s.id===ignoreId) continue;
+    if(s.teacherId===teacherId && s.day===day && s.period===period) return s;
+  }
+  return null;
+}
+function viewSchedule(){
+  var isDep = UI.user.role==="deputy" || UI.user.role==="admin";
+  var cid = UI.filters.schedCls || (DB.classes[0]&&DB.classes[0].id);
+  var h = pageHd("جداول الحصص", isDep?"اضغط على أي خانة عشان تحط أو تغيّر الحصة":"عرض جدول الفصل");
+  if(!DB.classes.length) return h+'<div class="card"><div class="bd"><div class="empty"><b>مفيش فصول</b><p>أنشئ الفصول أولًا من شاشة الفصول.</p></div></div></div>';
+
+  h += '<div class="chips noprint">';
+  DB.classes.slice().sort(function(a,b){ return a.level-b.level||sortAr(a.name,b.name); }).forEach(function(c){
+    h += '<button class="'+(c.id===cid?"on":"")+'" data-act="schedCls" data-id="'+c.id+'">'+esc(c.name)+'</button>';
+  });
+  h += '</div>';
+  h += printHd("جدول حصص "+className(cid));
+  h += '<div class="card"><div class="hd"><h3>'+esc(className(cid))+'</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button>'+
+    (isDep? impBtn("schedule",{classId:cid},"استيراد جدول")+
+      '<button class="btn ghost sm noprint" data-act="clearSched" data-id="'+cid+'" style="margin-right:6px;color:var(--danger)">تفريغ الجدول</button>':'')+
+    '</div><div class="bd"><div class="tbl-wrap"><table class="sched"><thead><tr><th>اليوم</th>';
+  for(var p=1;p<=PERIODS;p++) h += '<th>الحصة '+p+'</th>';
+  h += '</tr></thead><tbody>';
+  DAYS.forEach(function(dn, di){
+    h += '<tr><th style="min-width:56px">'+esc(dn)+'</th>';
+    for(var p=1;p<=PERIODS;p++){
+      var s = schedCell(cid, di, p);
+      var clk = isDep? ' data-act="editSched" data-cid="'+cid+'" data-day="'+di+'" data-p="'+p+'" style="cursor:pointer"' : '';
+      if(s) h += '<td class="has"'+clk+'><b>'+esc(subjName(s.subjectId))+'</b><small>'+esc(teacherName(s.teacherId))+'</small></td>';
+      else  h += '<td class="free"'+clk+'>'+(isDep?"+":"—")+'</td>';
+    }
+    h += '</tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+
+/* ---------- الغياب والإنذارات ---------- */
+function viewAbsence(){
+  var rows = [];
+  DB.students.forEach(function(s){
+    if(s.status==="left") return;
+    var st = attendStats(s.id, s.classId);
+    if(st.days===0 && st.abs===0) { rows.push({s:s, st:st, a:absState(0)}); return; }
+    rows.push({s:s, st:st, a:absState(st.abs)});
+  });
+  rows.sort(function(x,y){ return y.st.abs - x.st.abs || sortAr(x.s.name,y.s.name); });
+  var only = UI.filters.absOnly;
+  var shown = only ? rows.filter(function(r){ return r.a.lvl>0; }) : rows;
+
+  var c1 = rows.filter(function(r){ return r.a.lvl===1; }).length;
+  var c2 = rows.filter(function(r){ return r.a.lvl===2; }).length;
+  var c3 = rows.filter(function(r){ return r.a.lvl===3; }).length;
+
+  var h = pageHd("متابعة الغياب والإنذارات", "حدود الإنذار: "+DB.absRules.warn1+" / "+DB.absRules.warn2+" / "+DB.absRules.danger+" يوم — قابلة للتعديل من الإعدادات");
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("إنذار أول", c1, "طالب", c1?"acc-g":"")+
+    stat("إنذار ثانٍ", c2, "طالب", c2?"acc-b":"")+
+    stat("خطر الحرمان", c3, "طالب", c3?"acc-b":"")+
+    stat("نسبة حضور المدرسة", schoolAttendRate()+"%", "من بداية العام","acc")+
+  '</div>';
+  h += '<div class="chips noprint">'+
+    '<button class="'+(only?"":"on")+'" data-act="absAll">كل الطلاب</button>'+
+    '<button class="'+(only?"on":"")+'" data-act="absWarn">اللي عليهم إنذارات فقط</button></div>';
+  h += printHd("كشف متابعة الغياب والإنذارات");
+  h += '<div class="card"><div class="hd"><h3>'+shown.length+' طالب</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة الكشف</button></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>م</th><th>الاسم</th><th>الفصل</th><th>أيام مرصودة</th><th>غياب</th><th>بعذر</th><th>تأخير</th><th>نسبة الحضور</th><th>الحالة</th></tr></thead><tbody>';
+  if(!shown.length) h += '<tr><td colspan="9"><div class="empty"><b>'+(only?"مفيش طالب عليه إنذار":"مفيش بيانات غياب")+'</b><p>'+(only?"الحمد لله، كل الطلاب تحت حد الإنذار.":"المعلمون بيسجّلوا الغياب من شاشة فصولهم.")+'</p></div></td></tr>';
+  shown.forEach(function(r,i){
+    h += '<tr data-act="openStudent" data-id="'+r.s.id+'" style="cursor:pointer"><td class="rownum">'+(i+1)+'</td>'+
+      '<td><b style="font-weight:600">'+esc(r.s.name)+'</b></td><td>'+esc(className(r.s.classId))+'</td>'+
+      '<td class="num">'+r.st.days+'</td><td class="num"><b>'+r.st.abs+'</b></td><td class="num">'+r.st.exc+'</td>'+
+      '<td class="num">'+r.st.late+'</td><td class="num">'+r.st.rate+'%</td>'+
+      '<td><span class="tag '+r.a.c+'">'+r.a.t+'</span></td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+function schoolAttendRate(){
+  var tot=0, pres=0;
+  for(var k in DB.attend){ var r=DB.attend[k]; for(var s in r){ tot++; if(r[s]!=="A") pres++; } }
+  return tot? Math.round(pres/tot*1000)/10 : 100;
+}
+
+/* ---------- الكشوف ---------- */
+function viewReports(){
+  var h = pageHd("الكشوف والتقارير", "اختر الكشف، وبعدها اطبعه أو احفظه PDF من نافذة الطباعة");
+  var items = [
+    ["repClass","كشف درجات فصل","كل طلاب الفصل × كل المواد، بالمجاميع والتقديرات"],
+    ["repAtt","كشف غياب فصل بالتفصيل","يوم بيوم لكل طالب خلال شهر محدد"],
+    ["repWarn","كشوف الإنذارات","الطلاب اللي تخطّوا حد الغياب، جاهزة لولي الأمر"],
+    ["repEmpty","كشف حضور فارغ","للطباعة والتوقيع اليدوي داخل الفصل"],
+    ["repTeachers","توزيع المعلمين","كل معلم وفصوله ومواده وعدد حصصه"]
+  ];
+  h += '<div class="card"><div class="bd flush">';
+  items.forEach(function(it){
+    h += '<button class="list-item" data-act="'+it[0]+'"><span class="av">⎙</span>'+
+      '<span class="tx"><b>'+esc(it[1])+'</b><small>'+esc(it[2])+'</small></span><span class="chev">‹</span></button>';
+  });
+  h += '</div></div>';
+  if(UI.sub && UI.sub.report) h += UI.sub.report;
+  return h;
+}
+
+/* ---------- لوحة المدير ---------- */
+function viewDash(){
+  var studs = DB.students.filter(function(s){ return s.status!=="left"; });
+  var warn = 0, danger = 0;
+  studs.forEach(function(s){
+    var a = absState(attendStats(s.id,s.classId).abs);
+    if(a.lvl>=3) danger++; else if(a.lvl>=1) warn++;
+  });
+  var h = pageHd("لوحة المدير", DB.meta.school+" — "+DB.meta.year+" — الفصل الدراسي "+(DB.meta.term===1?"الأول":"الثاني"));
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("الطلاب", studs.length, "مقيَّد","acc")+
+    stat("الفصول", DB.classes.length, "فصل","")+
+    stat("المعلمون", DB.teachers.length, DB.assign.length+" تكليف","")+
+    stat("نسبة الحضور", schoolAttendRate()+"%", "من بداية العام", schoolAttendRate()>=90?"acc":"acc-g")+
+    stat("إنذارات غياب", warn, "طالب", warn?"acc-g":"")+
+    stat("خطر الحرمان", danger, "طالب", danger?"acc-b":"")+
+  '</div>';
+
+  /* توزيع الطلاب على الأنظمة */
+  var gen=0, bac=0;
+  studs.forEach(function(s){ var c=classById(s.classId); if(!c) return; if(c.system==="bac") bac++; else gen++; });
+  h += '<div class="card"><div class="hd"><h3>توزيع الطلاب على الأنظمة</h3></div><div class="bd">'+
+    bar("الثانوية العامة", gen, studs.length, "var(--ink-2)")+
+    bar("البكالوريا المصرية", bac, studs.length, "var(--seal)")+
+    '</div></div>';
+
+  /* أداء الفصول */
+  var rows = DB.classes.map(function(c){
+    return {c:c, n:studsCount(c.id), rate:classAttendRate(c.id), avg:classAvg(c.id)};
+  }).sort(function(a,b){ return b.rate-a.rate; });
+  h += '<div class="card"><div class="hd"><h3>مؤشرات الفصول</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>الفصل</th><th>الصف</th><th>النظام</th><th>الطلاب</th><th>نسبة الحضور</th><th>متوسط الدرجات</th></tr></thead><tbody>';
+  if(!rows.length) h += '<tr><td colspan="6"><div class="empty"><b>مفيش فصول</b></div></td></tr>';
+  rows.forEach(function(r){
+    h += '<tr><td><b style="font-weight:600">'+esc(r.c.name)+'</b></td><td><small>'+esc(levelName(r.c.level))+'</small></td>'+
+      '<td><small>'+esc(systemName(r.c.system))+'</small></td><td class="num">'+r.n+'</td>'+
+      '<td class="num">'+r.rate+'%</td><td class="num">'+(r.avg===null?"—":r.avg+"%")+'</td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+function studsCount(cid){ return studentsOf(cid).length; }
+function classAvg(cid){
+  var subs = DB.subjects.filter(function(s){ return s.classId===cid && s.counted; });
+  var studs = studentsOf(cid), sum=0, n=0;
+  studs.forEach(function(st){
+    subs.forEach(function(su){
+      var t = termTotal(st.id, su.id, DB.meta.term);
+      if(t){ sum += t.got/(t.of||100)*100; n++; }
+    });
+  });
+  return n? Math.round(sum/n*10)/10 : null;
+}
+function bar(label, v, total, color){
+  var p = total? Math.round(v/total*100) : 0;
+  return '<div style="margin-bottom:11px"><div style="display:flex;font-size:12.5px;margin-bottom:4px">'+
+    '<span style="flex:1;font-weight:600">'+esc(label)+'</span><span style="color:var(--muted)">'+v+' طالب · '+p+'%</span></div>'+
+    '<div style="height:9px;background:var(--line-2);border-radius:99px;overflow:hidden">'+
+    '<div style="height:100%;width:'+p+'%;background:'+color+';border-radius:99px"></div></div></div>';
+}
+
+/* ---------- الإعدادات ---------- */
+function viewSettings(){
+  var m = DB.meta, w = DB.weights, r = DB.absRules;
+  var sum = w.fin+w.m1+w.m2+w.beh+w.note+w.weekly;
+  var h = pageHd("الإعدادات", "بيانات المدرسة وتوزيع الدرجات ولائحة الغياب والحسابات");
+
+  h += '<div class="card"><div class="hd"><h3>بيانات المدرسة</h3></div><div class="bd">'+
+    '<div class="grid2">'+
+    fld("المدرسة","st_school",m.school)+fld("الإدارة التعليمية","st_edara",m.edara)+
+    fld("المديرية","st_moderia",m.moderia)+fld("العام الدراسي","st_year",m.year)+
+    '</div><label class="f"><span>الفصل الدراسي الحالي</span><select id="st_term">'+
+    '<option value="1"'+(m.term===1?" selected":"")+'>الفصل الدراسي الأول</option>'+
+    '<option value="2"'+(m.term===2?" selected":"")+'>الفصل الدراسي الثاني</option></select></label>'+
+    '<button class="btn" data-act="saveMeta">حفظ بيانات المدرسة</button></div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>توزيع درجات المادة — الثانوية العامة</h3></div><div class="bd">'+
+    '<div class="note warn">ده بيتطبّق على <b>الصف الأول الثانوي</b> (بالنظامين) و<b>الثاني والثالث الثانوية العامة</b> فقط. '+
+    'فصول البكالوريا في الصفين الثاني والثالث ليها نظام تاني بالكامل في البطاقة اللي تحت.</div>'+
+    '<div class="note">التوزيع المعتمد من الوزارة: '+
+    '<b>٣٠٪</b> امتحان نهاية الفصل، <b>١٥٪</b> اختبار الشهر الأول، <b>١٥٪</b> اختبار الشهر الثاني، '+
+    '<b>١٠٪</b> السلوك والمواظبة، <b>١٥٪</b> كشكول الحصة والواجب، <b>١٥٪</b> التقييم الأسبوعي. '+
+    'عدّلها لو الوزارة غيّرت التوزيع.</div>'+
+    '<div class="grid3">'+
+    fldn("امتحان نهاية الفصل %","w_fin",w.fin)+fldn("اختبار الشهر الأول %","w_m1",w.m1)+
+    fldn("اختبار الشهر الثاني %","w_m2",w.m2)+fldn("السلوك والمواظبة %","w_beh",w.beh)+
+    fldn("كشكول الحصة والواجب %","w_note",w.note)+fldn("التقييم الأسبوعي %","w_weekly",w.weekly)+
+    '</div>'+
+    '<div class="note '+(sum===100?"":"bad")+'">المجموع الحالي: <b>'+sum+'%</b>'+(sum===100?" — مضبوط.":" — لازم يساوي ١٠٠٪.")+'</div>'+
+    '<button class="btn" data-act="saveWeights">حفظ التوزيع</button></div></div>';
+
+  var b = DB.bac;
+  h += '<div class="card"><div class="hd"><h3>نظام البكالوريا المصرية (٢ و ٣ ثانوي)</h3></div><div class="bd">'+
+    '<div class="note">قرار الوزارة: <b>مفيش أعمال سنة</b> في البكالوريا. الاختبارات الشهرية والتقييمات الأسبوعية '+
+    'شرط لدخول امتحان نهاية العام (٥٠٪ منها)، والمجموع تراكمي على العامين من ٦٠٠ درجة — '+
+    '٤٠٠ من الصف الثاني (٤ مواد) و٢٠٠ من الصف الثالث (مادتان). التربية الدينية نجاح ورسوب خارج المجموع.</div>'+
+    '<div class="grid3">'+
+    fldn("درجة اختبار الشهر الأول","b_m1",b.m1Max)+fldn("درجة اختبار الشهر الثاني","b_m2",b.m2Max)+
+    fldn("حد الدخول للامتحان %","b_pp",b.passPct)+fldn("مجموع الشهادة","b_tg",b.target)+
+    '</div><button class="btn" data-act="saveBac">حفظ إعدادات البكالوريا</button></div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>لائحة الغياب والإنذارات</h3></div><div class="bd">'+
+    '<div class="grid3">'+
+    fldn("إنذار أول بعد (يوم)","r_w1",r.warn1)+fldn("إنذار ثانٍ بعد (يوم)","r_w2",r.warn2)+
+    fldn("خطر الحرمان بعد (يوم)","r_dg",r.danger)+
+    '</div><button class="btn" data-act="saveRules">حفظ اللائحة</button></div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>حسابات الدخول</h3>'+
+    '<button class="btn ghost sm" data-act="addUser">+ حساب</button></div><div class="bd flush">';
+  DB.users.forEach(function(u){
+    h += '<div class="list-item"><span class="av">'+esc(ROLES[u.role]?ROLES[u.role].av:"؟")+'</span>'+
+      '<span class="tx"><b>'+esc(u.name)+'</b><small>'+esc(ROLES[u.role]?ROLES[u.role].name:u.role)+' · الرقم السري '+esc(u.pin)+'</small></span>'+
+      '<button class="btn ghost sm" data-act="editUser" data-id="'+u.id+'">تعديل</button></div>';
+  });
+  h += '</div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>النسخ الاحتياطي</h3></div><div class="bd">'+
+    '<div class="note '+(STORAGE_OK?"":"bad")+'">'+(STORAGE_OK
+      ? 'البيانات محفوظة على الجهاز ده تلقائيًا. خد نسخة احتياطية كل فترة — لو مسحت بيانات المتصفح هتضيع.'
+      : '<b>تحذير:</b> المتصفح مانع الحفظ التلقائي. انسخ النسخة الاحتياطية كنص قبل ما تقفل الصفحة.')+'</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn ghost" data-act="backupText">نسخ البيانات كنص</button>'+
+    '<button class="btn ghost" data-act="backupFile">تنزيل ملف نسخة</button>'+
+    '<button class="btn ghost" data-act="restore">استعادة نسخة</button>'+
+    '<button class="btn ghost" data-act="wipe" style="color:var(--danger)">مسح كل البيانات</button>'+
+    '</div><div class="note" style="margin:11px 0 0">عندك دلوقتي: '+DB.students.length+' طالب · '+
+    DB.classes.length+' فصل · '+DB.teachers.length+' معلم · '+Object.keys(DB.attend).length+' يوم حضور مرصود</div></div></div>';
+  return h;
+}
+function fld(label,id,val){ return '<label class="f"><span>'+esc(label)+'</span><input type="text" id="'+id+'" value="'+esc(val)+'"></label>'; }
+function fldn(label,id,val){ return '<label class="f"><span>'+esc(label)+'</span><input type="number" id="'+id+'" value="'+esc(val)+'" min="0"></label>'; }
+
+/* ============================================================
+   شاشات المعـلم
+   ============================================================ */
+function myTeacherId(){ return UI.user.teacherId || null; }
+
+function viewMyClasses(){
+  var tid = myTeacherId();
+  var a = tid ? assignsOfTeacher(tid) : [];
+  var h = pageHd("فصولي", a.length? a.length+" تكليف مسند لك" : "");
+  if(!a.length){
+    return h+'<div class="card"><div class="bd"><div class="empty"><div class="big">▦</div><b>مفيش فصول مسندة لك</b>'+
+      '<p>وكيل شئون الطلاب هو اللي بيسند الفصول والمواد. كلّمه يضيف تكليفاتك وهتظهر هنا فورًا.</p></div></div></div>';
+  }
+  h += '<div class="card"><div class="bd flush">';
+  a.forEach(function(x){
+    var c = classById(x.classId);
+    if(!c) return;
+    var n = studentsOf(c.id).length;
+    var k = attKey(c.id, today());
+    var done = DB.attend[k] ? Object.keys(DB.attend[k]).length : 0;
+    h += '<button class="list-item" data-act="openTeachClass" data-id="'+x.id+'">'+
+      '<span class="av">'+esc(c.name.replace(/[^\u0621-\u064A0-9]/g,"").slice(0,2)||"ف")+'</span>'+
+      '<span class="tx"><b>'+esc(c.name)+' — '+esc(subjName(x.subjectId))+'</b>'+
+      '<small>'+esc(levelName(c.level))+' · '+n+' طالب · '+
+      (done? '<span style="color:var(--seal)">غياب النهارده مسجّل ✓</span>' : '<span style="color:var(--danger)">غياب النهارده لسه</span>')+'</small></span>'+
+      '<span class="chev">‹</span></button>';
+  });
+  h += '</div></div>';
+  return h;
+}
+
+function viewTeachClass(assignId){
+  var a = byId(DB.assign, assignId);
+  if(!a) return '<div class="empty"><b>التكليف مش موجود</b></div>';
+  var c = classById(a.classId), su = subjById(a.subjectId);
+  if(!c || !su) return '<div class="empty"><b>الفصل أو المادة اتحذفت</b></div>';
+  var tab = (UI.sub && UI.sub.t) || "att";
+
+  var h = backBtn("فصولي");
+  h += '<div class="card"><div class="hd"><div style="flex:1"><span class="eyebrow">'+esc(levelName(c.level))+' · '+esc(systemName(c.system))+'</span>'+
+    '<h3 style="font-size:18px">'+esc(c.name)+' — '+esc(su.name)+'</h3>'+
+    '<small style="color:var(--muted)">'+studentsOf(c.id).length+' طالب · النهاية العظمى '+su.max+' · الفصل الدراسي '+(DB.meta.term===1?"الأول":"الثاني")+'</small></div></div></div>';
+
+  h += '<div class="chips noprint">'+
+    tabBtn("att","تسجيل الغياب",tab)+tabBtn("marks","أعمال السنة",tab)+
+    tabBtn("weekly","التقييم الأسبوعي",tab)+tabBtn("beh","السلوك",tab)+tabBtn("rep","كشف الفصل",tab)+'</div>';
+
+  if(tab==="att")    h += tabAttendance(a, c);
+  if(tab==="marks")  h += tabMarks(a, c, su);
+  if(tab==="weekly") h += tabWeekly(a, c, su);
+  if(tab==="beh")    h += tabBehavior(a, c);
+  if(tab==="rep")    h += tabClassReport(a, c, su);
+  return h;
+}
+function tabBtn(id,label,cur){ return '<button class="'+(cur===id?"on":"")+'" data-act="tclsTab" data-t="'+id+'">'+esc(label)+'</button>'; }
+
+/* --- تبويب الغياب --- */
+function tabAttendance(a, c){
+  var date = (UI.sub && UI.sub.date) || today();
+  var k = attKey(c.id, date);
+  var rec = DB.attend[k] || {};
+  var studs = studentsOf(c.id);
+  var dw = dayOfWeek(date);
+  var h = '';
+  h += '<div class="card noprint"><div class="bd">'+
+    '<div class="grid2"><label class="f"><span>تاريخ اليوم</span><input type="date" id="attDate" value="'+esc(date)+'"></label>'+
+    '<div style="align-self:end;padding-bottom:10px"><div style="font-size:12px;color:var(--muted)">اليوم</div>'+
+    '<div style="font-weight:700">'+esc(dw>=0&&dw<6?DAYS[dw]:"الجمعة")+'</div></div></div>'+
+    '<div style="display:flex;gap:7px;flex-wrap:wrap">'+
+    '<button class="btn ghost sm" data-act="attAll" data-v="P">تحديد الكل حاضر</button>'+
+    '<button class="btn ghost sm" data-act="attAll" data-v="A">تحديد الكل غائب</button>'+
+    '<button class="btn ghost sm" data-act="attClear" style="color:var(--danger)">مسح اليوم</button>'+
+    impBtn("attendance",{classId:c.id},"استيراد غياب من إكسيل")+'</div></div></div>';
+
+  if(!studs.length) return h+'<div class="card"><div class="bd"><div class="empty"><b>الفصل فاضي</b><p>الوكيل لسه ما سكّنش طلاب على الفصل ده.</p></div></div></div>';
+
+  var cP=0,cA=0,cE=0,cL=0;
+  studs.forEach(function(s){ var v=rec[s.id]; if(v==="A")cA++;else if(v==="E")cE++;else if(v==="L")cL++;else if(v==="P")cP++; });
+  h += '<div class="stats" style="margin-bottom:11px">'+
+    stat("حاضر",cP,"طالب","acc")+stat("غائب",cA,"بدون عذر",cA?"acc-b":"")+
+    stat("بعذر",cE,"طالب","")+stat("متأخر",cL,"طالب","")+'</div>';
+
+  h += '<div class="card"><div class="hd"><h3>كشف الحضور — '+esc(fmtDate(date))+'</h3>'+
+    '<small style="color:var(--muted)">ح = حاضر · غ = غائب · ع = بعذر · ت = متأخر</small></div><div class="bd flush">';
+  function segBtn(sid,val,label,cur){
+    return '<button class="'+(cur===val?"on":"")+'" data-v="'+val+'" data-act="attSet" data-sid="'+sid+'">'+label+'</button>';
+  }
+  studs.forEach(function(s,i){
+    var v = rec[s.id];
+    h += '<div class="att-row"><span class="no">'+(i+1)+'</span><span class="nm">'+esc(s.name)+'</span>'+
+      '<span class="seg">'+
+      segBtn(s.id,"P","ح",v)+segBtn(s.id,"A","غ",v)+segBtn(s.id,"E","ع",v)+segBtn(s.id,"L","ت",v)+
+      '</span></div>';
+  });
+  h += '</div></div>';
+  h += '<div class="note noprint">الحفظ بيتم تلقائي مع كل ضغطة. الطالب اللي مش متحدد بيتحسب مش مرصود.</div>';
+  return h;
+}
+
+/* --- تبويب أعمال السنة --- */
+function tabMarks(a, c, su){
+  if(isBacCert(c)) return tabMarksBac(a, c, su);
+  var studs = studentsOf(c.id), w = DB.weights;
+  var h = '<div class="note noprint">التوزيع المعتمد: امتحان نهاية الفصل '+w.fin+'٪ · شهر أول '+w.m1+'٪ · شهر ثانٍ '+w.m2+
+    '٪ · سلوك ومواظبة '+w.beh+'٪ · كشكول وواجب '+w.note+'٪ · تقييم أسبوعي '+w.weekly+'٪. '+
+    'اكتب كل درجة من نسبتها (مثلًا الشهر الأول من '+w.m1+').</div>';
+  h += '<div class="card"><div class="hd"><h3>رصد الدرجات — '+esc(su.name)+'</h3>'+
+    '<button class="btn ghost sm noprint" data-act="autoBeh">حساب السلوك من الحضور</button>'+
+    impBtn("marks",{classId:c.id,subjectId:su.id},"استيراد درجات")+
+    '<button class="btn ghost sm noprint" data-act="print" style="margin-right:6px">⎙</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>م</th><th>الاسم</th><th>شهر ١<br><small>/'+w.m1+'</small></th><th>شهر ٢<br><small>/'+w.m2+'</small></th>'+
+    '<th>كشكول<br><small>/'+w.note+'</small></th><th>سلوك<br><small>/'+w.beh+'</small></th>'+
+    '<th>أسبوعي<br><small>/'+w.weekly+'</small></th><th>نهاية الفصل<br><small>/'+w.fin+'</small></th>'+
+    '<th>المجموع<br><small>/'+su.max+'</small></th></tr></thead><tbody>';
+  if(!studs.length) h += '<tr><td colspan="9"><div class="empty"><b>الفصل فاضي</b></div></td></tr>';
+  studs.forEach(function(s,i){
+    var m = getMark(s.id, su.id, DB.meta.term);
+    var ws = weeklyScore(m);
+    var t = termTotal(s.id, su.id, DB.meta.term);
+    h += '<tr><td class="rownum">'+(i+1)+'</td><td style="min-width:130px"><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
+      mkCell(s.id,su.id,"m1",m.m1,w.m1)+mkCell(s.id,su.id,"m2",m.m2,w.m2)+
+      mkCell(s.id,su.id,"note",m.note,w.note)+mkCell(s.id,su.id,"beh",m.beh,w.beh)+
+      '<td class="num" style="color:var(--muted)">'+(ws===null?"—":(Math.round(ws*w.weekly)/100))+'</td>'+
+      mkCell(s.id,su.id,"fin",m.fin,w.fin)+
+      '<td class="num"><b>'+(t? t.final : "—")+'</b></td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+/* --- رصد درجات البكالوريا: سكور شرط الدخول + امتحان نهاية العام --- */
+function tabMarksBac(a, c, su){
+  var studs = studentsOf(c.id), b = DB.bac;
+  var h = '<div class="note noprint"><b>نظام البكالوريا المصرية:</b> مفيش أعمال سنة في الصفين الثاني والثالث. '+
+    'الاختبارات الشهرية والتقييمات الأسبوعية <b>شرط لدخول امتحان نهاية العام</b> — لازم الطالب يجيب '+b.passPct+
+    '٪ منها — ومش بتتضاف للمجموع. الدرجة الوحيدة اللي بتدخل المجموع التراكمي هي <b>امتحان نهاية العام</b> من '+su.max+'.</div>';
+
+  var allowed=0, denied=0, done=0;
+  studs.forEach(function(s){
+    var st = bacStatus(getMark(s.id, su.id, DB.meta.term));
+    if(st.ok===true) allowed++; else if(st.ok===false) denied++;
+    var t = termTotal(s.id, su.id, DB.meta.term); if(t) done++;
+  });
+  h += '<div class="stats" style="margin-bottom:11px">'+
+    stat("مسموح لهم", allowed, "بدخول الامتحان","acc")+
+    stat("دون الحد", denied, "أقل من "+b.passPct+"٪", denied?"acc-b":"")+
+    stat("رُصد لهم الامتحان", done, "من "+studs.length,"")+
+    stat("حد الدخول", b.passPct+"%", "من التقييمات","acc-g")+'</div>';
+
+  h += '<div class="card"><div class="hd"><h3>رصد '+esc(su.name)+'</h3>'+
+    impBtn("marks",{classId:c.id,subjectId:su.id},"استيراد درجات")+
+    '<button class="btn ghost sm noprint" data-act="print" style="margin-right:6px">⎙</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>م</th><th>الاسم</th><th>شهر ١<br><small>/'+b.m1Max+'</small></th><th>شهر ٢<br><small>/'+b.m2Max+'</small></th>'+
+    '<th>أسبوعي</th><th>سكور الدخول</th><th>الحالة</th>'+
+    '<th>امتحان نهاية العام<br><small>/'+su.max+'</small></th></tr></thead><tbody>';
+  if(!studs.length) h += '<tr><td colspan="8"><div class="empty"><b>الفصل فاضي</b></div></td></tr>';
+  studs.forEach(function(s,i){
+    var m = getMark(s.id, su.id, DB.meta.term);
+    var ws = weeklyScore(m), st = bacStatus(m);
+    h += '<tr><td class="rownum">'+(i+1)+'</td><td style="min-width:130px"><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
+      mkCell(s.id,su.id,"m1",m.m1,b.m1Max)+mkCell(s.id,su.id,"m2",m.m2,b.m2Max)+
+      '<td class="num" style="color:var(--muted)">'+(ws===null?"—":Math.round(ws)+"%")+'</td>'+
+      '<td class="num"><b>'+(st.pct===null?"—":st.pct+"%")+'</b></td>'+
+      '<td>'+(st.ok===null?'—':'<span class="tag '+st.c+'">'+(st.ok?"مسموح":"غير مسموح")+'</span>')+'</td>'+
+      mkCell(s.id,su.id,"fin",m.fin,su.max)+'</tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+function mkCell(sid, suid, f, v, max){
+  var over = (v!==null && v!==undefined && v!=="" && num(v)>max);
+  return '<td><input class="mk'+(over?" over":"")+'" type="number" step="0.25" min="0" max="'+max+'" value="'+
+    (v===null||v===undefined?"":esc(v))+'" data-act="mkSet" data-sid="'+sid+'" data-suid="'+suid+'" data-f="'+f+'"></td>';
+}
+
+/* --- تبويب التقييم الأسبوعي --- */
+function tabWeekly(a, c, su){
+  var studs = studentsOf(c.id);
+  var h = '<div class="note noprint">'+WEEKLY_COUNT+' تقييمًا أسبوعيًا في الفصل الدراسي، كل تقييم من <b>٢٠</b> درجة. '+
+    'حسب تعليمات الوزارة: يُرصد <b>غ</b> للطالب الغائب ولا يوضع صفر، ومفيش إعادة للتقييم لو غاب عنه — '+
+    'اكتب حرف <b>غ</b> في الخانة.</div>';
+  h += '<div class="card"><div class="hd"><h3>التقييمات الأسبوعية — '+esc(su.name)+'</h3>'+
+    impBtn("weekly",{classId:c.id,subjectId:su.id},"استيراد تقييمات")+
+    '<button class="btn ghost sm noprint" data-act="print">⎙</button></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>م</th><th>الاسم</th>';
+  for(var i=1;i<=WEEKLY_COUNT;i++) h += '<th>'+i+'</th>';
+  h += '<th>النسبة</th></tr></thead><tbody>';
+  if(!studs.length) h += '<tr><td colspan="'+(WEEKLY_COUNT+3)+'"><div class="empty"><b>الفصل فاضي</b></div></td></tr>';
+  studs.forEach(function(s,i){
+    var m = getMark(s.id, su.id, DB.meta.term);
+    h += '<tr><td class="rownum">'+(i+1)+'</td><td style="min-width:120px"><b style="font-weight:600">'+esc(s.name)+'</b></td>';
+    for(var j=0;j<WEEKLY_COUNT;j++){
+      var v = m.w[j];
+      h += '<td><input class="mk g" type="text" inputmode="decimal" value="'+(v==null?"":esc(v))+'" '+
+        'data-act="wkSet" data-sid="'+s.id+'" data-suid="'+su.id+'" data-i="'+j+'"></td>';
+    }
+    var ws = weeklyScore(m);
+    h += '<td class="num"><b>'+(ws===null?"—":Math.round(ws)+"%")+'</b></td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+
+/* --- تبويب السلوك --- */
+function tabBehavior(a, c){
+  var studs = studentsOf(c.id);
+  var list = DB.behavior.filter(function(b){
+    return studs.some(function(s){ return s.id===b.studentId; });
+  }).sort(function(x,y){ return y.date<x.date?-1:1; });
+  var h = '<div class="card"><div class="hd"><h3>ملاحظات السلوك</h3>'+
+    '<button class="btn ghost sm noprint" data-act="addBehaviorCls" data-id="'+c.id+'">+ ملاحظة</button></div><div class="bd flush">';
+  if(!list.length) h += '<div class="empty"><b>مفيش ملاحظات</b><p>سجّل الملاحظات الإيجابية والسلبية — بتظهر في ملف الطالب عند الوكيل والمدير.</p></div>';
+  list.forEach(function(b){
+    var s = studentById(b.studentId);
+    h += '<div class="list-item"><span class="tag '+(b.type==="سلبي"?"bad":b.type==="إيجابي"?"ok":"info")+'">'+esc(b.type)+'</span>'+
+      '<span class="tx"><b>'+esc(s?s.name:"—")+'</b><small>'+esc(b.note)+' · '+fmtDate(b.date)+'</small></span>'+
+      '<button class="btn ghost sm" data-act="delBehavior" data-id="'+b.id+'" style="color:var(--danger)">حذف</button></div>';
+  });
+  h += '</div></div>';
+  return h;
+}
+
+/* --- تبويب كشف الفصل --- */
+function tabClassReport(a, c, su){
+  var studs = studentsOf(c.id);
+  var rows = studs.map(function(s){
+    var t = termTotal(s.id, su.id, DB.meta.term);
+    var st = attendStats(s.id, c.id);
+    return {s:s, t:t, p: t? t.got/(t.of||100)*100 : null, st:st};
+  }).sort(function(x,y){ return (y.p===null?-1:y.p) - (x.p===null?-1:x.p); });
+  var withP = rows.filter(function(r){ return r.p!==null; });
+  var avg = withP.length ? Math.round(withP.reduce(function(a,r){return a+r.p;},0)/withP.length*10)/10 : null;
+  var weak = withP.filter(function(r){ return r.p<50; });
+
+  var h = printHd("كشف درجات "+c.name+" — "+su.name);
+  if(isBacCert(c)) h += '<div class="note noprint">الترتيب محسوب على درجة امتحان نهاية العام — هي الدرجة الوحيدة الداخلة لمجموع البكالوريا.</div>';
+  h += '<div class="stats" style="margin-bottom:11px">'+
+    stat("متوسط الفصل", avg===null?"—":avg+"%", "في "+su.name, "acc")+
+    stat("عدد المرصود لهم", withP.length, "من "+studs.length,"")+
+    stat("أقل من ٥٠٪", weak.length, "طالب", weak.length?"acc-b":"")+
+    stat("نسبة حضور الفصل", classAttendRate(c.id)+"%","","acc-g")+'</div>';
+  h += '<div class="card"><div class="hd"><h3>الترتيب حسب الدرجة</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>الترتيب</th><th>الاسم</th><th>المجموع</th><th>النسبة</th><th>التقدير</th><th>الغياب</th></tr></thead><tbody>';
+  if(!rows.length) h += '<tr><td colspan="6"><div class="empty"><b>الفصل فاضي</b></div></td></tr>';
+  rows.forEach(function(r,i){
+    var g = r.p===null? null : gradeLabel(r.p);
+    h += '<tr><td class="rownum">'+(i+1)+'</td><td><b style="font-weight:600">'+esc(r.s.name)+'</b></td>'+
+      '<td class="num">'+(r.t? r.t.final+" / "+r.t.max : "—")+'</td>'+
+      '<td class="num">'+(r.p===null?"—":Math.round(r.p*10)/10+"%")+'</td>'+
+      '<td>'+(g?'<span class="tag '+g.c+'">'+g.t+'</span>':'—')+'</td>'+
+      '<td class="num">'+r.st.abs+'</td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+
+/* --- جدول المعلم --- */
+function viewMySchedule(){
+  var tid = myTeacherId();
+  var h = pageHd("جدولي الأسبوعي", "الحصص المسجّلة باسمك في جداول الفصول");
+  h += printHd("جدول حصص "+(tid?teacherName(tid):""));
+  var count = DB.schedule.filter(function(s){ return s.teacherId===tid; }).length;
+  h += '<div class="card"><div class="hd"><h3>'+count+' حصة أسبوعيًا</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div><div class="bd"><div class="tbl-wrap">'+
+    '<table class="sched"><thead><tr><th>اليوم</th>';
+  for(var p=1;p<=PERIODS;p++) h += '<th>'+p+'</th>';
+  h += '</tr></thead><tbody>';
+  DAYS.forEach(function(dn,di){
+    h += '<tr><th style="min-width:52px">'+esc(dn)+'</th>';
+    for(var p=1;p<=PERIODS;p++){
+      var found=null;
+      for(var i=0;i<DB.schedule.length;i++){
+        var s=DB.schedule[i];
+        if(s.teacherId===tid && s.day===di && s.period===p){ found=s; break; }
+      }
+      if(found) h += '<td class="has"><b>'+esc(className(found.classId))+'</b><small>'+esc(subjName(found.subjectId))+'</small></td>';
+      else h += '<td class="free">—</td>';
+    }
+    h += '</tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  if(!count) h += '<div class="note">لسه مفيش حصص في جدولك. وكيل شئون الطلاب بيبني الجداول من شاشة «الجداول».</div>';
+  return h;
+}
+
+function viewMyStudents(){
+  var tid = myTeacherId();
+  var cls = {};
+  assignsOfTeacher(tid).forEach(function(a){ cls[a.classId]=1; });
+  var studs = DB.students.filter(function(s){ return cls[s.classId] && s.status!=="left"; })
+    .sort(function(a,b){ return sortAr(a.name,b.name); });
+  var h = pageHd("طلابي", studs.length+" طالب في فصولك");
+  h += '<div class="card"><div class="bd flush">';
+  if(!studs.length) h += '<div class="empty"><b>مفيش طلاب</b><p>هيظهروا هنا أول ما تتسند لك فصول وتتسكّن عليها طلاب.</p></div>';
+  studs.forEach(function(s){
+    var st = attendStats(s.id, s.classId), a = absState(st.abs);
+    h += '<button class="list-item" data-act="openStudent" data-id="'+s.id+'">'+
+      '<span class="av">'+esc(initials(s.name))+'</span>'+
+      '<span class="tx"><b>'+esc(s.name)+'</b><small>'+esc(className(s.classId))+' · غياب '+st.abs+' يوم</small></span>'+
+      (a.lvl?'<span class="tag '+a.c+'">'+a.t+'</span>':'')+'<span class="chev">‹</span></button>';
+  });
+  h += '</div></div>';
+  return h;
+}
+
+/* ============================================================
+   شاشات الطالب / ولي الأمر
+   ============================================================ */
+function myStudent(){ return UI.user.studentId ? studentById(UI.user.studentId) : null; }
+
+function viewMyGrades(){
+  var s = myStudent();
+  if(!s) return '<div class="card"><div class="bd"><div class="empty"><b>الحساب مش مربوط بطالب</b><p>وكيل شئون الطلاب بيربط الحساب بملف الطالب من الإعدادات.</p></div></div></div>';
+  UI.sub = {student:s.id};
+  return viewStudent(s.id).replace(backBtn("كل الطلاب"), "");
+}
+function viewMyAttend(){
+  var s = myStudent();
+  if(!s) return '<div class="card"><div class="bd"><div class="empty"><b>الحساب مش مربوط بطالب</b></div></div></div>';
+  var st = attendStats(s.id, s.classId), a = absState(st.abs);
+  var h = pageHd("حضوري", esc(s.name)+" — "+esc(className(s.classId)));
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("أيام مرصودة", st.days, "يوم","acc")+stat("غياب بدون عذر", st.abs, a.t, a.lvl?"acc-b":"")+
+    stat("غياب بعذر", st.exc, "يوم","")+stat("نسبة الحضور", st.rate+"%","","acc-g")+'</div>';
+  if(a.lvl>0) h += '<div class="note '+(a.lvl>=2?"bad":"warn")+'"><b>'+a.t+'</b> — الغياب وصل '+st.abs+' يوم. حد الحرمان '+DB.absRules.danger+' يوم.</div>';
+  var days = [];
+  for(var k in DB.attend){
+    if(k.indexOf(s.classId+"|")!==0) continue;
+    var v = DB.attend[k][s.id];
+    if(!v) continue;
+    days.push({d:k.split("|")[1], v:v});
+  }
+  days.sort(function(x,y){ return y.d<x.d?-1:1; });
+  h += '<div class="card"><div class="hd"><h3>سجل الأيام</h3></div><div class="bd flush">';
+  if(!days.length) h += '<div class="empty"><b>مفيش أيام مرصودة</b></div>';
+  days.slice(0,60).forEach(function(x){
+    var cl = x.v==="P"?"ok":x.v==="A"?"bad":x.v==="E"?"warn":"info";
+    h += '<div class="list-item"><span class="tx"><b style="font-weight:500">'+fmtDate(x.d)+'</b></span>'+
+      '<span class="tag '+cl+'">'+ATT[x.v]+'</span></div>';
+  });
+  h += '</div></div>';
+  return h;
+}
+function viewStudentSched(){
+  var s = myStudent();
+  if(!s) return '<div class="card"><div class="bd"><div class="empty"><b>الحساب مش مربوط بطالب</b></div></div></div>';
+  UI.filters.schedCls = s.classId;
+  return viewSchedule();
+}
+/* ============================================================
+   النوافذ والإجراءات والكشوف والتشغيل
+   ============================================================ */
+
+var OV = null, MODAL = null;
+function openModal(html){
+  MODAL.innerHTML = html;
+  OV.classList.add("on");
+  var f = MODAL.querySelector("input,select,textarea");
+  if(f) setTimeout(function(){ f.focus(); },60);
+}
+function closeModal(){ OV.classList.remove("on"); MODAL.innerHTML=""; }
+function mHead(title){ return '<div class="mh"><h3>'+esc(title)+'</h3><button class="x" data-act="close">×</button></div>'; }
+function mFoot(okLabel, okAct, extra){
+  return '<div class="mf">'+(extra||'')+'<button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="'+okAct+'">'+esc(okLabel)+'</button></div>';
+}
+function val(id){ var e=document.getElementById(id); return e? e.value : ""; }
+
+/* ---------- نافذة الطالب ---------- */
+function modalStudent(id, presetCls){
+  var s = id? studentById(id) : null;
+  var clsOpts = DB.classes.slice().sort(function(a,b){return a.level-b.level||sortAr(a.name,b.name);})
+    .map(function(c){
+      var sel = (s? s.classId===c.id : presetCls===c.id) ? " selected":"";
+      return '<option value="'+c.id+'"'+sel+'>'+esc(c.name)+' — '+esc(levelName(c.level))+'</option>';
+    }).join("");
+  openModal(mHead(s?"تعديل بيانات الطالب":"إضافة طالب")+
+    '<div class="mb">'+
+    '<label class="f"><span>اسم الطالب رباعي</span><input type="text" id="s_name" value="'+esc(s?s.name:"")+'" placeholder="مثال: أحمد محمد علي حسن"></label>'+
+    '<label class="f"><span>الفصل</span><select id="s_cls"><option value="">— بدون تسكين —</option>'+clsOpts+'</select></label>'+
+    '<div class="grid2">'+
+    '<label class="f"><span>رقم الجلوس</span><input type="text" id="s_seat" inputmode="numeric" value="'+esc(s?(s.seat||""):"")+'"></label>'+
+    '<label class="f"><span>الرقم القومي</span><input type="text" id="s_nat" inputmode="numeric" value="'+esc(s?(s.natId||""):"")+'"></label>'+
+    '<label class="f"><span>اسم ولي الأمر</span><input type="text" id="s_g" value="'+esc(s?(s.guardian||""):"")+'"></label>'+
+    '<label class="f"><span>هاتف ولي الأمر</span><input type="tel" id="s_ph" inputmode="tel" value="'+esc(s?(s.phone||""):"")+'"></label>'+
+    '<label class="f"><span>الديانة</span><select id="s_rel">'+
+      opt(["مسلم","مسيحي"], s?s.religion:"")+'</select></label>'+
+    '<label class="f"><span>تاريخ القيد</span><input type="date" id="s_j" value="'+esc(s?(s.joined||""):today())+'"></label>'+
+    '<label class="f"><span>مجموع الصف الثاني (بكالوريا)</span><input type="number" id="s_bp" step="0.5" min="0" '+
+      'value="'+esc(s?(s.bacPrev||""):"")+'" placeholder="من 400 — لطلاب ٣ ثانوي بكالوريا"></label>'+
+    '</div>'+
+    '<label class="f"><span>ملاحظات</span><textarea id="s_notes">'+esc(s?(s.notes||""):"")+'</textarea></label>'+
+    (s?'<button class="btn ghost block" data-act="delStudent" data-id="'+s.id+'" style="color:var(--danger)">حذف الطالب نهائيًا</button>':'')+
+    '</div>'+mFoot("حفظ","saveStudent"));
+  MODAL.dataset.sid = s? s.id : "";
+}
+function opt(list, sel){
+  return '<option value=""></option>'+list.map(function(x){ return '<option'+(sel===x?" selected":"")+'>'+esc(x)+'</option>'; }).join("");
+}
+function saveStudent(){
+  var id = MODAL.dataset.sid;
+  var name = val("s_name").trim();
+  if(!name){ toast("اكتب اسم الطالب"); return; }
+  var s = id? studentById(id) : null;
+  if(!s){ s = {id:uid("s"), status:"active"}; DB.students.push(s); }
+  s.name = name;
+  s.classId = val("s_cls");
+  s.seat = val("s_seat").trim();
+  s.natId = val("s_nat").trim();
+  s.guardian = val("s_g").trim();
+  s.phone = val("s_ph").trim();
+  s.religion = val("s_rel");
+  s.joined = val("s_j");
+  s.notes = val("s_notes").trim();
+  var bp = val("s_bp").trim();
+  if(bp==="") delete s.bacPrev; else s.bacPrev = num(bp,0);
+  save(); closeModal(); render(); toast("اتحفظ");
+}
+function modalImport(presetCls){
+  var clsOpts = DB.classes.map(function(c){
+    return '<option value="'+c.id+'"'+(presetCls===c.id?" selected":"")+'>'+esc(c.name)+'</option>';
+  }).join("");
+  openModal(mHead("استيراد قائمة طلاب")+
+    '<div class="mb"><div class="note">الصق الأسماء — كل طالب في سطر. تقدر تكتب رقم الجلوس بعد الاسم مفصول بفاصلة:<br>'+
+    '<b>أحمد محمد علي حسن, 12345</b></div>'+
+    '<label class="f"><span>الفصل اللي هيتسكّنوا عليه</span><select id="i_cls">'+
+      (clsOpts||'<option value="">— مفيش فصول —</option>')+'</select></label>'+
+    '<label class="f"><span>الأسماء</span><textarea id="i_txt" style="min-height:180px" placeholder="اسم الطالب الأول&#10;اسم الطالب الثاني, 1002&#10;..."></textarea></label>'+
+    '</div>'+mFoot("استيراد","doImport"));
+}
+function doImport(){
+  var cid = val("i_cls");
+  var txt = val("i_txt");
+  var lines = txt.split(/\r?\n/).map(function(x){ return x.trim(); }).filter(Boolean);
+  if(!lines.length){ toast("مفيش أسماء"); return; }
+  var n=0;
+  lines.forEach(function(L){
+    var parts = L.split(/[,،\t]/);
+    var name = (parts[0]||"").trim();
+    if(!name) return;
+    var seat = (parts[1]||"").trim();
+    DB.students.push({id:uid("s"), name:name, classId:cid, seat:seat, status:"active", joined:today()});
+    n++;
+  });
+  save(); closeModal(); render(); toast("اتضاف "+n+" طالب");
+}
+
+/* ---------- نافذة الفصل ---------- */
+function modalClass(id){
+  var c = id? classById(id) : null;
+  var sysSel = SYSTEMS.map(function(x){ return '<option value="'+x.id+'"'+((c?c.system:"gen")===x.id?" selected":"")+'>'+esc(x.name)+'</option>'; }).join("");
+  var lvlSel = LEVELS.map(function(l){ return '<option value="'+l.id+'"'+((c?c.level:1)===l.id?" selected":"")+'>'+esc(l.name)+'</option>'; }).join("");
+  openModal(mHead(c?"تعديل الفصل":"إضافة فصل")+
+    '<div class="mb">'+
+    '<label class="f"><span>اسم الفصل</span><input type="text" id="c_name" value="'+esc(c?c.name:"")+'" placeholder="مثال: ٢ / ٣ علمي علوم"></label>'+
+    '<div class="grid2">'+
+    '<label class="f"><span>الصف</span><select id="c_lvl">'+lvlSel+'</select></label>'+
+    '<label class="f"><span>النظام</span><select id="c_sys">'+sysSel+'</select></label>'+
+    '</div>'+
+    '<label class="f"><span>المسار / الشعبة</span><select id="c_trk"></select></label>'+
+    '<label class="f"><span>رقم الحجرة (اختياري)</span><input type="text" id="c_room" value="'+esc(c?(c.room||""):"")+'"></label>'+
+    (c?'<button class="btn ghost block" data-act="delClass" data-id="'+c.id+'" style="color:var(--danger)">حذف الفصل</button>':'')+
+    '</div>'+mFoot("حفظ","saveClass"));
+  MODAL.dataset.cid = c? c.id : "";
+  fillTracks(c? c.track : "");
+  document.getElementById("c_lvl").onchange = function(){ fillTracks(""); };
+  document.getElementById("c_sys").onchange = function(){ fillTracks(""); };
+}
+function fillTracks(sel){
+  var lvl = val("c_lvl"), sys = val("c_sys");
+  var list = tracksFor(sys, lvl);
+  document.getElementById("c_trk").innerHTML = list.map(function(t){
+    return '<option value="'+t.id+'"'+(sel===t.id?" selected":"")+'>'+esc(t.name)+'</option>';
+  }).join("");
+}
+function saveClass(){
+  var id = MODAL.dataset.cid;
+  var name = val("c_name").trim();
+  if(!name){ toast("اكتب اسم الفصل"); return; }
+  var c = id? classById(id) : null;
+  if(!c){ c = {id:uid("c")}; DB.classes.push(c); }
+  c.name = name; c.level = Number(val("c_lvl")); c.system = val("c_sys");
+  c.track = val("c_trk"); c.room = val("c_room").trim();
+  save(); closeModal(); render(); toast("اتحفظ");
+}
+function autoSubjects(cid){
+  var c = classById(cid);
+  if(!c) return;
+  var plan = planFor(c.level, c.system, c.track);
+  if(!plan.length){ toast("مفيش خطة مواد للتخصص ده — ضيف المواد يدويًا"); return; }
+  var added=0;
+  plan.forEach(function(p){
+    var exists = DB.subjects.some(function(s){ return s.classId===cid && s.name===p[0]; });
+    if(exists) return;
+    DB.subjects.push({id:uid("sb"), classId:cid, name:p[0], max:p[1], counted:!!p[2]});
+    added++;
+  });
+  save(); render(); toast(added? "اتضاف "+added+" مادة" : "المواد موجودة بالفعل");
+}
+function modalSubject(cid){
+  openModal(mHead("إضافة مادة")+
+    '<div class="mb">'+
+    '<label class="f"><span>اسم المادة</span><input type="text" id="sb_name" placeholder="مثال: الكيمياء"></label>'+
+    '<div class="grid2">'+
+    '<label class="f"><span>النهاية العظمى</span><input type="number" id="sb_max" value="100" min="1"></label>'+
+    '<label class="f"><span>داخل المجموع؟</span><select id="sb_c"><option value="1">داخل المجموع</option><option value="0">خارج المجموع</option></select></label>'+
+    '</div></div>'+mFoot("إضافة","saveSubject"));
+  MODAL.dataset.cid = cid;
+}
+function saveSubject(){
+  var cid = MODAL.dataset.cid;
+  var name = val("sb_name").trim();
+  if(!name){ toast("اكتب اسم المادة"); return; }
+  DB.subjects.push({id:uid("sb"), classId:cid, name:name, max:num(val("sb_max"),100), counted: val("sb_c")==="1"});
+  save(); closeModal(); render(); toast("اتضافت");
+}
+
+/* ---------- نافذة المعلم ---------- */
+function modalTeacher(id){
+  var t = id? teacherById(id) : null;
+  openModal(mHead(t?"تعديل المعلم":"إضافة معلم")+
+    '<div class="mb">'+
+    '<label class="f"><span>اسم المعلم</span><input type="text" id="t_name" value="'+esc(t?t.name:"")+'"></label>'+
+    '<div class="grid2">'+
+    '<label class="f"><span>التخصص</span><input type="text" id="t_sub" value="'+esc(t?(t.subject||""):"")+'" placeholder="مثال: لغة عربية"></label>'+
+    '<label class="f"><span>الهاتف</span><input type="tel" id="t_ph" value="'+esc(t?(t.phone||""):"")+'"></label>'+
+    '</div>'+
+    '<label class="f"><span>الرقم السري لحساب الدخول</span><input type="text" id="t_pin" inputmode="numeric" value="'+esc(t?(userOfTeacher(t.id)||{}).pin||"":"1234")+'"></label>'+
+    (t?'<button class="btn ghost block" data-act="delTeacher" data-id="'+t.id+'" style="color:var(--danger)">حذف المعلم</button>':'')+
+    '</div>'+mFoot("حفظ","saveTeacher"));
+  MODAL.dataset.tid = t? t.id : "";
+}
+function userOfTeacher(tid){ return DB.users.filter(function(u){ return u.teacherId===tid; })[0]; }
+function saveTeacher(){
+  var id = MODAL.dataset.tid;
+  var name = val("t_name").trim();
+  if(!name){ toast("اكتب اسم المعلم"); return; }
+  var t = id? teacherById(id) : null;
+  if(!t){ t = {id:uid("t")}; DB.teachers.push(t); }
+  t.name = name; t.subject = val("t_sub").trim(); t.phone = val("t_ph").trim();
+  var u = userOfTeacher(t.id);
+  if(!u){ u = {id:uid("u"), role:"teacher", teacherId:t.id}; DB.users.push(u); }
+  u.name = name; u.pin = val("t_pin").trim() || "1234";
+  save(); closeModal(); render(); toast("اتحفظ");
+}
+
+/* ---------- نافذة التكليف ---------- */
+function modalAssign(preTeacher, preClass, preSubj){
+  var tOpts = DB.teachers.slice().sort(function(a,b){return sortAr(a.name,b.name);})
+    .map(function(t){ return '<option value="'+t.id+'"'+(preTeacher===t.id?" selected":"")+'>'+esc(t.name)+(t.subject?' — '+esc(t.subject):'')+'</option>'; }).join("");
+  var cOpts = DB.classes.slice().sort(function(a,b){return a.level-b.level||sortAr(a.name,b.name);})
+    .map(function(c){ return '<option value="'+c.id+'"'+(preClass===c.id?" selected":"")+'>'+esc(c.name)+'</option>'; }).join("");
+  if(!tOpts){ toast("ضيف معلمين الأول"); return; }
+  if(!cOpts){ toast("أنشئ فصول الأول"); return; }
+  openModal(mHead("إسناد فصل ومادة لمعلم")+
+    '<div class="mb">'+
+    '<label class="f"><span>المعلم</span><select id="a_t">'+tOpts+'</select></label>'+
+    '<label class="f"><span>الفصل</span><select id="a_c">'+cOpts+'</select></label>'+
+    '<label class="f"><span>المادة</span><select id="a_s"></select></label>'+
+    '<div class="note">المعلم هيشوف الفصل ده في «فصولي» ويقدر يسجّل الغياب ويرصد أعمال السنة والتقييم الأسبوعي للمادة دي بس.</div>'+
+    '</div>'+mFoot("إسناد","saveAssign"));
+  fillSubj(preSubj);
+  document.getElementById("a_c").onchange = function(){ fillSubj(""); };
+}
+function fillSubj(sel){
+  var cid = val("a_c");
+  var subs = DB.subjects.filter(function(s){ return s.classId===cid; });
+  var el = document.getElementById("a_s");
+  if(!subs.length){
+    el.innerHTML = '<option value="">— الفصل ده مفيهوش مواد —</option>';
+    return;
+  }
+  el.innerHTML = subs.map(function(s){ return '<option value="'+s.id+'"'+(sel===s.id?" selected":"")+'>'+esc(s.name)+'</option>'; }).join("");
+}
+function saveAssign(){
+  var t = val("a_t"), c = val("a_c"), s = val("a_s");
+  if(!t||!c||!s){ toast("اختار المعلم والفصل والمادة"); return; }
+  var dup = DB.assign.some(function(a){ return a.classId===c && a.subjectId===s; });
+  if(dup){ toast("المادة دي مسندة لمعلم تاني في الفصل ده"); return; }
+  DB.assign.push({id:uid("a"), teacherId:t, classId:c, subjectId:s});
+  save(); closeModal(); render(); toast("اتسند");
+}
+
+/* ---------- نافذة الحصة ---------- */
+function modalSched(cid, day, period){
+  var cur = schedCell(cid, day, period);
+  var subs = DB.subjects.filter(function(s){ return s.classId===cid; });
+  if(!subs.length){ toast("ضيف مواد للفصل الأول"); return; }
+  openModal(mHead(DAYS[day]+" — الحصة "+period)+
+    '<div class="mb">'+
+    '<label class="f"><span>المادة</span><select id="h_s"><option value="">— حصة فاضية —</option>'+
+      subs.map(function(s){ return '<option value="'+s.id+'"'+(cur&&cur.subjectId===s.id?" selected":"")+'>'+esc(s.name)+'</option>'; }).join("")+
+    '</select></label>'+
+    '<label class="f"><span>المعلم</span><select id="h_t"></select></label>'+
+    '<div id="h_warn"></div></div>'+mFoot("حفظ","saveSched"));
+  MODAL.dataset.cid = cid; MODAL.dataset.day = day; MODAL.dataset.p = period;
+  fillSchedTeacher(cur? cur.teacherId : "");
+  document.getElementById("h_s").onchange = function(){ fillSchedTeacher(""); };
+  document.getElementById("h_t").onchange = checkBusy;
+}
+function fillSchedTeacher(sel){
+  var cid = MODAL.dataset.cid, sid = val("h_s");
+  var el = document.getElementById("h_t");
+  var a = DB.assign.filter(function(x){ return x.classId===cid && x.subjectId===sid; });
+  var list = a.length ? a.map(function(x){ return teacherById(x.teacherId); }).filter(Boolean) : DB.teachers;
+  if(!sel && a.length) sel = a[0].teacherId;
+  el.innerHTML = '<option value="">— بدون معلم —</option>'+list.map(function(t){
+    return '<option value="'+t.id+'"'+(sel===t.id?" selected":"")+'>'+esc(t.name)+'</option>';
+  }).join("");
+  checkBusy();
+}
+function checkBusy(){
+  var el = document.getElementById("h_warn");
+  if(!el) return;
+  var tid = val("h_t"), day = Number(MODAL.dataset.day), p = Number(MODAL.dataset.p);
+  var cur = schedCell(MODAL.dataset.cid, day, p);
+  if(!tid){ el.innerHTML=""; return; }
+  var b = teacherBusy(tid, day, p, cur? cur.id : null);
+  el.innerHTML = b
+    ? '<div class="note bad"><b>تعارض:</b> المعلم عنده حصة في نفس الوقت مع '+esc(className(b.classId))+' — '+esc(subjName(b.subjectId))+'.</div>'
+    : '';
+}
+function saveSched(){
+  var cid = MODAL.dataset.cid, day = Number(MODAL.dataset.day), p = Number(MODAL.dataset.p);
+  var sid = val("h_s"), tid = val("h_t");
+  var cur = schedCell(cid, day, p);
+  if(!sid){
+    if(cur) DB.schedule = DB.schedule.filter(function(x){ return x.id!==cur.id; });
+  }else if(cur){
+    cur.subjectId = sid; cur.teacherId = tid;
+  }else{
+    DB.schedule.push({id:uid("h"), classId:cid, day:day, period:p, subjectId:sid, teacherId:tid});
+  }
+  save(); closeModal(); render(); toast("اتحفظ");
+}
+
+/* ---------- نافذة السلوك ---------- */
+function modalBehavior(studentId, classId){
+  var studs = studentId ? [studentById(studentId)] : studentsOf(classId);
+  var opts = studs.filter(Boolean).map(function(s){ return '<option value="'+s.id+'">'+esc(s.name)+'</option>'; }).join("");
+  openModal(mHead("تسجيل ملاحظة سلوك")+
+    '<div class="mb">'+
+    '<label class="f"><span>الطالب</span><select id="b_s">'+opts+'</select></label>'+
+    '<label class="f"><span>النوع</span><select id="b_t"><option>إيجابي</option><option>ملاحظة</option><option>سلبي</option></select></label>'+
+    '<label class="f"><span>التاريخ</span><input type="date" id="b_d" value="'+today()+'"></label>'+
+    '<label class="f"><span>الملاحظة</span><textarea id="b_n" placeholder="مثال: مشاركة متميزة في الحصة"></textarea></label>'+
+    '</div>'+mFoot("تسجيل","saveBehavior"));
+}
+function saveBehavior(){
+  var sid = val("b_s"), n = val("b_n").trim();
+  if(!sid || !n){ toast("اختار الطالب واكتب الملاحظة"); return; }
+  DB.behavior.push({id:uid("b"), studentId:sid, type:val("b_t"), date:val("b_d"), note:n, by:UI.user.name});
+  save(); closeModal(); render(); toast("اتسجّلت");
+}
+
+/* ---------- نافذة الحساب ---------- */
+function modalUser(id){
+  var u = id? byId(DB.users,id) : null;
+  var roleOpts = Object.keys(ROLES).map(function(r){
+    return '<option value="'+r+'"'+((u?u.role:"admin")===r?" selected":"")+'>'+esc(ROLES[r].name)+'</option>';
+  }).join("");
+  var stOpts = DB.students.slice().sort(function(a,b){return sortAr(a.name,b.name);})
+    .map(function(s){ return '<option value="'+s.id+'"'+(u&&u.studentId===s.id?" selected":"")+'>'+esc(s.name)+'</option>'; }).join("");
+  openModal(mHead(u?"تعديل الحساب":"حساب جديد")+
+    '<div class="mb">'+
+    '<label class="f"><span>الاسم</span><input type="text" id="u_n" value="'+esc(u?u.name:"")+'"></label>'+
+    '<div class="grid2">'+
+    '<label class="f"><span>الصلاحية</span><select id="u_r">'+roleOpts+'</select></label>'+
+    '<label class="f"><span>الرقم السري</span><input type="text" id="u_p" inputmode="numeric" value="'+esc(u?u.pin:"")+'"></label>'+
+    '</div>'+
+    '<label class="f"><span>مربوط بملف طالب (لحساب طالب / ولي أمر)</span><select id="u_s"><option value="">— لا يوجد —</option>'+stOpts+'</select></label>'+
+    (u && DB.users.length>1 ?'<button class="btn ghost block" data-act="delUser" data-id="'+u.id+'" style="color:var(--danger)">حذف الحساب</button>':'')+
+    '</div>'+mFoot("حفظ","saveUser"));
+  MODAL.dataset.uid = u? u.id : "";
+}
+function saveUser(){
+  var id = MODAL.dataset.uid;
+  var n = val("u_n").trim(), p = val("u_p").trim();
+  if(!n||!p){ toast("اكتب الاسم والرقم السري"); return; }
+  var u = id? byId(DB.users,id) : null;
+  if(!u){ u = {id:uid("u")}; DB.users.push(u); }
+  u.name=n; u.role=val("u_r"); u.pin=p;
+  var sid = val("u_s"); if(sid) u.studentId=sid; else delete u.studentId;
+  save(); closeModal(); render(); toast("اتحفظ");
+}
+
+/* ============================================================
+   الكشوف
+   ============================================================ */
+function askClass(cb, title){
+  if(!DB.classes.length){ toast("مفيش فصول"); return; }
+  var opts = DB.classes.slice().sort(function(a,b){return a.level-b.level||sortAr(a.name,b.name);})
+    .map(function(c){ return '<option value="'+c.id+'">'+esc(c.name)+'</option>'; }).join("");
+  openModal(mHead(title||"اختر الفصل")+
+    '<div class="mb"><label class="f"><span>الفصل</span><select id="rc">'+opts+'</select></label></div>'+
+    mFoot("عرض الكشف","runReport"));
+  askClass._cb = cb;
+}
+function runReport(){
+  var cid = val("rc");
+  closeModal();
+  if(askClass._cb) askClass._cb(cid);
+}
+function showReport(html){ UI.sub = {report:html}; render(); window.scrollTo(0,9999); }
+
+function repClass(cid){
+  var c = classById(cid);
+  var subs = DB.subjects.filter(function(s){ return s.classId===cid; });
+  var studs = studentsOf(cid);
+  var h = '<div style="margin-top:14px">'+printHd("كشف درجات "+c.name)+
+    '<div class="card"><div class="hd"><h3>كشف درجات '+esc(c.name)+'</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>م</th><th>الاسم</th>';
+  subs.forEach(function(s){ h += '<th>'+esc(s.name)+'<br><small>/'+s.max+'</small></th>'; });
+  h += '<th>المجموع</th><th>النسبة</th></tr></thead><tbody>';
+  studs.forEach(function(st,i){
+    var tot=0, of=0;
+    var cells = subs.map(function(su){
+      var t = termTotal(st.id, su.id, DB.meta.term);
+      if(t && su.counted){ tot += t.final; of += su.max; }
+      return '<td class="num">'+(t? t.final : "—")+'</td>';
+    }).join("");
+    h += '<tr><td class="rownum">'+(i+1)+'</td><td><b style="font-weight:600">'+esc(st.name)+'</b></td>'+cells+
+      '<td class="num"><b>'+(of? Math.round(tot*100)/100+" / "+of : "—")+'</b></td>'+
+      '<td class="num">'+(of? Math.round(tot/of*1000)/10+"%" : "—")+'</td></tr>';
+  });
+  if(!studs.length) h += '<tr><td colspan="'+(subs.length+4)+'"><div class="empty"><b>الفصل فاضي</b></div></td></tr>';
+  h += '</tbody></table></div></div></div></div>';
+  showReport(h);
+}
+function repAtt(cid){
+  var c = classById(cid);
+  var dates = [];
+  for(var k in DB.attend){ if(k.indexOf(cid+"|")===0) dates.push(k.split("|")[1]); }
+  dates.sort();
+  var studs = studentsOf(cid);
+  var h = '<div style="margin-top:14px">'+printHd("كشف الغياب التفصيلي — "+c.name)+
+    '<div class="card"><div class="hd"><h3>غياب '+esc(c.name)+' ('+dates.length+' يوم)</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>م</th><th>الاسم</th>';
+  dates.forEach(function(d){ h += '<th style="font-size:10px">'+d.slice(8)+'/'+d.slice(5,7)+'</th>'; });
+  h += '<th>غياب</th></tr></thead><tbody>';
+  studs.forEach(function(s,i){
+    var abs=0;
+    var cells = dates.map(function(d){
+      var v = (DB.attend[attKey(cid,d)]||{})[s.id];
+      if(v==="A") abs++;
+      var t = v==="P"?"·":v==="A"?"غ":v==="E"?"ع":v==="L"?"ت":"";
+      var col = v==="A"?"color:var(--danger);font-weight:700":v==="E"?"color:var(--warn)":"color:var(--muted)";
+      return '<td class="num" style="'+col+'">'+t+'</td>';
+    }).join("");
+    h += '<tr><td class="rownum">'+(i+1)+'</td><td>'+esc(s.name)+'</td>'+cells+'<td class="num"><b>'+abs+'</b></td></tr>';
+  });
+  if(!dates.length) h += '<tr><td colspan="3"><div class="empty"><b>مفيش أيام مرصودة للفصل ده</b></div></td></tr>';
+  h += '</tbody></table></div></div></div></div>';
+  showReport(h);
+}
+function repEmpty(cid){
+  var c = classById(cid);
+  var studs = studentsOf(cid);
+  var h = '<div style="margin-top:14px">'+printHd("كشف حضور — "+c.name)+
+    '<div class="card"><div class="hd"><h3>كشف حضور فارغ — '+esc(c.name)+'</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>م</th><th>الاسم</th>';
+  for(var d=1;d<=24;d++) h += '<th style="font-size:10px;width:22px">'+d+'</th>';
+  h += '</tr></thead><tbody>';
+  studs.forEach(function(s,i){
+    h += '<tr><td class="rownum">'+(i+1)+'</td><td>'+esc(s.name)+'</td>';
+    for(var d=1;d<=24;d++) h += '<td style="height:26px"></td>';
+    h += '</tr>';
+  });
+  h += '</tbody></table></div></div></div></div>';
+  showReport(h);
+}
+function repWarn(){
+  var rows = [];
+  DB.students.forEach(function(s){
+    if(s.status==="left") return;
+    var st = attendStats(s.id, s.classId), a = absState(st.abs);
+    if(a.lvl>0) rows.push({s:s, st:st, a:a});
+  });
+  rows.sort(function(x,y){ return y.st.abs-x.st.abs; });
+  var h = '<div style="margin-top:14px">'+printHd("كشوف الإنذارات لأولياء الأمور");
+  if(!rows.length){
+    h += '<div class="card"><div class="bd"><div class="empty"><b>مفيش إنذارات</b><p>كل الطلاب تحت حد '+DB.absRules.warn1+' أيام غياب.</p></div></div></div>';
+    return showReport(h+'</div>');
+  }
+  h += '<div class="card noprint"><div class="bd"><button class="btn" data-act="print">⎙ طباعة كل الإنذارات</button></div></div>';
+  rows.forEach(function(r){
+    h += '<div class="card" style="break-inside:avoid"><div class="bd">'+
+      '<div style="text-align:center;border-bottom:1px solid var(--line);padding-bottom:7px;margin-bottom:10px">'+
+      '<div style="font-size:11px;color:var(--muted)">'+esc(DB.meta.moderia)+' — '+esc(DB.meta.edara)+'</div>'+
+      '<div style="font-weight:700">'+esc(DB.meta.school)+'</div>'+
+      '<div style="font-weight:700;color:var(--danger)">'+esc(r.a.t)+' بسبب الغياب</div></div>'+
+      '<p style="margin:0 0 8px;font-size:13.5px">السيد ولي أمر الطالب / <b>'+esc(r.s.name)+'</b> — الفصل <b>'+esc(className(r.s.classId))+'</b></p>'+
+      '<p style="margin:0 0 8px;font-size:13.5px">نحيطكم علمًا بأن نجلكم تغيّب عن الدراسة <b>'+r.st.abs+'</b> يومًا بدون عذر '+
+      'من إجمالي <b>'+r.st.days+'</b> يومًا مرصودًا، بنسبة حضور <b>'+r.st.rate+'%</b>. '+
+      'وحيث إن لائحة المدرسة تقضي بالحرمان عند بلوغ <b>'+DB.absRules.danger+'</b> يومًا، '+
+      'نرجو سرعة الحضور لمقابلة وكيل شئون الطلاب.</p>'+
+      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-top:16px">'+
+      '<span>التاريخ: '+fmtDate(today())+'</span><span>وكيل شئون الطلاب: ....................</span>'+
+      '<span>مدير المدرسة: ....................</span></div></div></div>';
+  });
+  showReport(h+'</div>');
+}
+function repTeachers(){
+  var h = '<div style="margin-top:14px">'+printHd("توزيع المعلمين على الفصول")+
+    '<div class="card"><div class="hd"><h3>توزيع المعلمين</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div><div class="bd flush"><div class="tbl-wrap">'+
+    '<table class="tbl"><thead><tr><th>م</th><th>المعلم</th><th>التخصص</th><th>الفصول</th><th>المواد</th><th>عدد الحصص</th></tr></thead><tbody>';
+  DB.teachers.slice().sort(function(a,b){return sortAr(a.name,b.name);}).forEach(function(t,i){
+    var a = assignsOfTeacher(t.id);
+    var cls = {}, sub = {};
+    a.forEach(function(x){ cls[className(x.classId)]=1; sub[subjName(x.subjectId)]=1; });
+    var hrs = DB.schedule.filter(function(s){ return s.teacherId===t.id; }).length;
+    h += '<tr><td class="rownum">'+(i+1)+'</td><td><b style="font-weight:600">'+esc(t.name)+'</b></td>'+
+      '<td>'+esc(t.subject||"—")+'</td><td><small>'+esc(Object.keys(cls).join("، ")||"—")+'</small></td>'+
+      '<td><small>'+esc(Object.keys(sub).join("، ")||"—")+'</small></td><td class="num">'+hrs+'</td></tr>';
+  });
+  if(!DB.teachers.length) h += '<tr><td colspan="6"><div class="empty"><b>مفيش معلمين</b></div></td></tr>';
+  h += '</tbody></table></div></div></div></div>';
+  showReport(h);
+}
+
+/* ============================================================
+   النسخ الاحتياطي
+   ============================================================ */
+function backupText(){
+  openModal(mHead("النسخة الاحتياطية كنص")+
+    '<div class="mb"><div class="note">دي كل بيانات المدرسة في نص واحد. انسخه واحفظه عندك — تقدر ترجّعه من «استعادة نسخة».</div>'+
+    '<textarea id="bk" style="min-height:200px;font-size:11px;direction:ltr">'+esc(JSON.stringify(DB))+'</textarea></div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إغلاق</button><button class="btn" data-act="copyBk">نسخ</button></div>');
+}
+function copyBk(){
+  var t = document.getElementById("bk");
+  t.select(); t.setSelectionRange(0,999999);
+  try{ document.execCommand("copy"); toast("اتنسخ"); }catch(e){ toast("اختار النص وانسخه يدويًا"); }
+}
+function backupFile(){
+  try{
+    var blob = new Blob([JSON.stringify(DB,null,1)], {type:"application/json"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "نسخة-"+DB.meta.school.replace(/\s+/g,"-")+"-"+today()+".json";
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 400);
+    toast("اتنزّل الملف");
+  }catch(e){ toast("التنزيل مش متاح — استخدم «نسخ البيانات كنص»"); }
+}
+function restoreModal(){
+  openModal(mHead("استعادة نسخة")+
+    '<div class="mb"><div class="note bad"><b>تنبيه:</b> الاستعادة هتمسح البيانات الحالية وتحط مكانها النسخة.</div>'+
+    '<button class="btn ghost block" data-act="restoreFile" style="margin-bottom:10px">اختيار ملف نسخة</button>'+
+    '<label class="f"><span>أو الصق نص النسخة هنا</span><textarea id="rs" style="min-height:130px;direction:ltr"></textarea></label>'+
+    '</div>'+mFoot("استعادة","doRestore"));
+}
+function doRestore(){
+  var t = val("rs");
+  if(!restoreFromText(t)) return;
+  closeModal();
+}
+function restoreFromText(text){
+  var s = String(text||"").replace(/^\uFEFF/,"").trim();
+  if(!s){ toast("مفيش نص"); return false; }
+  var d;
+  try{ d = JSON.parse(s); }
+  catch(e){
+    var m = s.match(/\{[\s\S]*\}/);
+    try{ d = JSON.parse(m? m[0] : ""); }
+    catch(e2){ toast("النص مش نسخة صالحة"); return false; }
+  }
+  if(!d || !Array.isArray(d.students) || !Array.isArray(d.users)){ toast("النسخة ناقصة — مفيهاش طلاب أو حسابات"); return false; }
+  DB = Object.assign(blankDB(), d);
+  saveNow();
+  toast("اتسترجع "+DB.students.length+" طالب و "+DB.classes.length+" فصل");
+  logout();
+  return true;
+}
+function restoreFile(){
+  var inp = document.createElement("input");
+  inp.type="file"; inp.accept=".json,.txt,application/json,text/plain";
+  inp.style.cssText="position:fixed;left:-9999px";
+  document.body.appendChild(inp);
+  inp.addEventListener("change", function(){
+    var f = inp.files && inp.files[0];
+    if(!f){ inp.remove(); return; }
+    var r = new FileReader();
+    r.onerror = function(){ toast("مقدرتش أقرأ الملف — جرّب اللصق"); inp.remove(); };
+    r.onload = function(){ if(restoreFromText(r.result)) closeModal(); inp.remove(); };
+    r.readAsText(f,"utf-8");
+  });
+  inp.click();
+}
+function wipe(){
+  openModal(mHead("مسح كل البيانات")+
+    '<div class="mb"><div class="note bad">هتمسح كل الطلاب والفصول والمعلمين والدرجات والغياب. مفيش رجوع. '+
+    'خد نسخة احتياطية الأول لو مش متأكد.</div>'+
+    '<label class="f"><span>اكتب كلمة <b>مسح</b> للتأكيد</span><input type="text" id="wp"></label></div>'+
+    mFoot("مسح نهائي","doWipe"));
+}
+function doWipe(){
+  if(val("wp").trim()!=="مسح"){ toast("اكتب كلمة مسح بالظبط"); return; }
+  DB = seed(); saveNow(); closeModal(); logout(); toast("اتمسح كل حاجة");
+}
+
+/* ============================================================
+   الإجراءات
+   ============================================================ */
+var ACTS = {
+  tab: function(el){ UI.tab = el.dataset.tab; UI.sub=null; render(); },
+  back: function(){ back(); },
+  close: function(){ closeModal(); },
+  print: function(){ window.print(); },
+
+  openStudent: function(el){ UI.tab = (UI.user.role==="teacher"?"mystudents":"students"); UI.sub={student:el.dataset.id}; render(); },
+  addStudent: function(el){ modalStudent(null, el.dataset.cid); },
+  editStudent: function(el){ modalStudent(el.dataset.id); },
+  saveStudent: saveStudent,
+  delStudent: function(el){
+    if(!confirm("متأكد من حذف الطالب وكل درجاته وغيابه؟")) return;
+    var id = el.dataset.id;
+    DB.students = DB.students.filter(function(s){ return s.id!==id; });
+    DB.behavior = DB.behavior.filter(function(b){ return b.studentId!==id; });
+    for(var k in DB.marks) if(k.indexOf(id+"|")===0) delete DB.marks[k];
+    for(var a in DB.attend) if(DB.attend[a][id]) delete DB.attend[a][id];
+    save(); closeModal(); UI.sub=null; render(); toast("اتحذف");
+  },
+  importStudents: function(el){ modalImport(el.dataset.cid); },
+  doImport: doImport,
+
+  openClass: function(el){ UI.tab="classes"; UI.sub={cls:el.dataset.id}; render(); },
+  addClass: function(){ modalClass(null); },
+  editClass: function(el){ modalClass(el.dataset.id); },
+  saveClass: saveClass,
+  delClass: function(el){
+    if(!confirm("حذف الفصل؟ الطلاب هيفضلوا موجودين بس من غير تسكين.")) return;
+    var id = el.dataset.id;
+    DB.classes = DB.classes.filter(function(c){ return c.id!==id; });
+    DB.subjects = DB.subjects.filter(function(s){ return s.classId!==id; });
+    DB.assign = DB.assign.filter(function(a){ return a.classId!==id; });
+    DB.schedule = DB.schedule.filter(function(s){ return s.classId!==id; });
+    DB.students.forEach(function(s){ if(s.classId===id) s.classId=""; });
+    save(); closeModal(); UI.sub=null; render(); toast("اتحذف");
+  },
+  autoSubjects: function(el){ autoSubjects(el.dataset.id); },
+  addSubject: function(el){ modalSubject(el.dataset.id); },
+  saveSubject: saveSubject,
+  delSubject: function(el){
+    if(!confirm("حذف المادة ودرجاتها؟")) return;
+    var id = el.dataset.id;
+    DB.subjects = DB.subjects.filter(function(s){ return s.id!==id; });
+    DB.assign = DB.assign.filter(function(a){ return a.subjectId!==id; });
+    DB.schedule = DB.schedule.filter(function(s){ return s.subjectId!==id; });
+    save(); render(); toast("اتحذفت");
+  },
+  assignOne: function(el){ modalAssign(null, el.dataset.cid, el.dataset.sid); },
+
+  openTeacher: function(el){ UI.tab="teachers"; UI.sub={teacher:el.dataset.id}; render(); },
+  addTeacher: function(){ modalTeacher(null); },
+  editTeacher: function(el){ modalTeacher(el.dataset.id); },
+  saveTeacher: saveTeacher,
+  delTeacher: function(el){
+    if(!confirm("حذف المعلم وحسابه وتكليفاته؟")) return;
+    var id = el.dataset.id;
+    DB.teachers = DB.teachers.filter(function(t){ return t.id!==id; });
+    DB.users = DB.users.filter(function(u){ return u.teacherId!==id; });
+    DB.assign = DB.assign.filter(function(a){ return a.teacherId!==id; });
+    DB.schedule.forEach(function(s){ if(s.teacherId===id) s.teacherId=""; });
+    save(); closeModal(); UI.sub=null; render(); toast("اتحذف");
+  },
+  assignTo: function(el){ modalAssign(el.dataset.id); },
+  assignNew: function(){ modalAssign(); },
+  saveAssign: saveAssign,
+  delAssign: function(el){
+    var id = el.dataset.id;
+    DB.assign = DB.assign.filter(function(a){ return a.id!==id; });
+    save(); render(); toast("اتلغى");
+  },
+
+  schedCls: function(el){ UI.filters.schedCls = el.dataset.id; render(); },
+  editSched: function(el){ modalSched(el.dataset.cid, Number(el.dataset.day), Number(el.dataset.p)); },
+  saveSched: saveSched,
+  clearSched: function(el){
+    if(!confirm("تفريغ جدول الفصل كله؟")) return;
+    var id = el.dataset.id;
+    DB.schedule = DB.schedule.filter(function(s){ return s.classId!==id; });
+    save(); render(); toast("اتفرّغ");
+  },
+
+  absAll: function(){ UI.filters.absOnly=false; render(); },
+  absWarn: function(){ UI.filters.absOnly=true; render(); },
+
+  repClass: function(){ askClass(repClass, "كشف درجات فصل"); },
+  repAtt: function(){ askClass(repAtt, "كشف غياب فصل"); },
+  repEmpty: function(){ askClass(repEmpty, "كشف حضور فارغ"); },
+  repWarn: function(){ repWarn(); },
+  repTeachers: function(){ repTeachers(); },
+  runReport: runReport,
+
+  saveMeta: function(){
+    DB.meta.school = val("st_school").trim() || DB.meta.school;
+    DB.meta.edara = val("st_edara").trim();
+    DB.meta.moderia = val("st_moderia").trim();
+    DB.meta.year = val("st_year").trim();
+    DB.meta.term = Number(val("st_term"))===2?2:1;
+    saveNow();
+    document.getElementById("hdSchool").textContent = DB.meta.school;
+    render(); toast("اتحفظت بيانات المدرسة");
+  },
+  saveWeights: function(){
+    var w = {fin:num(val("w_fin")), m1:num(val("w_m1")), m2:num(val("w_m2")),
+             beh:num(val("w_beh")), note:num(val("w_note")), weekly:num(val("w_weekly"))};
+    var sum = w.fin+w.m1+w.m2+w.beh+w.note+w.weekly;
+    if(sum!==100){ toast("المجموع "+sum+"٪ — لازم يساوي ١٠٠٪"); return; }
+    DB.weights = w; saveNow(); render(); toast("اتحفظ التوزيع");
+  },
+  saveRules: function(){
+    DB.absRules.warn1 = num(val("r_w1"),5);
+    DB.absRules.warn2 = num(val("r_w2"),10);
+    DB.absRules.danger = num(val("r_dg"),15);
+    saveNow(); render(); toast("اتحفظت اللائحة");
+  },
+  saveBac: function(){
+    DB.bac.m1Max = num(val("b_m1"),50);
+    DB.bac.m2Max = num(val("b_m2"),50);
+    DB.bac.passPct = num(val("b_pp"),50);
+    DB.bac.target = num(val("b_tg"),600);
+    saveNow(); render(); toast("اتحفظت إعدادات البكالوريا");
+  },
+  addUser: function(){ modalUser(null); },
+  editUser: function(el){ modalUser(el.dataset.id); },
+  saveUser: saveUser,
+  delUser: function(el){
+    var id = el.dataset.id;
+    if(UI.user && UI.user.id===id){ toast("مش هينفع تحذف حسابك وأنت داخل بيه"); return; }
+    DB.users = DB.users.filter(function(u){ return u.id!==id; });
+    save(); closeModal(); render(); toast("اتحذف");
+  },
+
+  backupText: backupText, copyBk: copyBk, backupFile: backupFile,
+  restore: restoreModal, restoreFile: restoreFile, doRestore: doRestore,
+  wipe: wipe, doWipe: doWipe,
+
+  openTeachClass: function(el){ UI.sub={a:el.dataset.id, t:"att"}; render(); },
+  tclsTab: function(el){ UI.sub.t = el.dataset.t; render(); },
+  attSet: function(el){
+    var a = byId(DB.assign, UI.sub.a); if(!a) return;
+    var date = UI.sub.date || today();
+    var k = attKey(a.classId, date);
+    if(!DB.attend[k]) DB.attend[k] = {};
+    var sid = el.dataset.sid, v = el.dataset.v;
+    if(DB.attend[k][sid]===v) delete DB.attend[k][sid];
+    else DB.attend[k][sid] = v;
+    save();
+    var seg = el.parentNode;
+    Array.prototype.forEach.call(seg.children, function(b){ b.classList.remove("on"); });
+    if(DB.attend[k][sid]) el.classList.add("on");
+    refreshAttStats();
+  },
+  attAll: function(el){
+    var a = byId(DB.assign, UI.sub.a); if(!a) return;
+    var date = UI.sub.date || today();
+    var k = attKey(a.classId, date);
+    DB.attend[k] = {};
+    studentsOf(a.classId).forEach(function(s){ DB.attend[k][s.id] = el.dataset.v; });
+    save(); render(); toast("اتحدد الكل");
+  },
+  attClear: function(){
+    var a = byId(DB.assign, UI.sub.a); if(!a) return;
+    var k = attKey(a.classId, UI.sub.date || today());
+    delete DB.attend[k];
+    save(); render(); toast("اتمسح اليوم");
+  },
+  autoBeh: function(){
+    var a = byId(DB.assign, UI.sub.a); if(!a) return;
+    var n=0;
+    studentsOf(a.classId).forEach(function(s){
+      var v = autoBehavior(s.id, a.classId, DB.weights.beh);
+      if(v!==null){ getMark(s.id, a.subjectId, DB.meta.term).beh = v; n++; }
+    });
+    save(); render(); toast(n? "اتحسب السلوك لـ "+n+" طالب من الحضور" : "مفيش بيانات حضور مرصودة");
+  },
+
+  addBehavior: function(el){ modalBehavior(el.dataset.id); },
+  addBehaviorCls: function(el){ modalBehavior(null, el.dataset.id); },
+  saveBehavior: saveBehavior,
+  delBehavior: function(el){
+    var id = el.dataset.id;
+    DB.behavior = DB.behavior.filter(function(b){ return b.id!==id; });
+    save(); render(); toast("اتحذفت");
+  }
+};
+
+function refreshAttStats(){
+  var a = byId(DB.assign, UI.sub.a); if(!a) return;
+  var k = attKey(a.classId, UI.sub.date || today());
+  var rec = DB.attend[k] || {};
+  var c = {P:0,A:0,E:0,L:0};
+  studentsOf(a.classId).forEach(function(s){ if(rec[s.id]) c[rec[s.id]]++; });
+  var boxes = document.querySelectorAll("#view .stats .stat .v");
+  if(boxes.length>=4){
+    boxes[0].textContent=c.P; boxes[1].textContent=c.A;
+    boxes[2].textContent=c.E; boxes[3].textContent=c.L;
+  }
+}
+
+/* ---------- ربط الأحداث ---------- */
+function hookClicks(root){
+  root.addEventListener("click", function(e){
+    var el = e.target.closest("[data-act]");
+    if(!el) return;
+    var fn = ACTS[el.dataset.act];
+    if(!fn) return;
+    e.preventDefault();
+    fn(el, e);
+  });
+}
+function hookInputs(root){
+  root.addEventListener("input", function(e){
+    var el = e.target;
+    var act = el.dataset && el.dataset.act;
+    if(act==="mkSet"){
+      var m = getMark(el.dataset.sid, el.dataset.suid, DB.meta.term);
+      var v = el.value.trim();
+      m[el.dataset.f] = v===""? null : num(v);
+      var mx = num(el.getAttribute("max"),100);
+      el.classList.toggle("over", v!=="" && num(v)>mx);
+      save(); refreshTotals(el);
+    }
+    if(el.id==="fq"){
+      UI.filters.q = el.value;
+      clearTimeout(hookInputs._t);
+      hookInputs._t = setTimeout(function(){
+        var pos = el.selectionStart;
+        render();
+        var n = document.getElementById("fq");
+        if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(err){} }
+      }, 280);
+    }
+    if(act==="wkSet"){
+      var mm = getMark(el.dataset.sid, el.dataset.suid, DB.meta.term);
+      var vv = el.value.trim();
+      if(vv==="غ"||vv==="غ ") mm.w[Number(el.dataset.i)] = "غ";
+      else if(vv==="") mm.w[Number(el.dataset.i)] = null;
+      else mm.w[Number(el.dataset.i)] = num(vv);
+      save(); refreshWeekly(el);
+    }
+  });
+  root.addEventListener("change", function(e){
+    var id = e.target.id;
+    if(id==="fq" || id==="flvl" || id==="fcls"){
+      UI.filters.q = val("fq"); UI.filters.lvl = val("flvl"); UI.filters.cls = val("fcls");
+      if(id==="flvl") UI.filters.cls = "";
+      render();
+      var f = document.getElementById(id==="fq"?"fq":id);
+      if(f && id==="fq"){ f.focus(); f.setSelectionRange(f.value.length,f.value.length); }
+    }
+    if(id==="attDate"){ UI.sub.date = e.target.value; render(); }
+  });
+}
+function refreshTotals(el){
+  var row = el.closest("tr"); if(!row) return;
+  var t = termTotal(el.dataset.sid, el.dataset.suid, DB.meta.term);
+  var last = row.lastElementChild;
+  if(last) last.innerHTML = "<b>"+(t? t.final : "—")+"</b>";
+}
+function refreshWeekly(el){
+  var row = el.closest("tr"); if(!row) return;
+  var m = getMark(el.dataset.sid, el.dataset.suid, DB.meta.term);
+  var ws = weeklyScore(m);
+  var last = row.lastElementChild;
+  if(last) last.innerHTML = "<b>"+(ws===null?"—":Math.round(ws)+"%")+"</b>";
+}
+
+/* ---------- التشغيل ---------- */
+function boot(){
+  OV = document.getElementById("ov");
+  MODAL = document.getElementById("modal");
+  load();
+  hookClicks(document.getElementById("view"));
+  hookClicks(MODAL);
+  hookInputs(document.getElementById("view"));
+  hookInputs(MODAL);
+  document.getElementById("navSide").addEventListener("click", navClick);
+  document.getElementById("navBottom").addEventListener("click", navClick);
+  document.getElementById("btnOut").onclick = logout;
+  document.getElementById("btnPrint").onclick = function(){ window.print(); };
+  OV.addEventListener("click", function(e){ if(e.target===OV) closeModal(); });
+  document.addEventListener("keydown", function(e){ if(e.key==="Escape") closeModal(); });
+
+  var lc = document.getElementById("login");
+  lc.addEventListener("click", function(e){
+    var el = e.target.closest("[data-lact]");
+    if(!el) return;
+    if(el.dataset.lact==="pick"){ UI.pick = el.dataset.id; renderLogin(); }
+    if(el.dataset.lact==="go"){ doLogin(); }
+    if(el.dataset.lact==="first"){
+      DB = seed(); save(); renderLogin(); toast("اتعمل حساب المدير والوكيل");
+    }
+  });
+  renderLogin();
+}
+function navClick(e){
+  var el = e.target.closest("[data-act='tab']");
+  if(!el) return;
+  UI.tab = el.dataset.tab; UI.sub=null; render();
+}
+if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", boot);
+else boot();
+/* ============================================================
+   محرّك الاستيراد الذكي — إكسيل / CSV / لصق
+   بيقرأ الملف حتى لو الأعمدة مبعثرة أو فيه صفوف فاضية،
+   بيتعرّف على العناوين بنفسه، وبيسيب لك تصحيح الربط قبل الإضافة.
+   ============================================================ */
+
+var XLSX_URL = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+var xlsxLoading = null;
+function loadXLSX(){
+  if(window.XLSX) return Promise.resolve(window.XLSX);
+  if(xlsxLoading) return xlsxLoading;
+  xlsxLoading = new Promise(function(res, rej){
+    var s = document.createElement("script");
+    s.src = XLSX_URL;
+    s.onload = function(){ window.XLSX ? res(window.XLSX) : rej(new Error("no XLSX")); };
+    s.onerror = function(){ rej(new Error("تعذّر تحميل قارئ إكسيل")); };
+    document.head.appendChild(s);
+  });
+  return xlsxLoading;
+}
+
+/* ---------- تطبيع النصوص العربية ---------- */
+function toEnDigits(s){
+  return String(s==null?"":s)
+    .replace(/[\u0660-\u0669]/g, function(d){ return String(d.charCodeAt(0)-0x0660); })
+    .replace(/[\u06F0-\u06F9]/g, function(d){ return String(d.charCodeAt(0)-0x06F0); })
+    .replace(/\u066B/g, ".").replace(/\u066C/g, "");
+}
+function normAr(s){
+  return toEnDigits(s)
+    .replace(/[\u064B-\u0652\u0640]/g, "")      /* تشكيل وتطويل */
+    .replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/ؤ/g,"و").replace(/ئ/g,"ي")
+    .replace(/[^\u0621-\u064A0-9a-zA-Z]+/g, " ")
+    .replace(/\s+/g, " ").trim().toLowerCase();
+}
+function cleanName(s){
+  return toEnDigits(s).replace(/[\u0640]/g,"").replace(/\s+/g," ").trim();
+}
+function parseNum(v){
+  var s = toEnDigits(v).replace(/[^\d.\-]/g,"");
+  if(s==="" || s==="-" || s===".") return null;
+  var n = parseFloat(s);
+  return isFinite(n) ? n : null;
+}
+/* تشابه اسمين (لمطابقة كشوف الدرجات بأسماء مكتوبة بشكل مختلف) */
+function similar(a,b){
+  a = normAr(a); b = normAr(b);
+  if(!a || !b) return 0;
+  if(a===b) return 1;
+  var A = a.split(" "), B = b.split(" ");
+  var hit = 0;
+  A.forEach(function(w){ if(w.length>1 && B.indexOf(w)>=0) hit++; });
+  return hit / Math.max(A.length, B.length);
+}
+
+/* ---------- تفسير القيم الخاصة ---------- */
+function parseLevel(v){
+  var s = normAr(v);
+  if(/(^|\D)3(\D|$)|ثالث|تالت/.test(s)) return 3;
+  if(/(^|\D)2(\D|$)|ثاني|تاني/.test(s)) return 2;
+  if(/(^|\D)1(\D|$)|اول|اولي/.test(s)) return 1;
+  return null;
+}
+function parseSystem(v){
+  var s = normAr(v);
+  if(/بكالوريا|bac/.test(s)) return "bac";
+  if(/عام|general|gen/.test(s)) return "gen";
+  return null;
+}
+function parseTrack(v){
+  var s = normAr(v);
+  if(/طب|حياه|احياء|med/.test(s)) return "med";
+  if(/هندس|حاسب|برمج|eng/.test(s)) return "eng";
+  if(/اعمال|تجار|محاسب|bus/.test(s)) return "bus";
+  if(/اداب|فنون|art/.test(s)) return "art";
+  if(/علمي علوم|علوم/.test(s)) return "sci";
+  if(/رياض/.test(s)) return "math";
+  if(/ادبي/.test(s)) return "lit";
+  return null;
+}
+function parseBool(v){
+  var s = normAr(v);
+  if(/نعم|داخل|yes|y|1|true|✓/.test(s)) return true;
+  if(/لا|خارج|no|n|0|false/.test(s)) return false;
+  return null;
+}
+function parseDay(v){
+  var s = normAr(v);
+  /* بتقبل الفصحى والعامية والأخطاء الشائعة: الاتنين، التلات، الاربع… */
+  var pats = [/سبت|sat/, /احد|حد|sun/, /اثنين|اتنين|تنين|mon/, /ثلاثاء|ثلاثا|تلاتاء|تلات|ثلات|tue/,
+              /اربعاء|اربعا|اربع|wed/, /خميس|thu/];
+  for(var i=0;i<pats.length;i++) if(pats[i].test(s)) return i;
+  var n = parseNum(v);
+  if(n!==null && n>=1 && n<=6) return n-1;
+  return null;
+}
+function parseAttV(v){
+  var s = normAr(v);
+  if(!s) return null;
+  if(/^(غ|غائب|غياب|a|absent)$/.test(s)) return "A";
+  if(/^(ع|عذر|بعذر|e|excused)$/.test(s)) return "E";
+  if(/^(ت|تاخير|متاخر|l|late)$/.test(s)) return "L";
+  if(/^(ح|حاضر|p|present|\.|x|✓|1)$/.test(s)) return "P";
+  return null;
+}
+
+/* ---------- مخططات الاستيراد ---------- */
+var IMPORT_SCHEMAS = {
+  students:{
+    title:"استيراد الطلاب",
+    hint:"الملف المتوقّع فيه عمود لاسم الطالب على الأقل. أي أعمدة تانية (رقم الجلوس، الرقم القومي، ولي الأمر، الهاتف، الفصل) هتتعرّف لوحدها.",
+    fields:[
+      {k:"name", label:"اسم الطالب", req:true, multi:true, al:["اسم الطالب","الاسم","اسم","الطالب","اسم رباعي","الاسم رباعي","student","name","اسم التلميذ"]},
+      {k:"seat", label:"رقم الجلوس", al:["رقم الجلوس","جلوس","رقم جلوس","seat","الرقم"]},
+      {k:"natId", label:"الرقم القومي", al:["الرقم القومي","قومي","رقم قومي","national","الرقم القومى"]},
+      {k:"guardian", label:"ولي الأمر", al:["ولي الامر","ولي الأمر","اسم ولي الامر","الوصي","guardian","parent"]},
+      {k:"phone", label:"هاتف ولي الأمر", al:["الهاتف","تليفون","موبايل","المحمول","رقم الهاتف","phone","mobile","تليفون ولي الامر"]},
+      {k:"religion", label:"الديانة", al:["الديانه","الديانة","دين","religion"]},
+      {k:"cls", label:"الفصل", al:["الفصل","فصل","الشعبه","الشعبة","class","section","المجموعه"]},
+      {k:"level", label:"الصف", al:["الصف","السنه","السنة","grade","level","المرحله"]},
+      {k:"notes", label:"ملاحظات", al:["ملاحظات","ملاحظه","بيان","notes","remark"]}
+    ]
+  },
+  teachers:{
+    title:"استيراد المعلمين",
+    hint:"عمود الاسم إجباري. التخصص والهاتف اختياريين، وبيتعمل حساب دخول لكل معلم تلقائي.",
+    fields:[
+      {k:"name", label:"اسم المعلم", req:true, multi:true, al:["اسم المعلم","الاسم","اسم","المعلم","المدرس","teacher","name"]},
+      {k:"subject", label:"التخصص", al:["التخصص","الماده","المادة","تخصص","subject","specialty"]},
+      {k:"phone", label:"الهاتف", al:["الهاتف","تليفون","موبايل","المحمول","phone","mobile"]},
+      {k:"pin", label:"الرقم السري", al:["الرقم السري","الباسورد","كلمه السر","pin","password"]}
+    ]
+  },
+  classes:{
+    title:"استيراد الفصول",
+    hint:"اسم الفصل إجباري. الصف والنظام والمسار بيتفهموا من الكتابة العادية (مثلاً: تانية ثانوي، بكالوريا، طب وعلوم حياة).",
+    fields:[
+      {k:"name", label:"اسم الفصل", req:true, al:["اسم الفصل","الفصل","فصل","class","section","الشعبه"]},
+      {k:"level", label:"الصف", al:["الصف","المرحله","المرحلة","grade","level","السنه"]},
+      {k:"system", label:"النظام", al:["النظام","نظام","system","النوع"]},
+      {k:"track", label:"المسار / الشعبة", al:["المسار","مسار","الشعبه","الشعبة","التخصص","track"]},
+      {k:"room", label:"الحجرة", al:["الحجره","الحجرة","الغرفه","room","القاعه"]}
+    ]
+  },
+  subjects:{
+    title:"استيراد مواد الفصل",
+    hint:"المواد هتتضاف للفصل المحدد. لو مفيش عمود للنهاية العظمى هتتحسب 100.",
+    fields:[
+      {k:"name", label:"اسم المادة", req:true, al:["الماده","المادة","اسم الماده","المقرر","subject","name"]},
+      {k:"max", label:"النهاية العظمى", al:["النهايه العظمي","النهاية العظمى","الدرجه","الدرجة","الدرجه الكليه","max","total"]},
+      {k:"counted", label:"داخل المجموع", al:["داخل المجموع","المجموع","تحتسب","counted"]}
+    ]
+  },
+  marks:{
+    title:"استيراد الدرجات",
+    hint:"الطلاب بيتربطوا برقم الجلوس أو بالاسم. سيب أي عمود مش محتاجه على «تجاهل».",
+    fields:[
+      {k:"name", label:"اسم الطالب", multi:true, al:["اسم الطالب","الاسم","اسم","الطالب","name"]},
+      {k:"seat", label:"رقم الجلوس", al:["رقم الجلوس","جلوس","seat","الرقم"]},
+      {k:"m1", label:"اختبار الشهر الأول", al:["شهر اول","الشهر الاول","اختبار الشهر الاول","شهر ١","شهري اول","m1"]},
+      {k:"m2", label:"اختبار الشهر الثاني", al:["شهر ثاني","الشهر الثاني","اختبار الشهر الثاني","شهر ٢","شهري ثان","m2"]},
+      {k:"note", label:"كشكول الحصة والواجب", al:["كشكول","الكشكول","الواجب","كشكول الحصه","notebook"]},
+      {k:"beh", label:"السلوك والمواظبة", al:["السلوك","سلوك","المواظبه","المواظبة","behavior"]},
+      {k:"fin", label:"امتحان نهاية الفصل", al:["نهايه الفصل","نهاية الفصل","الامتحان","التحريري","امتحان الفصل","final","exam"]}
+    ]
+  },
+  weekly:{
+    title:"استيراد التقييمات الأسبوعية",
+    hint:"كل عمود = تقييم أسبوعي. اكتب «غ» للطالب الغائب — النظام بيرصدها زي تعليمات الوزارة ومش بيحسبها صفر.",
+    fields:[
+      {k:"name", label:"اسم الطالب", multi:true, al:["اسم الطالب","الاسم","اسم","الطالب","name"]},
+      {k:"seat", label:"رقم الجلوس", al:["رقم الجلوس","جلوس","seat"]}
+    ]
+  },
+  attendance:{
+    title:"استيراد الغياب",
+    hint:"عمود لكل يوم بعنوان التاريخ (2026-10-05 أو 5/10/2026). القيم: ح / غ / ع / ت.",
+    fields:[
+      {k:"name", label:"اسم الطالب", multi:true, al:["اسم الطالب","الاسم","اسم","الطالب","name"]},
+      {k:"seat", label:"رقم الجلوس", al:["رقم الجلوس","جلوس","seat"]}
+    ]
+  },
+  schedule:{
+    title:"استيراد جدول الحصص",
+    hint:"كل سطر = حصة واحدة: اليوم، رقم الحصة، المادة، والمعلم. المواد والمعلمين بيتربطوا بالأسماء الموجودة.",
+    fields:[
+      {k:"day", label:"اليوم", req:true, al:["اليوم","يوم","day"]},
+      {k:"period", label:"رقم الحصة", req:true, al:["الحصه","الحصة","رقم الحصه","period","حصه"]},
+      {k:"subject", label:"المادة", req:true, al:["الماده","المادة","المقرر","subject"]},
+      {k:"teacher", label:"المعلم", al:["المعلم","المدرس","teacher"]},
+      {k:"cls", label:"الفصل", al:["الفصل","فصل","class"]}
+    ]
+  },
+  assign:{
+    title:"استيراد التكليفات",
+    hint:"كل سطر: معلم + فصل + مادة. الأسماء بتتطابق مع الموجود، ولو المادة مش موجودة في الفصل بتتضاف.",
+    fields:[
+      {k:"teacher", label:"المعلم", req:true, al:["المعلم","المدرس","اسم المعلم","teacher"]},
+      {k:"cls", label:"الفصل", req:true, al:["الفصل","فصل","class"]},
+      {k:"subject", label:"المادة", req:true, al:["الماده","المادة","المقرر","subject"]}
+    ]
+  }
+};
+
+/* ---------- قراءة الملفات ---------- */
+function detectDelim(text){
+  var line = text.split(/\r?\n/).filter(function(l){ return l.trim(); })[0] || "";
+  var best = ",", bestN = 0;
+  [",",";","\t","|"].forEach(function(d){
+    var n = line.split(d).length;
+    if(n > bestN){ bestN = n; best = d; }
+  });
+  return bestN > 1 ? best : ",";
+}
+function parseCSV(text, delim){
+  delim = delim || detectDelim(text);
+  var rows = [], row = [], cell = "", q = false;
+  text = String(text).replace(/\r\n/g,"\n").replace(/\r/g,"\n");
+  for(var i=0;i<text.length;i++){
+    var ch = text[i];
+    if(q){
+      if(ch === '"'){ if(text[i+1]==='"'){ cell+='"'; i++; } else q=false; }
+      else cell += ch;
+    }else{
+      if(ch === '"') q = true;
+      else if(ch === delim){ row.push(cell); cell=""; }
+      else if(ch === "\n"){ row.push(cell); rows.push(row); row=[]; cell=""; }
+      else cell += ch;
+    }
+  }
+  row.push(cell);
+  if(row.length>1 || row[0]!=="") rows.push(row);
+  return rows;
+}
+/* تنضيف الشبكة: شيل الصفوف والأعمدة الفاضية تمامًا */
+function cleanGrid(rows){
+  var g = rows.map(function(r){ return (r||[]).map(function(c){ return cleanName(c); }); });
+  g = g.filter(function(r){ return r.some(function(c){ return c!==""; }); });
+  if(!g.length) return [];
+  var w = 0; g.forEach(function(r){ w = Math.max(w, r.length); });
+  var keep = [];
+  for(var c=0;c<w;c++){
+    var any = g.some(function(r){ return (r[c]||"")!==""; });
+    if(any) keep.push(c);
+  }
+  return g.map(function(r){ return keep.map(function(c){ return r[c]||""; }); });
+}
+/* تحديد صف العناوين: الصف اللي فيه أكتر تطابق مع الأسماء المعروفة */
+function detectHeader(grid, schema){
+  var best = -1, bestScore = 0;
+  var lim = Math.min(grid.length, 15);
+  for(var i=0;i<lim;i++){
+    var score = 0;
+    grid[i].forEach(function(cell){
+      if(!cell) return;
+      if(parseNum(cell)!==null && cell.length<4) return;    /* أرقام مش عناوين */
+      var n = normAr(cell);
+      schema.fields.forEach(function(f){
+        f.al.forEach(function(a){
+          var na = normAr(a);
+          if(n===na || (na.length>3 && n.indexOf(na)>=0) || (n.length>3 && na.indexOf(n)>=0)) score++;
+        });
+      });
+      if(/^\d{4}-\d{1,2}-\d{1,2}$/.test(toEnDigits(cell))) score++;
+    });
+    if(score > bestScore){ bestScore = score; best = i; }
+  }
+  return bestScore >= 1 ? best : -1;
+}
+function autoMap(header, schema){
+  var map = [];
+  var used = {};
+  (header||[]).forEach(function(cell, idx){
+    map[idx] = "";
+    if(!cell) return;
+    var n = normAr(cell), bestF = "", bestLen = 0;
+    schema.fields.forEach(function(f){
+      if(used[f.k] && !f.multi) return;
+      f.al.forEach(function(a){
+        var na = normAr(a);
+        var hit = (n===na) || (na.length>2 && n.indexOf(na)>=0) || (n.length>2 && na.indexOf(n)>=0);
+        if(hit && na.length > bestLen){ bestF = f.k; bestLen = na.length; }
+      });
+    });
+    if(bestF){ map[idx] = bestF; used[bestF] = 1; }
+  });
+  return map;
+}
+
+/* ---------- نافذة الاستيراد ---------- */
+function openImport(target, ctx){
+  UI.imp = { target:target, ctx:ctx||{}, grid:null, header:-1, map:[], mode:"add" };
+  var sc = IMPORT_SCHEMAS[target];
+  openModal(mHead(sc.title)+
+    '<div class="mb">'+
+    '<div class="note">'+esc(sc.hint)+'</div>'+
+    '<button class="btn block" data-act="impFile" style="margin-bottom:9px">اختيار ملف إكسيل أو CSV</button>'+
+    '<div style="text-align:center;font-size:12px;color:var(--muted);margin-bottom:9px">— أو —</div>'+
+    '<label class="f"><span>الصق الجدول هنا (انسخه من إكسيل مباشرة)</span>'+
+    '<textarea id="impPaste" style="min-height:130px" placeholder="الصق الصفوف…"></textarea></label>'+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="impPasteGo">قراءة النص</button></div>');
+  MODAL.classList.add("wide");
+}
+function impFile(){
+  var inp = document.createElement("input");
+  inp.type = "file";
+  inp.accept = ".xlsx,.xls,.xlsm,.csv,.tsv,.txt";
+  inp.style.cssText = "position:fixed;left:-9999px";
+  document.body.appendChild(inp);
+  inp.addEventListener("change", function(){
+    var f = inp.files && inp.files[0];
+    if(!f){ inp.remove(); return; }
+    var name = (f.name||"").toLowerCase();
+    var isX = /\.(xlsx|xls|xlsm)$/.test(name);
+    toast("بقرأ الملف…");
+    if(isX){
+      loadXLSX().then(function(X){
+        var r = new FileReader();
+        r.onload = function(){
+          try{
+            var wb = X.read(new Uint8Array(r.result), {type:"array"});
+            var all = [];
+            wb.SheetNames.forEach(function(sn){
+              var rows = X.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:false, defval:""});
+              if(rows.length > all.length) all = rows;
+            });
+            impLoaded(all);
+          }catch(e){ toast("الملف مش مقروء — جرّب تحفظه CSV"); }
+          inp.remove();
+        };
+        r.onerror = function(){ toast("مقدرتش أقرأ الملف"); inp.remove(); };
+        r.readAsArrayBuffer(f);
+      }).catch(function(){
+        toast("محتاج إنترنت لقراءة إكسيل — احفظ الملف CSV أو الصق الجدول");
+        inp.remove();
+      });
+    }else{
+      var r2 = new FileReader();
+      r2.onload = function(){ impLoaded(parseCSV(String(r2.result).replace(/^\uFEFF/,""))); inp.remove(); };
+      r2.onerror = function(){ toast("مقدرتش أقرأ الملف"); inp.remove(); };
+      r2.readAsText(f, "utf-8");
+    }
+  });
+  inp.click();
+}
+function impPasteGo(){
+  var t = val("impPaste");
+  if(!t.trim()){ toast("الصق الجدول الأول"); return; }
+  impLoaded(parseCSV(t, t.indexOf("\t")>=0 ? "\t" : detectDelim(t)));
+}
+function impLoaded(rows){
+  var g = cleanGrid(rows);
+  if(!g.length){ toast("الملف فاضي أو مفيهوش بيانات"); return; }
+  var sc = IMPORT_SCHEMAS[UI.imp.target];
+  UI.imp.grid = g;
+  UI.imp.header = detectHeader(g, sc);
+  UI.imp.map = UI.imp.header >= 0 ? autoMap(g[UI.imp.header], sc) : [];
+  if(UI.imp.header < 0){
+    /* من غير عناوين: الأعمدة بالترتيب على الحقول الإجبارية */
+    var need = sc.fields.filter(function(f){ return f.req; });
+    g[0].forEach(function(_,i){ UI.imp.map[i] = need[i] ? need[i].k : ""; });
+  }
+  impRenderMap();
+}
+function impRenderMap(){
+  var sc = IMPORT_SCHEMAS[UI.imp.target], g = UI.imp.grid, hr = UI.imp.header;
+  var cols = 0; g.forEach(function(r){ cols = Math.max(cols, r.length); });
+  var body = g.slice(hr+1).filter(function(r){ return r.some(function(c){ return c!==""; }); });
+  var special = UI.imp.target==="weekly" || UI.imp.target==="attendance";
+
+  var h = '<div class="mb">';
+  h += '<div class="note">اتقرا <b>'+body.length+'</b> سطر و<b>'+cols+'</b> عمود'+
+       (hr>=0? '، والعناوين اتحدّدت في السطر رقم <b>'+(hr+1)+'</b>' : '، ومفيش سطر عناوين واضح')+
+       '. راجع ربط الأعمدة تحت وعدّل أي حاجة غلط.</div>';
+
+  h += '<div class="tbl-wrap" style="max-height:46vh;border:1px solid var(--line);border-radius:10px">'+
+       '<table class="tbl"><thead><tr><th style="min-width:26px">#</th>';
+  for(var c=0;c<cols;c++){
+    h += '<th style="min-width:120px"><div style="font-size:11px;color:var(--ink);margin-bottom:3px">'+
+      esc(hr>=0 ? (g[hr][c]||("عمود "+(c+1))) : ("عمود "+(c+1)))+'</div>'+
+      '<select data-act="impMap" data-c="'+c+'" style="padding:5px 7px;font-size:12px">'+
+      impOptions(sc, UI.imp.map[c], c)+'</select></th>';
+  }
+  h += '</tr></thead><tbody>';
+  body.slice(0,7).forEach(function(r,i){
+    h += '<tr><td class="rownum">'+(i+1)+'</td>';
+    for(var c=0;c<cols;c++) h += '<td>'+esc(r[c]||"")+'</td>';
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+
+  if(body.length>7) h += '<div style="font-size:11.5px;color:var(--muted);margin-top:5px">معروض أول ٧ أسطر من '+body.length+'.</div>';
+
+  if(special){
+    h += '<div class="note warn" style="margin-top:10px">'+
+      (UI.imp.target==="weekly"
+        ? 'الأعمدة اللي على «تقييم أسبوعي» هتتاخد بالترتيب: أول عمود = التقييم ١، وهكذا لحد ١٢.'
+        : 'الأعمدة اللي على «يوم حضور» لازم عنوانها يكون تاريخ. اللي مش تاريخ هيتتجاهل.')+'</div>';
+  }
+  h += '<label class="f" style="margin-top:10px"><span>لو الاسم موجود قبل كده</span>'+
+    '<select id="impMode">'+
+    '<option value="add"'+(UI.imp.mode==="add"?" selected":"")+'>تخطّي المكرر (الأأمن)</option>'+
+    '<option value="update"'+(UI.imp.mode==="update"?" selected":"")+'>تحديث البيانات الموجودة</option>'+
+    '<option value="dup"'+(UI.imp.mode==="dup"?" selected":"")+'>إضافته تاني على أي حال</option>'+
+    '</select></label>';
+  h += '</div><div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn seal" data-act="impRun">استيراد '+body.length+' سطر</button></div>';
+
+  MODAL.innerHTML = mHead(IMPORT_SCHEMAS[UI.imp.target].title + " — مراجعة") + h;
+  MODAL.classList.add("wide");
+}
+function impOptions(sc, sel, colIdx){
+  var h = '<option value="">— تجاهل —</option>';
+  sc.fields.forEach(function(f){
+    h += '<option value="'+f.k+'"'+(sel===f.k?" selected":"")+'>'+esc(f.label)+(f.req?" *":"")+'</option>';
+  });
+  if(UI.imp.target==="weekly") h += '<option value="__w"'+(sel==="__w"?" selected":"")+'>تقييم أسبوعي</option>';
+  if(UI.imp.target==="attendance") h += '<option value="__d"'+(sel==="__d"?" selected":"")+'>يوم حضور</option>';
+  if(UI.imp.target==="marks"){
+    for(var i=1;i<=WEEKLY_COUNT;i++)
+      h += '<option value="__w'+i+'"'+(sel==="__w"+i?" selected":"")+'>تقييم أسبوعي '+i+'</option>';
+  }
+  return h;
+}
+
+/* ---------- التنفيذ ---------- */
+function impRun(){
+  var t = UI.imp.target, g = UI.imp.grid, hr = UI.imp.header, map = UI.imp.map;
+  UI.imp.mode = val("impMode") || "add";
+  var rows = g.slice(hr+1).filter(function(r){ return r.some(function(c){ return c!==""; }); });
+  var recs = rows.map(function(r){
+    var o = {__extra:[]};
+    map.forEach(function(k, c){
+      if(!k) return;
+      var v = r[c]||"";
+      if(k.indexOf("__")===0){ o.__extra.push({k:k, c:c, v:v}); return; }
+      o[k] = o[k]!==undefined && k!=="name" ? o[k] : (o[k]!==undefined ? o[k]+" "+v : v);
+    });
+    /* دمج أعمدة الاسم المتعددة */
+    var nameCols = [];
+    map.forEach(function(k,c){ if(k==="name") nameCols.push(r[c]||""); });
+    if(nameCols.length) o.name = cleanName(nameCols.join(" "));
+    return o;
+  });
+  var res;
+  try{
+    switch(t){
+      case "students":   res = impStudents(recs); break;
+      case "teachers":   res = impTeachers(recs); break;
+      case "classes":    res = impClasses(recs); break;
+      case "subjects":   res = impSubjects(recs); break;
+      case "marks":      res = impMarks(recs); break;
+      case "weekly":     res = impWeekly(recs, g, hr, map); break;
+      case "attendance": res = impAttendance(recs, g, hr, map); break;
+      case "schedule":   res = impSchedule(recs); break;
+      case "assign":     res = impAssign(recs); break;
+      default: res = {add:0, upd:0, skip:0, err:["نوع استيراد غير معروف"]};
+    }
+  }catch(e){ res = {add:0, upd:0, skip:0, err:["حصل خطأ أثناء القراءة: "+e.message]}; }
+  saveNow();
+  impResult(res);
+}
+function impResult(r){
+  var h = '<div class="mb">';
+  h += '<div class="stats">'+
+    stat("اتضاف", r.add, "سطر", r.add?"acc":"")+
+    stat("اتحدّث", r.upd, "سطر","")+
+    stat("اتخطّى", r.skip, "مكرر أو ناقص", r.skip?"acc-g":"")+
+    stat("مرفوض", (r.err||[]).length, "سطر", (r.err||[]).length?"acc-b":"")+'</div>';
+  if(r.note) h += '<div class="note" style="margin-top:11px">'+r.note+'</div>';
+  if(r.err && r.err.length){
+    h += '<div class="note bad" style="margin-top:11px;max-height:180px;overflow:auto"><b>أسطر ما دخلتش:</b><br>'+
+      r.err.slice(0,40).map(function(x){ return "• "+esc(x); }).join("<br>")+
+      (r.err.length>40? "<br>… و"+(r.err.length-40)+" سطر تاني" : "")+'</div>';
+  }
+  h += '</div><div class="mf"><button class="btn" data-act="impDone">تمام</button></div>';
+  MODAL.innerHTML = mHead("نتيجة الاستيراد") + h;
+}
+
+function findClassByName(name){
+  if(!name) return null;
+  var n = normAr(name);
+  for(var i=0;i<DB.classes.length;i++) if(normAr(DB.classes[i].name)===n) return DB.classes[i];
+  for(var j=0;j<DB.classes.length;j++) if(similar(DB.classes[j].name, name)>=0.75) return DB.classes[j];
+  return null;
+}
+function findTeacherByName(name){
+  if(!name) return null;
+  var n = normAr(name);
+  for(var i=0;i<DB.teachers.length;i++) if(normAr(DB.teachers[i].name)===n) return DB.teachers[i];
+  var best=null, bs=0;
+  DB.teachers.forEach(function(t){ var s=similar(t.name,name); if(s>bs){bs=s;best=t;} });
+  return bs>=0.7 ? best : null;
+}
+function findSubjInClass(cid, name){
+  if(!name) return null;
+  var n = normAr(name);
+  var subs = DB.subjects.filter(function(s){ return s.classId===cid; });
+  for(var i=0;i<subs.length;i++) if(normAr(subs[i].name)===n) return subs[i];
+  var best=null, bs=0;
+  subs.forEach(function(s){ var x=similar(s.name,name); if(x>bs){bs=x;best=s;} });
+  return bs>=0.7 ? best : null;
+}
+function findStudent(rec, classId){
+  var pool = classId ? studentsOf(classId) : DB.students;
+  if(rec.seat){
+    var seat = toEnDigits(rec.seat).trim();
+    for(var i=0;i<pool.length;i++) if(String(pool[i].seat||"").trim()===seat && seat!=="") return pool[i];
+  }
+  if(rec.name){
+    var n = normAr(rec.name);
+    for(var j=0;j<pool.length;j++) if(normAr(pool[j].name)===n) return pool[j];
+    var best=null, bs=0;
+    pool.forEach(function(s){ var x=similar(s.name, rec.name); if(x>bs){bs=x;best=s;} });
+    if(bs>=0.7) return best;
+  }
+  return null;
+}
+
+function impStudents(recs){
+  var r = {add:0, upd:0, skip:0, err:[]};
+  var defCls = UI.imp.ctx.classId || "";
+  var newCls = 0;
+  recs.forEach(function(o, i){
+    var name = cleanName(o.name||"");
+    if(!name || name.length<2){ r.err.push("سطر "+(i+1)+": مفيش اسم"); return; }
+    if(normAr(name).length<2){ r.err.push("سطر "+(i+1)+": الاسم مش مفهوم"); return; }
+    var cid = defCls;
+    if(o.cls){
+      var c = findClassByName(o.cls);
+      if(!c){
+        c = {id:uid("c"), name:cleanName(o.cls), level:parseLevel(o.level)||parseLevel(o.cls)||1,
+             system:"gen", track:"none", room:""};
+        if(c.level>1) c.track = parseTrack(o.cls) || "sci";
+        DB.classes.push(c); newCls++;
+      }
+      cid = c.id;
+    }
+    var exist = null;
+    DB.students.forEach(function(s){
+      if(exist) return;
+      if(normAr(s.name)===normAr(name) && (!cid || s.classId===cid)) exist = s;
+    });
+    if(exist && UI.imp.mode==="add"){ r.skip++; return; }
+    var s = (exist && UI.imp.mode==="update") ? exist : {id:uid("s"), status:"active", joined:today()};
+    if(s===exist) r.upd++; else { DB.students.push(s); r.add++; }
+    s.name = name;
+    if(cid) s.classId = cid;
+    if(o.seat!==undefined && o.seat!=="") s.seat = toEnDigits(o.seat).trim();
+    if(o.natId) s.natId = toEnDigits(o.natId).replace(/\D/g,"");
+    if(o.guardian) s.guardian = cleanName(o.guardian);
+    if(o.phone) s.phone = toEnDigits(o.phone).replace(/[^\d+]/g,"");
+    if(o.religion){ var rel = normAr(o.religion); s.religion = /مسيح|قبط|c/.test(rel)?"مسيحي":"مسلم"; }
+    if(o.notes) s.notes = o.notes;
+  });
+  if(newCls) r.note = "اتعمل <b>"+newCls+"</b> فصل جديد من أسماء الفصول اللي في الملف — راجعها من شاشة الفصول واظبط الصف والنظام.";
+  return r;
+}
+function impTeachers(recs){
+  var r = {add:0, upd:0, skip:0, err:[]};
+  recs.forEach(function(o,i){
+    var name = cleanName(o.name||"");
+    if(!name || name.length<2){ r.err.push("سطر "+(i+1)+": مفيش اسم معلم"); return; }
+    var ex = findTeacherByName(name);
+    if(ex && normAr(ex.name)!==normAr(name)) ex = null;
+    if(ex && UI.imp.mode==="add"){ r.skip++; return; }
+    var t = (ex && UI.imp.mode==="update") ? ex : {id:uid("t")};
+    if(t===ex) r.upd++; else { DB.teachers.push(t); r.add++; }
+    t.name = name;
+    if(o.subject) t.subject = cleanName(o.subject);
+    if(o.phone) t.phone = toEnDigits(o.phone).replace(/[^\d+]/g,"");
+    var u = userOfTeacher(t.id);
+    if(!u){ u = {id:uid("u"), role:"teacher", teacherId:t.id}; DB.users.push(u); }
+    u.name = name;
+    u.pin = (o.pin? toEnDigits(o.pin).replace(/\D/g,"") : "") || u.pin || "1234";
+  });
+  return r;
+}
+function impClasses(recs){
+  var r = {add:0, upd:0, skip:0, err:[]};
+  recs.forEach(function(o,i){
+    var name = cleanName(o.name||"");
+    if(!name){ r.err.push("سطر "+(i+1)+": مفيش اسم فصل"); return; }
+    var ex = null;
+    DB.classes.forEach(function(c){ if(!ex && normAr(c.name)===normAr(name)) ex = c; });
+    if(ex && UI.imp.mode==="add"){ r.skip++; return; }
+    var c = (ex && UI.imp.mode==="update") ? ex : {id:uid("c")};
+    if(c===ex) r.upd++; else { DB.classes.push(c); r.add++; }
+    c.name = name;
+    c.level = parseLevel(o.level) || parseLevel(name) || c.level || 1;
+    c.system = parseSystem(o.system) || c.system || "gen";
+    var tk = parseTrack(o.track) || parseTrack(name) || parseTrack(o.system);
+    if(c.level===1) c.track = "none";
+    else c.track = tk || c.track || (c.system==="bac" ? "med" : "sci");
+    if(o.room) c.room = cleanName(o.room);
+  });
+  return r;
+}
+function impSubjects(recs){
+  var r = {add:0, upd:0, skip:0, err:[]};
+  var cid = UI.imp.ctx.classId;
+  if(!cid){ return {add:0,upd:0,skip:0,err:["مفيش فصل محدد"]}; }
+  recs.forEach(function(o,i){
+    var name = cleanName(o.name||"");
+    if(!name){ r.err.push("سطر "+(i+1)+": مفيش اسم مادة"); return; }
+    var ex = DB.subjects.filter(function(s){ return s.classId===cid && normAr(s.name)===normAr(name); })[0];
+    if(ex && UI.imp.mode==="add"){ r.skip++; return; }
+    var s = (ex && UI.imp.mode==="update") ? ex : {id:uid("sb"), classId:cid};
+    if(s===ex) r.upd++; else { DB.subjects.push(s); r.add++; }
+    s.name = name;
+    s.max = parseNum(o.max) || s.max || 100;
+    var cb = parseBool(o.counted);
+    s.counted = cb===null ? (s.counted===undefined ? true : s.counted) : cb;
+  });
+  return r;
+}
+function impMarks(recs){
+  var r = {add:0, upd:0, skip:0, err:[]};
+  var cid = UI.imp.ctx.classId, suid = UI.imp.ctx.subjectId;
+  if(!cid || !suid) return {add:0,upd:0,skip:0,err:["مفيش فصل أو مادة محددة"]};
+  var fields = ["m1","m2","note","beh","fin"];
+  recs.forEach(function(o,i){
+    var s = findStudent(o, cid);
+    if(!s){ r.err.push("سطر "+(i+1)+": ما لقيتش الطالب «"+(o.name||o.seat||"")+"» في الفصل"); return; }
+    var m = getMark(s.id, suid, DB.meta.term), any=false;
+    fields.forEach(function(f){
+      if(o[f]===undefined || o[f]==="") return;
+      var v = parseNum(o[f]);
+      if(v===null) return;
+      m[f] = v; any = true;
+    });
+    (o.__extra||[]).forEach(function(x){
+      var mm = /^__w(\d+)$/.exec(x.k);
+      if(!mm) return;
+      var idx = Number(mm[1])-1;
+      if(idx<0 || idx>=WEEKLY_COUNT) return;
+      var v = normAr(x.v);
+      if(v==="") return;
+      m.w[idx] = /^(غ|غائب|g|a)$/.test(v) ? "غ" : parseNum(x.v);
+      any = true;
+    });
+    if(any) r.add++; else r.skip++;
+  });
+  if(r.add) r.note = "الدرجات اتربطت بالطلاب برقم الجلوس أو بتشابه الاسم. راجع شاشة الرصد للتأكد.";
+  return r;
+}
+function impWeekly(recs, g, hr, map){
+  var r = {add:0, upd:0, skip:0, err:[]};
+  var cid = UI.imp.ctx.classId, suid = UI.imp.ctx.subjectId;
+  if(!cid || !suid) return {add:0,upd:0,skip:0,err:["مفيش فصل أو مادة محددة"]};
+  var wCols = [];
+  map.forEach(function(k,c){ if(k==="__w") wCols.push(c); });
+  if(!wCols.length) return {add:0,upd:0,skip:0,err:["ما حددتش أي عمود كـ «تقييم أسبوعي»"]};
+  recs.forEach(function(o,i){
+    var s = findStudent(o, cid);
+    if(!s){ r.err.push("سطر "+(i+1)+": ما لقيتش الطالب «"+(o.name||o.seat||"")+"»"); return; }
+    var m = getMark(s.id, suid, DB.meta.term), any=false;
+    (o.__extra||[]).forEach(function(x){
+      if(x.k!=="__w") return;
+      var idx = wCols.indexOf(x.c);
+      if(idx<0 || idx>=WEEKLY_COUNT) return;
+      var v = normAr(x.v);
+      if(v==="") return;
+      m.w[idx] = /^(غ|غائب|g|a)$/.test(v) ? "غ" : parseNum(x.v);
+      any = true;
+    });
+    if(any) r.add++; else r.skip++;
+  });
+  return r;
+}
+function impAttendance(recs, g, hr, map){
+  var r = {add:0, upd:0, skip:0, err:[]};
+  var cid = UI.imp.ctx.classId;
+  if(!cid) return {add:0,upd:0,skip:0,err:["مفيش فصل محدد"]};
+  var dcols = [];
+  map.forEach(function(k,c){
+    if(k!=="__d") return;
+    var head = hr>=0 ? g[hr][c] : "";
+    var d = parseDateCell(head);
+    if(d) dcols.push({c:c, d:d});
+    else r.err.push("العمود «"+head+"» عنوانه مش تاريخ — اتتجاهل");
+  });
+  if(!dcols.length) return {add:0,upd:0,skip:0,err:r.err.concat(["مفيش أعمدة تواريخ صالحة"])};
+  var days = {};
+  recs.forEach(function(o,i){
+    var s = findStudent(o, cid);
+    if(!s){ r.err.push("سطر "+(i+1)+": ما لقيتش الطالب «"+(o.name||o.seat||"")+"»"); return; }
+    var any = false;
+    (o.__extra||[]).forEach(function(x){
+      if(x.k!=="__d") return;
+      var col = null;
+      dcols.forEach(function(dc){ if(dc.c===x.c) col = dc; });
+      if(!col) return;
+      var v = parseAttV(x.v);
+      if(!v) return;
+      var k = attKey(cid, col.d);
+      if(!DB.attend[k]) DB.attend[k] = {};
+      DB.attend[k][s.id] = v;
+      days[col.d] = 1; any = true;
+    });
+    if(any) r.add++; else r.skip++;
+  });
+  r.note = "اتسجّل حضور <b>"+Object.keys(days).length+"</b> يوم للفصل.";
+  return r;
+}
+function parseDateCell(v){
+  var s = toEnDigits(v).trim();
+  var m = /^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/.exec(s);
+  if(m) return m[1]+"-"+pad2(m[2])+"-"+pad2(m[3]);
+  m = /^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/.exec(s);
+  if(m) return m[3]+"-"+pad2(m[2])+"-"+pad2(m[1]);
+  m = /^(\d{1,2})[-\/](\d{1,2})$/.exec(s);
+  if(m){
+    var y = (DB.meta.year.match(/\d{4}/)||[new Date().getFullYear()])[0];
+    return y+"-"+pad2(m[2])+"-"+pad2(m[1]);
+  }
+  return null;
+}
+function pad2(x){ x = String(x); return x.length<2 ? "0"+x : x; }
+
+function impSchedule(recs){
+  var r = {add:0, upd:0, skip:0, err:[]};
+  var defCls = UI.imp.ctx.classId || "";
+  recs.forEach(function(o,i){
+    var cid = defCls;
+    if(o.cls){ var c = findClassByName(o.cls); if(c) cid = c.id; }
+    if(!cid){ r.err.push("سطر "+(i+1)+": ما عرفتش الفصل"); return; }
+    var day = parseDay(o.day);
+    var per = parseNum(o.period);
+    if(day===null){ r.err.push("سطر "+(i+1)+": اليوم «"+(o.day||"")+"» مش مفهوم"); return; }
+    if(per===null || per<1 || per>PERIODS){ r.err.push("سطر "+(i+1)+": رقم الحصة غلط"); return; }
+    var su = findSubjInClass(cid, o.subject);
+    if(!su){
+      su = {id:uid("sb"), classId:cid, name:cleanName(o.subject||"مادة"), max:100, counted:true};
+      DB.subjects.push(su);
+    }
+    var t = findTeacherByName(o.teacher);
+    var cur = schedCell(cid, day, per);
+    if(cur && UI.imp.mode==="add"){ r.skip++; return; }
+    if(cur){ cur.subjectId = su.id; if(t) cur.teacherId = t.id; r.upd++; }
+    else{ DB.schedule.push({id:uid("h"), classId:cid, day:day, period:per, subjectId:su.id, teacherId:t?t.id:""}); r.add++; }
+    if(o.teacher && !t) r.err.push("سطر "+(i+1)+": الحصة اتسجّلت بس المعلم «"+o.teacher+"» مش موجود");
+  });
+  return r;
+}
+function impAssign(recs){
+  var r = {add:0, upd:0, skip:0, err:[]};
+  recs.forEach(function(o,i){
+    var t = findTeacherByName(o.teacher);
+    if(!t){
+      t = {id:uid("t"), name:cleanName(o.teacher||""), subject:cleanName(o.subject||"")};
+      if(!t.name){ r.err.push("سطر "+(i+1)+": مفيش اسم معلم"); return; }
+      DB.teachers.push(t);
+      DB.users.push({id:uid("u"), role:"teacher", teacherId:t.id, name:t.name, pin:"1234"});
+    }
+    var c = findClassByName(o.cls);
+    if(!c){ r.err.push("سطر "+(i+1)+": الفصل «"+(o.cls||"")+"» مش موجود"); return; }
+    var su = findSubjInClass(c.id, o.subject);
+    if(!su){
+      su = {id:uid("sb"), classId:c.id, name:cleanName(o.subject||""), max:100, counted:true};
+      if(!su.name){ r.err.push("سطر "+(i+1)+": مفيش اسم مادة"); return; }
+      DB.subjects.push(su);
+    }
+    var dup = DB.assign.filter(function(a){ return a.classId===c.id && a.subjectId===su.id; })[0];
+    if(dup){
+      if(UI.imp.mode==="update"){ dup.teacherId = t.id; r.upd++; }
+      else r.skip++;
+      return;
+    }
+    DB.assign.push({id:uid("a"), teacherId:t.id, classId:c.id, subjectId:su.id});
+    r.add++;
+  });
+  return r;
+}
+
+/* ---------- تسجيل الإجراءات ---------- */
+Object.assign(ACTS, {
+  imp: function(el){ openImport(el.dataset.tg, {classId:el.dataset.cid, subjectId:el.dataset.sid}); },
+  impFile: impFile,
+  impPasteGo: impPasteGo,
+  impMap: function(){},
+  impRun: impRun,
+  impDone: function(){ MODAL.classList.remove("wide"); closeModal(); UI.imp=null; render(); },
+  impTpl: function(el){ downloadTemplate(el.dataset.tg); },
+  importStudents: function(el){ openImport("students", {classId: el.dataset.cid}); }
+});
+
+/* التذييل في كل شاشة */
+var _renderBase = render;
+render = function(){
+  _renderBase();
+  var v = document.getElementById("view");
+  if(v) v.insertAdjacentHTML("beforeend", creditHTML());
+};
+
+/* ربط قوائم تعيين الأعمدة */
+document.addEventListener("change", function(e){
+  var el = e.target;
+  if(el && el.dataset && el.dataset.act==="impMap" && UI.imp){
+    UI.imp.map[Number(el.dataset.c)] = el.value;
+  }
+});
+
+/* ---------- نموذج جاهز للتنزيل ---------- */
+function downloadTemplate(target){
+  var sc = IMPORT_SCHEMAS[target];
+  var head = sc.fields.map(function(f){ return f.label; });
+  if(target==="weekly") for(var i=1;i<=WEEKLY_COUNT;i++) head.push("تقييم "+i);
+  if(target==="attendance"){ head.push("2026-10-04"); head.push("2026-10-05"); }
+  var rows = [head.join(",")];
+  var sample = {
+    students:["أحمد محمد علي حسن","1001","30012345600123","محمد علي حسن","01000000000","مسلم","٢/١ علمي علوم","الثاني الثانوي",""],
+    teachers:["محمود سيد عبد الله","لغة عربية","01000000000","1234"],
+    classes:["٢/١ علمي علوم","الثاني الثانوي","الثانوية العامة","علمي علوم","201"],
+    subjects:["الكيمياء","100","نعم"],
+    marks:["أحمد محمد علي حسن","1001","14","13","15","10","28"],
+    weekly:["أحمد محمد علي حسن","1001"].concat(new Array(WEEKLY_COUNT).fill("18")),
+    attendance:["أحمد محمد علي حسن","1001","ح","غ"],
+    schedule:["الأحد","3","الكيمياء","محمود سيد عبد الله","٢/١ علمي علوم"],
+    assign:["محمود سيد عبد الله","٢/١ علمي علوم","اللغة العربية"]
+  }[target] || [];
+  rows.push(sample.join(","));
+  try{
+    var blob = new Blob(["\uFEFF"+rows.join("\n")], {type:"text/csv;charset=utf-8"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "نموذج-"+target+".csv";
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 400);
+    toast("اتنزّل النموذج — املاه في إكسيل وارفعه");
+  }catch(e){ toast("التنزيل مش متاح على المتصفح ده"); }
+}
+
+/* ---------- زر الاستيراد الموحّد ---------- */
+function impBtn(target, ctx, label){
+  ctx = ctx || {};
+  return '<button class="btn ghost sm noprint" data-act="imp" data-tg="'+target+'"'+
+    (ctx.classId?' data-cid="'+ctx.classId+'"':'')+
+    (ctx.subjectId?' data-sid="'+ctx.subjectId+'"':'')+
+    ' style="margin-right:6px">⇪ '+esc(label||"استيراد إكسيل")+'</button>';
+}
+
+/* ============================================================
+   التذييل الثابت
+   ============================================================ */
+function creditHTML(){
+  return '<div class="credit">'+
+    '<div>للتواصل : <a href="mailto:farhatzayed2018@gmail.com">farhatzayed2018@gmail.com</a></div>'+
+    '<div>برمجه / فرحات زايد — إهداء لمنظومه التعليم الثانوي</div>'+
+    '</div>';
+}
+/* ============================================================
+   المزامنة السحابية — كل الأجهزة على نفس البيانات
+   الوكيل يدخّل من جهازه، والمعلم يشوف على موبايله فورًا.
+   المزامنة على مستوى العنصر مش الملف كله، عشان اتنين يشتغلوا
+   في نفس الوقت من غير ما حد يمسح على التاني.
+   ============================================================ */
+
+var FB_VER = "10.12.2";
+/* أكتر من مصدر للمكتبة — لو واحد محجوب أو مش شغال، بيجرّب اللي بعده */
+var FB_HOSTS = [
+  "https://www.gstatic.com/firebasejs/"+FB_VER+"/",
+  "https://cdnjs.cloudflare.com/ajax/libs/firebase/"+FB_VER+"/",
+  "https://cdn.jsdelivr.net/npm/firebase@"+FB_VER+"/",
+  "https://unpkg.com/firebase@"+FB_VER+"/"
+];
+var FB_FILES = ["firebase-app-compat.js","firebase-auth-compat.js","firebase-database-compat.js"];
+var SYNC_KEY = "segel_sync_v1";
+
+/* إعدادات مدفونة في النسخة الموزّعة — بتخلي أي جهاز يفتح البرنامج
+   يتوصل بمدرسته تلقائي من غير ما حد يلزق أي كود. */
+var EMBED_SYNC = {"code": "lotfy-salama-9af5416762", "cfg": {"apiKey": "AIzaSyCz4RRKoc-vEe8pqRFuvG32hvKXHmKzvpQ", "authDomain": "lotfy-salama-shool.firebaseapp.com", "databaseURL": "https://lotfy-salama-shool-default-rtdb.europe-west1.firebasedatabase.app", "projectId": "lotfy-salama-shool", "storageBucket": "lotfy-salama-shool.firebasestorage.app", "messagingSenderId": "470512249881", "appId": "1:470512249881:web:b681eb0c4acaa934354e88"}};
+function embeddedCfg(){
+  return (EMBED_SYNC && EMBED_SYNC.code && cfgValid(EMBED_SYNC.cfg)) ? EMBED_SYNC : null;
+}
+
+/* المجموعات اللي بتتزامن كوحدة واحدة (نادرًا ما تتعدّل من جهازين مع بعض) */
+var BULK = ["meta","weights","bac","absRules","users","teachers","classes","subjects","students","assign","schedule","behavior"];
+/* المجموعات اللي بتتزامن عنصر عنصر (كل معلم بيكتب في خانته) */
+var GRAIN = ["attend","marks"];
+
+var SYNC = {
+  on:false, cfg:null, code:"", dev:"", status:"off", msg:"",
+  ref:null, sent:null, pushT:null, applying:false, lastAt:0, err:"", src:""
+};
+
+function syncCfgLoad(){
+  try{
+    var raw = window.localStorage.getItem(SYNC_KEY);
+    if(!raw) return null;
+    return JSON.parse(raw);
+  }catch(e){ return null; }
+}
+function syncCfgSave(o){
+  try{ window.localStorage.setItem(SYNC_KEY, JSON.stringify(o)); return true; }
+  catch(e){ return false; }
+}
+function deviceId(){
+  var c = syncCfgLoad() || {};
+  if(!c.dev){
+    c.dev = "d" + Math.random().toString(36).slice(2,10);
+    syncCfgSave(c);
+  }
+  return c.dev;
+}
+
+/* يقبل كائن JSON أو كود جافاسكريبت متلزق من فايربيز */
+function parseFbConfig(text){
+  var s = String(text||"").trim();
+  if(!s) return null;
+  /* الكود اللي فايربيز بيديه فيه سطور import فيها أقواس —
+     فبندوّر على firebaseConfig نفسها ونعدّ الأقواس عشان نجيب الكائن الصح */
+  var start = 0;
+  var m = /firebaseConfig\s*=\s*/.exec(s);
+  if(m) start = m.index + m[0].length;
+  var i = s.indexOf("{", start);
+  if(i<0) return null;
+  var depth = 0, j = -1;
+  for(var k=i;k<s.length;k++){
+    if(s[k]==="{") depth++;
+    else if(s[k]==="}"){ depth--; if(depth===0){ j=k; break; } }
+  }
+  if(j<0) return null;
+  s = s.slice(i, j+1);
+  try{ return JSON.parse(s); }catch(e){}
+  try{ return JSON.parse(jsObjToJson(s)); }catch(e2){ return null; }
+}
+/* تحويل كائن جافاسكريبت لـJSON: بيشيل التعليقات ويقفل المفاتيح بعلامات
+   ويمسح الفواصل الزيادة — من غير ما يلخبط النصوص اللي جواها // زي الروابط */
+function jsObjToJson(src){
+  var out = "", i = 0, n = src.length;
+  while(i < n){
+    var ch = src[i];
+    if(ch === '"' || ch === "'"){
+      var q = ch, buf = '"'; i++;
+      while(i < n && src[i] !== q){
+        if(src[i] === "\\"){ buf += src[i] + (src[i+1]||""); i += 2; continue; }
+        buf += (src[i] === '"') ? '\\"' : src[i];
+        i++;
+      }
+      i++; out += buf + '"'; continue;
+    }
+    if(ch === "/" && src[i+1] === "/"){ while(i < n && src[i] !== "\n") i++; continue; }
+    if(ch === "/" && src[i+1] === "*"){ i += 2; while(i < n && !(src[i]==="*" && src[i+1]==="/")) i++; i += 2; continue; }
+    out += ch; i++;
+  }
+  var strs = [];
+  out = out.replace(/"(?:\\.|[^"\\])*"/g, function(m){ strs.push(m); return "\u0001"+(strs.length-1)+"\u0001"; });
+  out = out.replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":');
+  out = out.replace(/,(\s*[}\]])/g, "$1");
+  out = out.replace(/\u0001(\d+)\u0001/g, function(_, d){ return strs[Number(d)]; });
+  return out;
+}
+function cfgValid(c){
+  return !!(c && c.apiKey && c.projectId && (c.databaseURL || c.projectId));
+}
+function ensureDbUrl(c){
+  if(!c.databaseURL) c.databaseURL = "https://"+c.projectId+"-default-rtdb.firebaseio.com";
+  return c;
+}
+
+function loadScript(src){
+  return new Promise(function(res, rej){
+    var el = document.createElement("script");
+    el.src = src; el.async = false;
+    var done = false;
+    var timer = setTimeout(function(){
+      if(done) return;
+      done = true; el.remove();
+      rej(new Error("انتهت المهلة"));
+    }, 12000);
+    el.onload = function(){ if(done) return; done=true; clearTimeout(timer); res(); };
+    el.onerror = function(){ if(done) return; done=true; clearTimeout(timer); el.remove(); rej(new Error("فشل التحميل")); };
+    document.head.appendChild(el);
+  });
+}
+function inFrame(){
+  try{ return window.self !== window.top; }catch(e){ return true; }
+}
+/* بيجرّب المصادر بالترتيب لحد ما واحد ينجح */
+function loadFirebase(){
+  if(window.firebase && window.firebase.database) return Promise.resolve();
+  var hosts = FB_HOSTS.slice(), tried = [];
+  function tryHost(){
+    if(!hosts.length){
+      var why = inFrame()
+        ? "المكتبة مش راضية تتحمّل. غالبًا لأنك فاتح البرنامج جوه معاينة داخل صفحة تانية — نزّل الملف واشتغل عليه من المتصفح مباشرة."
+        : "مقدرتش أحمّل مكتبة فايربيز من أي مصدر. اتأكد إن النت شغال، ولو في المدرسة فيه حجب جرّب من شبكة تانية أو من بيانات الموبايل.";
+      return Promise.reject(new Error(why));
+    }
+    var base = hosts.shift();
+    tried.push(base);
+    return FB_FILES.reduce(function(p, f){
+      return p.then(function(){ return loadScript(base + f); });
+    }, Promise.resolve()).then(function(){
+      if(!(window.firebase && window.firebase.database)) throw new Error("المكتبة اتحمّلت ناقصة");
+      SYNC.src = base;
+    }).catch(function(){
+      return tryHost();
+    });
+  }
+  return tryHost();
+}
+function syncStatus(st, msg){
+  SYNC.status = st; SYNC.msg = msg||"";
+  var el = document.getElementById("syncPill");
+  if(el){ el.className = "syncpill " + st; el.textContent = syncLabel(); }
+}
+function syncLabel(){
+  if(SYNC.status==="off")   return "المزامنة مقفولة";
+  if(SYNC.status==="conn")  return "بيوصل…";
+  if(SYNC.status==="ok")    return "متزامن ✓";
+  if(SYNC.status==="push")  return "بيرفع…";
+  if(SYNC.status==="err")   return "خطأ: "+SYNC.msg;
+  return SYNC.msg||"";
+}
+
+/* ---------- التشغيل ---------- */
+function syncStart(silent){
+  var c = syncCfgLoad();
+  if(!c || !c.enabled || !cfgValid(c.cfg) || !c.code){
+    if(!silent) toast("اضبط إعدادات المزامنة الأول");
+    return Promise.resolve(false);
+  }
+  SYNC.cfg = ensureDbUrl(c.cfg); SYNC.code = c.code; SYNC.dev = deviceId();
+  syncStatus("conn");
+  return loadFirebase().then(function(){
+    var fb = window.firebase;
+    if(!fb.apps.length) fb.initializeApp(SYNC.cfg);
+    return fb.auth().signInAnonymously().catch(function(e){
+      throw new Error("الدخول المجهول مقفول في فايربيز — فعّله من Authentication");
+    });
+  }).then(function(){
+    SYNC.ref = window.firebase.database().ref("schools/"+SYNC.code);
+    SYNC.on = true;
+    SYNC.sent = snapshotOf(DB);
+    SYNC.ref.on("value", onRemote, function(err){
+      SYNC.on = false;
+      syncStatus("err", "مقدرش يقرا — راجع قواعد قاعدة البيانات");
+    });
+    window.firebase.database().ref(".info/connected").on("value", function(sn){
+      if(!SYNC.on) return;
+      syncStatus(sn.val() ? "ok" : "conn", sn.val()? "" : "مفيش اتصال");
+    });
+    syncStatus("ok");
+    if(!silent) toast("المزامنة اشتغلت");
+    return true;
+  }).catch(function(e){
+    SYNC.on = false;
+    syncStatus("err", e.message || "فشل الاتصال");
+    if(!silent) toast(e.message || "فشل الاتصال بفايربيز");
+    return false;
+  });
+}
+function syncStop(){
+  try{ if(SYNC.ref) SYNC.ref.off(); }catch(e){}
+  SYNC.on = false; SYNC.ref = null;
+  syncStatus("off");
+}
+
+/* ---------- بصمة للمقارنة ---------- */
+function snapshotOf(db){
+  var s = {b:{}, g:{}};
+  BULK.forEach(function(k){ s.b[k] = JSON.stringify(db[k]===undefined? null : db[k]); });
+  GRAIN.forEach(function(k){
+    s.g[k] = {};
+    var o = db[k] || {};
+    for(var x in o) s.g[k][x] = JSON.stringify(o[x]);
+  });
+  return s;
+}
+/* فايربيز مش بيقبل . # $ [ ] / في المفاتيح */
+function fbKey(k){ return String(k).replace(/[.#$\[\]\/]/g, "~"); }
+function unFbKey(k){ return String(k); }
+
+/* ---------- الرفع ---------- */
+function syncPush(){
+  if(!SYNC.on || SYNC.applying) return;
+  clearTimeout(SYNC.pushT);
+  SYNC.pushT = setTimeout(doPush, 700);
+}
+function doPush(){
+  if(!SYNC.on || !SYNC.ref) return;
+  var now = snapshotOf(DB), up = {}, n = 0;
+  BULK.forEach(function(k){
+    if(!SYNC.sent || SYNC.sent.b[k] !== now.b[k]){
+      up[k] = DB[k]===undefined ? null : DB[k];
+      n++;
+    }
+  });
+  GRAIN.forEach(function(k){
+    var cur = now.g[k], old = (SYNC.sent && SYNC.sent.g[k]) || {};
+    for(var x in cur){
+      if(old[x] !== cur[x]){ up[k+"/"+fbKey(x)] = DB[k][x]; n++; }
+    }
+    for(var y in old){
+      if(cur[y]===undefined){ up[k+"/"+fbKey(y)] = null; n++; }
+    }
+  });
+  if(!n) return;
+  up["_rev"] = { by: SYNC.dev, at: Date.now() };
+  syncStatus("push");
+  /* بنسجّل اللي بعتناه فورًا عشان تعديل تاني في نفس اللحظة ما يعيدش رفع الكل،
+     ولو الكتابة فشلت بنرجّع البصمة عشان المحاولة الجاية تبعت الناقص */
+  var prev = SYNC.sent;
+  SYNC.sent = now;
+  SYNC.ref.update(up).then(function(){
+    syncStatus("ok");
+  }).catch(function(e){
+    SYNC.sent = prev;
+    syncStatus("err", "مقدرش يكتب — راجع قواعد قاعدة البيانات");
+  });
+}
+
+/* ---------- الاستقبال ---------- */
+function onRemote(sn){
+  var v = sn.val();
+  if(!v) { doPush(); return; }                       /* السحابة فاضية: ارفع اللي عندك */
+  if(v._rev && v._rev.by === SYNC.dev) return;       /* صدى تعديلاتنا */
+  SYNC.applying = true;
+  var changed = false;
+  BULK.forEach(function(k){
+    if(v[k]===undefined) return;
+    var incoming = v[k];
+    if(["users","teachers","classes","subjects","students","assign","schedule","behavior"].indexOf(k)>=0){
+      incoming = Array.isArray(incoming) ? incoming.filter(Boolean) : [];
+    }
+    if(JSON.stringify(DB[k]) !== JSON.stringify(incoming)){ DB[k] = incoming; changed = true; }
+  });
+  GRAIN.forEach(function(k){
+    var inc = v[k] || {};
+    var cur = DB[k] || {};
+    for(var x in inc){
+      if(JSON.stringify(cur[x]) !== JSON.stringify(inc[x])){ cur[x] = inc[x]; changed = true; }
+    }
+    for(var y in cur){
+      if(inc[y]===undefined){ delete cur[y]; changed = true; }
+    }
+    DB[k] = cur;
+  });
+  SYNC.sent = snapshotOf(DB);
+  SYNC.applying = false;
+  if(changed){
+    saveNow();
+    SYNC.lastAt = Date.now();
+    if(UI.user && !document.getElementById("ov").classList.contains("on")) render();
+    syncStatus("ok");
+  }
+}
+
+/* ربط الرفع بالحفظ المحلي */
+var _saveBase = save, _saveNowBase = saveNow;
+save = function(){ _saveBase(); syncPush(); };
+saveNow = function(){ var r = _saveNowBase(); syncPush(); return r; };
+
+/* ---------- إعدادات المزامنة في الواجهة ---------- */
+function syncCard(){
+  var c = syncCfgLoad() || {};
+  var has = cfgValid(c.cfg);
+  var h = '<div class="card"><div class="hd"><h3>المزامنة والعمل الجماعي</h3>'+
+    '<span id="syncPill" class="syncpill '+SYNC.status+'">'+esc(syncLabel())+'</span></div><div class="bd">';
+
+  if(!has && embeddedCfg()){
+    h += '<div class="note">دي نسخة مجهّزة لمدرسة <b>'+esc(embeddedCfg().code)+'</b> — بتتوصل بالسحابة لوحدها أول ما تفتح.</div>';
+  }else if(!has){
+    h += '<div class="note warn"><b>البرنامج شغال على الجهاز ده بس دلوقتي.</b> '+
+      'عشان الوكيل يدخّل بيانات والمعلمين يشوفوها على موبايلاتهم، لازم تربطه بقاعدة بيانات فايربيز — مجانية وتكفي مدرسة كاملة. '+
+      'اضغط «خطوات الربط» وامشي معاها ٥ دقايق.</div>';
+  }else{
+    h += '<div class="note '+(SYNC.on?"":"warn")+'">'+
+      (SYNC.on ? 'المزامنة شغالة على كود المدرسة <b>'+esc(c.code)+'</b>. أي تعديل بيوصل باقي الأجهزة في ثواني.'
+               : 'الإعدادات محفوظة بس المزامنة مقفولة. اضغط «تشغيل المزامنة».')+'</div>';
+  }
+  h += '<label class="f"><span>كود المدرسة (نفس الكود على كل الأجهزة)</span>'+
+    '<input type="text" id="sy_code" value="'+esc(c.code||"")+'" placeholder="مثال: nile-2027"></label>'+
+    '<label class="f"><span>إعدادات فايربيز — الصق الكود اللي فايربيز بيديهولك</span>'+
+    '<textarea id="sy_cfg" style="min-height:110px;direction:ltr;font-size:11.5px" placeholder=\'{ "apiKey": "...", "projectId": "...", "databaseURL": "..." }\'>'+
+    esc(c.cfg? JSON.stringify(c.cfg, null, 1) : "")+'</textarea></label>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn" data-act="syncSave">حفظ وتشغيل</button>'+
+    (SYNC.on?'<button class="btn ghost" data-act="syncOff">إيقاف المزامنة</button>':'')+
+    (SYNC.on?'<button class="btn seal" data-act="syncInvite">دعوة جهاز جديد</button>':'')+
+    '<button class="btn ghost" data-act="syncHelp">خطوات الربط</button>'+
+    (SYNC.on?'<button class="btn ghost" data-act="syncForce">رفع بيانات الجهاز ده للسحابة</button>':'')+
+    '</div>';
+  if(SYNC.status==="err") h += '<div class="note bad" style="margin-top:10px"><b>المشكلة:</b> '+esc(SYNC.msg)+'</div>';
+  if(inFrame()) h += '<div class="note warn" style="margin-top:10px"><b>انتبه:</b> البرنامج شغال دلوقتي جوه معاينة داخل صفحة تانية، '+
+    'والمعاينات دي بتمنع الاتصال بالسحابة. نزّل الملف على الجهاز وافتحه من المتصفح مباشرة عشان المزامنة تشتغل.</div>';
+  if(SYNC.on && SYNC.src) h += '<div style="font-size:11px;color:var(--muted);margin-top:8px">مصدر المكتبة: '+esc(SYNC.src)+'</div>';
+  h += '</div></div>';
+  return h;
+}
+function syncHelp(){
+  openModal(mHead("ربط المدرسة بالسحابة — ٥ خطوات")+
+    '<div class="mb">'+
+    '<div class="note">كل ده مجاني. تعمله <b>مرة واحدة</b> على جهاز واحد، وبعدين تنسخ نفس الإعدادات على باقي الأجهزة.</div>'+
+    '<ol style="padding-right:18px;line-height:2;font-size:13.5px;margin:0">'+
+    '<li>افتح <b>console.firebase.google.com</b> واعمل مشروع جديد باسم مدرستك.</li>'+
+    '<li>من القائمة: <b>Build ← Realtime Database ← Create Database</b>، واختار <b>Start in test mode</b> مؤقتًا.</li>'+
+    '<li>من <b>Build ← Authentication ← Get started</b>، فعّل <b>Anonymous</b>.</li>'+
+    '<li>من <b>⚙ Project settings ← General</b>، انزل لـ <b>Your apps</b> واضغط أيقونة <b>&lt;/&gt;</b> (ويب)، اكتب أي اسم واضغط Register.</li>'+
+    '<li>هيظهرلك كود فيه <b>firebaseConfig</b> — انسخه كله والزقه في الخانة، واكتب كود المدرسة، واضغط حفظ وتشغيل.</li>'+
+    '</ol>'+
+    '<div class="note warn" style="margin-top:12px"><b>مهم للأمان:</b> بعد ما تتأكد إن كل حاجة شغالة، '+
+    'ارجع لـ Realtime Database ← Rules وحط القاعدة دي عشان محدش من برة يقرا بيانات مدرستك:</div>'+
+    '<textarea readonly style="min-height:120px;direction:ltr;font-size:11.5px">{\n  "rules": {\n    "schools": {\n      "$school": {\n        ".read": "auth != null",\n        ".write": "auth != null"\n      }\n    }\n  }\n}</textarea>'+
+    '<div class="note" style="margin-top:10px">على أي جهاز تاني: افتح نفس الملف، روح للإعدادات، والصق <b>نفس</b> الكود ونفس كود المدرسة. البيانات هتنزل عليه لوحدها.</div>'+
+    '</div><div class="mf"><button class="btn" data-act="close">تمام</button></div>');
+  MODAL.classList.add("wide");
+}
+
+Object.assign(ACTS, {
+  syncSave: function(){
+    var code = (val("sy_code")||"").trim().replace(/[.#$\[\]\/\s]/g,"-");
+    var cfg = parseFbConfig(val("sy_cfg"));
+    if(!code){ toast("اكتب كود المدرسة"); return; }
+    if(!cfgValid(cfg)){ toast("إعدادات فايربيز مش مقروءة — الصق الكود كامل"); return; }
+    var c = syncCfgLoad() || {};
+    c.code = code; c.cfg = ensureDbUrl(cfg); c.enabled = true; c.dev = c.dev || deviceId();
+    if(!syncCfgSave(c)){ toast("المتصفح مانع الحفظ"); return; }
+    syncStart();
+    render();
+  },
+  syncOff: function(){
+    var c = syncCfgLoad() || {}; c.enabled = false; syncCfgSave(c);
+    syncStop(); render(); toast("المزامنة اتقفلت");
+  },
+  syncHelp: syncHelp,
+  syncForce: function(){
+    if(!SYNC.on){ toast("المزامنة مش شغالة"); return; }
+    if(!confirm("هيرفع كل بيانات الجهاز ده ويستبدل اللي في السحابة. متأكد؟")) return;
+    SYNC.sent = null;
+    doPush();
+    toast("جاري الرفع…");
+  }
+});
+
+/* إضافة بطاقة المزامنة لشاشة الإعدادات */
+var _settingsBase = viewSettings;
+viewSettings = function(){
+  var h = _settingsBase();
+  var marker = '<div class="card"><div class="hd"><h3>النسخ الاحتياطي</h3></div>';
+  return h.indexOf(marker)>=0 ? h.replace(marker, syncCard()+marker) : h + syncCard();
+};
+
+/* تشغيل تلقائي عند فتح البرنامج */
+function autoLink(){
+  var c = syncCfgLoad();
+  if(!c || !c.code || !cfgValid(c.cfg)){
+    var e = embeddedCfg();
+    if(e){
+      var n = syncCfgLoad() || {};
+      n.code = e.code; n.cfg = ensureDbUrl(e.cfg); n.enabled = true; n.dev = n.dev || deviceId();
+      syncCfgSave(n);
+      c = n;
+    }
+  }
+  return c;
+}
+setTimeout(function(){
+  var c = autoLink();
+  if(c && c.enabled && cfgValid(c.cfg) && c.code) syncStart(true);
+}, 400);
+
+/* ============================================================
+   كود الدعوة — ربط جهاز جديد بسطر واحد
+   ============================================================ */
+function b64e(str){
+  try{ return window.btoa(unescape(encodeURIComponent(str))); }
+  catch(e){ return null; }
+}
+function b64d(str){
+  try{ return decodeURIComponent(escape(window.atob(str))); }
+  catch(e){ return null; }
+}
+function inviteCode(){
+  var c = syncCfgLoad();
+  if(!c || !cfgValid(c.cfg) || !c.code) return null;
+  var payload = b64e(JSON.stringify({v:1, code:c.code, cfg:c.cfg}));
+  return payload ? "SEGEL-" + payload : null;
+}
+function applyInvite(text){
+  var s = String(text||"").trim().replace(/\s+/g,"");
+  var i = s.indexOf("SEGEL-");
+  if(i>=0) s = s.slice(i+6);
+  var json = b64d(s);
+  if(!json){ toast("كود الدعوة مش مقروء — انسخه كامل تاني"); return false; }
+  var o;
+  try{ o = JSON.parse(json); }catch(e){ toast("كود الدعوة تالف"); return false; }
+  if(!o || !o.code || !cfgValid(o.cfg)){ toast("كود الدعوة ناقص"); return false; }
+  var c = syncCfgLoad() || {};
+  c.code = o.code; c.cfg = ensureDbUrl(o.cfg); c.enabled = true; c.dev = c.dev || deviceId();
+  if(!syncCfgSave(c)){ toast("المتصفح مانع الحفظ — جرّب متصفح تاني"); return false; }
+  return true;
+}
+function modalInviteShow(){
+  var code = inviteCode();
+  if(!code){ toast("اضبط المزامنة الأول"); return; }
+  var msg = "لينك برنامج «سجل» بتاع "+DB.meta.school+"\n\n"+
+    "١) افتح ملف البرنامج على جهازك\n"+
+    "٢) في شاشة الدخول اضغط «جهاز جديد؟ الصق كود الربط»\n"+
+    "٣) الصق الكود ده:\n\n"+code;
+  openModal(mHead("دعوة جهاز جديد")+
+    '<div class="mb"><div class="note">ابعت <b>ملف البرنامج</b> + <b>الكود ده</b> لأي معلم أو إداري. '+
+    'هو بس هيلزق الكود مرة واحدة، والبيانات هتنزل على جهازه لوحدها ويلاقي اسمه في قائمة الدخول.</div>'+
+    '<label class="f"><span>كود الربط</span>'+
+    '<textarea id="invOut" readonly style="min-height:110px;direction:ltr;font-size:11px">'+esc(code)+'</textarea></label>'+
+    '<label class="f"><span>رسالة جاهزة للواتساب</span>'+
+    '<textarea id="invMsg" readonly style="min-height:120px;font-size:12px">'+esc(msg)+'</textarea></label>'+
+    '<div class="note warn">الكود ده مفتاح مدرستك — ابعته للعاملين بالمدرسة بس.</div>'+
+    '</div><div class="mf"><button class="btn ghost" data-act="close">إغلاق</button>'+
+    '<button class="btn" data-act="invCopyMsg">نسخ الرسالة</button>'+
+    '<button class="btn seal" data-act="invCopy">نسخ الكود</button></div>');
+  MODAL.classList.add("wide");
+}
+function copyFrom(id, okMsg){
+  var t = document.getElementById(id);
+  if(!t) return;
+  t.removeAttribute("readonly");
+  t.select(); t.setSelectionRange(0, 999999);
+  var ok = false;
+  try{ ok = document.execCommand("copy"); }catch(e){}
+  t.setAttribute("readonly","readonly");
+  toast(ok ? okMsg : "اختار النص وانسخه يدويًا");
+}
+function modalInvitePaste(){
+  openModal(mHead("ربط الجهاز بمدرستك")+
+    '<div class="mb"><div class="note">الصق كود الربط اللي وصلك من وكيل شئون الطلاب. '+
+    'بعد الربط هتلاقي اسمك في قائمة الدخول وتدخل برقمك السري.</div>'+
+    '<label class="f"><span>كود الربط</span>'+
+    '<textarea id="invIn" style="min-height:120px;direction:ltr;font-size:11px" placeholder="SEGEL-..."></textarea></label>'+
+    '</div>'+mFoot("ربط الجهاز","invApply"));
+  MODAL.classList.add("wide");
+}
+
+Object.assign(ACTS, {
+  syncInvite: modalInviteShow,
+  invCopy: function(){ copyFrom("invOut","اتنسخ الكود"); },
+  invCopyMsg: function(){ copyFrom("invMsg","اتنسخت الرسالة"); },
+  invPaste: modalInvitePaste,
+  invApply: function(){
+    if(!applyInvite(val("invIn"))) return;
+    MODAL.classList.remove("wide");
+    closeModal();
+    toast("بيوصل بمدرستك…");
+    syncStart().then(function(ok){
+      if(ok){
+        toast("اتربط! البيانات بتنزل دلوقتي");
+        setTimeout(function(){ if(!UI.user) renderLogin(); }, 1500);
+      }
+    });
+  }
+});
+
+/* زر «جهاز جديد» في شاشة الدخول */
+var _renderLoginBase = renderLogin;
+renderLogin = function(){
+  _renderLoginBase();
+  var box = document.getElementById("loginCard");
+  if(!box) return;
+  var c = syncCfgLoad();
+  var linked = !!(c && c.enabled && c.code);
+  box.insertAdjacentHTML("beforeend",
+    '<div style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line-2);text-align:center">'+
+    (linked
+      ? '<div style="font-size:11.5px;color:var(--muted)">مربوط بمدرسة <b>'+esc(c.code)+'</b> · '+
+        '<button data-lact="invp" style="color:var(--ink-2);font-weight:600;font-size:11.5px;text-decoration:underline">تغيير</button></div>'
+      : '<button data-lact="invp" style="color:var(--ink-2);font-weight:600;font-size:13px">جهاز جديد؟ الصق كود الربط</button>')+
+    '</div>');
+};
+document.addEventListener("click", function(e){
+  var el = e.target.closest ? e.target.closest("[data-lact='invp']") : null;
+  if(el){ e.preventDefault(); modalInvitePaste(); }
+});
+</script>
+</body>
+</html>
