@@ -745,9 +745,9 @@ function absState(absDays){
 /* ---------- بيانات ابتدائية ---------- */
 function seed(){
   var d = blankDB();
-  d.users.push({id:uid("u"), name:"مدير المدرسة", role:"manager", pin:"481502"});
-  d.users.push({id:uid("u"), name:"وكيل شئون الطلاب", role:"deputy", pin:"736914"});
-  d.users.push({id:uid("u"), name:"وكيل شئون العاملين", role:"admin", pin:"259487"});
+  d.users.push({id:uid("u"), name:"مدير المدرسة", role:"manager", pin:"MK4TQ9RD"});
+  d.users.push({id:uid("u"), name:"وكيل شئون الطلاب", role:"deputy", pin:"PZ7HB2WN"});
+  d.users.push({id:uid("u"), name:"وكيل شئون العاملين", role:"admin", pin:"TR5NC8JV"});
   return d;
 }
 /* ============================================================
@@ -817,7 +817,7 @@ function renderLogin(){
   });
   h += '</div>';
   if(UI.pick){
-    h += '<div style="margin-top:12px"><label class="f"><span>الرقم السري</span>'+
+    h += '<div style="margin-top:12px"><label class="f"><span>كلمة السر</span>'+
       '<input type="password" id="pin" inputmode="numeric" placeholder="••••" autocomplete="off"></label>'+
       '<button class="btn block" data-lact="go">دخول</button></div>';
   }
@@ -1237,7 +1237,7 @@ function viewTeacher(id){
     var canSee = UI.user.role==="manager" || UI.user.role==="admin" || UI.user.role==="deputy";
     h += '<div class="bd"><div class="note">حساب الدخول جاهز. المعلم بيفتح اللينك ويكتب رقمه السري على طول، '+
       'ويشوف فصوله ومواده بس.'+
-      (canSee? ' الرقم السري: <b style="letter-spacing:.12em">'+esc(u.pin)+'</b>' : '')+'</div></div>';
+      (canSee? ' كلمة السر: <b style="letter-spacing:.12em;direction:ltr;display:inline-block">'+esc(u.pin)+'</b>' : '')+'</div></div>';
   }
   h += '</div>';
 
@@ -1545,7 +1545,7 @@ function viewSettings(){
   DB.users.forEach(function(u){
     h += '<div class="list-item"><span class="av">'+esc(ROLES[u.role]?ROLES[u.role].av:"؟")+'</span>'+
       '<span class="tx"><b>'+esc(u.name)+'</b><small>'+esc(ROLES[u.role]?ROLES[u.role].name:u.role)+
-        ' · رقم من '+String(u.pin||"").length+' خانات'+(pinCheck(u.pin,u.id)?' · <span style="color:var(--danger)">يحتاج تغيير</span>':'')+'</small></span>'+
+        ' · كلمة سر من '+String(u.pin||"").length+' خانات'+(pinCheck(u.pin,u.id)?' · <span style="color:var(--danger)">يحتاج تغيير</span>':'')+'</small></span>'+
       '<button class="btn ghost sm" data-act="editUser" data-id="'+u.id+'">تعديل</button></div>';
   });
   h += '</div></div>';
@@ -2130,7 +2130,7 @@ function saveTeacher(){
   t.name = name; t.subject = val("t_sub").trim(); t.phone = val("t_ph").trim();
   var u = userOfTeacher(t.id);
   if(!u){ u = {id:uid("u"), role:"teacher", teacherId:t.id}; DB.users.push(u); }
-  u.name = name; u.pin = toEnDigits(val("t_pin")).trim() || genPin();
+  u.name = name; u.pin = normPin(val("t_pin")) || genPin();
   save(); closeModal(); render(); toast("اتحفظ");
 }
 
@@ -2267,8 +2267,8 @@ function modalUser(id){
 }
 function saveUser(){
   var id = MODAL.dataset.uid;
-  var n = val("u_n").trim(), p = val("u_p").trim();
-  if(!n||!p){ toast("اكتب الاسم والرقم السري"); return; }
+  var n = val("u_n").trim(), p = normPin(val("u_p"));
+  if(!n||!p){ toast("اكتب الاسم وكلمة السر"); return; }
   var u = id? byId(DB.users,id) : null;
   if(!u){ u = {id:uid("u")}; DB.users.push(u); }
   u.name=n; u.role=val("u_r"); u.pin=p;
@@ -2952,7 +2952,7 @@ var IMPORT_SCHEMAS = {
       {k:"name", label:"اسم المعلم", req:true, multi:true, al:["اسم المعلم","الاسم","اسم","المعلم","المدرس","teacher","name"]},
       {k:"subject", label:"التخصص", al:["التخصص","الماده","المادة","تخصص","subject","specialty"]},
       {k:"phone", label:"الهاتف", al:["الهاتف","تليفون","موبايل","المحمول","phone","mobile"]},
-      {k:"pin", label:"الرقم السري", al:["الرقم السري","الباسورد","كلمه السر","pin","password"]}
+      {k:"pin", label:"كلمة السر", al:["كلمه السر","كلمة السر","الرقم السري","الباسورد","pin","password"]}
     ]
   },
   classes:{
@@ -3400,7 +3400,7 @@ function impTeachers(recs){
     var u = userOfTeacher(t.id);
     if(!u){ u = {id:uid("u"), role:"teacher", teacherId:t.id}; DB.users.push(u); }
     u.name = name;
-    var wanted = o.pin ? toEnDigits(o.pin).replace(/\D/g,"") : "";
+    var wanted = o.pin ? normPin(o.pin) : "";
     if(wanted && !pinCheck(wanted, u.id)) u.pin = wanted;
     else if(!u.pin || pinCheck(u.pin, u.id)) u.pin = genPin();
   });
@@ -4941,75 +4941,89 @@ document.addEventListener("change", function(e){
    • تأخير تصاعدي بعد المحاولات الغلط ضد التخمين
    ============================================================ */
 
-var PIN_LEN = 6;
+var PIN_LEN = 8;                     /* أقل طول لكلمة السر */
+/* حروف إنجليزية وأرقام، من غير الحروف اللي بتتلخبط: O مع 0 و I مع 1 و L */
+var PIN_ALPHA = "ABCDEFGHJKMNPQRSTUVWXYZ";
+var PIN_DIGIT = "23456789";
 
-/* ---------- توليد وفحص الأرقام ---------- */
-function allPins(){
-  var m = {};
-  DB.users.forEach(function(u){ if(u.pin) m[String(u.pin)] = u; });
-  return m;
+function normPin(v){
+  return toEnDigits(String(v||"")).trim().toUpperCase();
 }
 function pinOwner(pin, exceptUserId){
-  var p = String(pin);
+  var p = normPin(pin);
+  if(!p) return null;
   for(var i=0;i<DB.users.length;i++){
     var u = DB.users[i];
     if(u.id===exceptUserId) continue;
-    if(String(u.pin)===p) return u;
+    if(normPin(u.pin)===p) return u;
   }
   return null;
 }
-/* رقم ضعيف: متتالي، مكرر، أو من قائمة الأرقام الشائعة */
-var WEAK_PINS = ["000000","111111","123456","654321","121212","112233","123123",
-                 "999999","555555","666666","101010","202020","123321","696969",
-                 "1234","0000","1111","2222","1122","4321"];
+var WEAK_PINS = ["PASSWORD","PASSWORD1","12345678","123456789","ABCD1234","ABC12345",
+                 "QWERTY12","QWERTY123","11111111","00000000","AAAA1111","1234ABCD",
+                 "ADMIN123","SCHOOL12","TEACHER1","12341234","1A2B3C4D"];
 function pinWeak(pin){
-  var p = toEnDigits(String(pin));
-  if(WEAK_PINS.indexOf(p)>=0) return "رقم شائع وسهل التخمين";
-  if(/^(\d)\1+$/.test(p)) return "كل الأرقام متشابهة";
-  var up=true, down=true;
+  var p = normPin(pin);
+  if(WEAK_PINS.indexOf(p)>=0) return "كلمة سر شائعة وسهلة التخمين";
+  if(/^(.)\1+$/.test(p)) return "كل الحروف متشابهة";
+  /* متتالية صاعدة أو نازلة */
+  var up = true, down = true;
   for(var i=1;i<p.length;i++){
-    if(Number(p[i]) !== Number(p[i-1])+1) up = false;
-    if(Number(p[i]) !== Number(p[i-1])-1) down = false;
+    var d = p.charCodeAt(i) - p.charCodeAt(i-1);
+    if(d !== 1) up = false;
+    if(d !== -1) down = false;
   }
-  if(up || down) return "أرقام متتالية";
-  if(/^(\d\d)\1+$/.test(p)) return "نمط مكرر";
-  if(/^(19|20)\d\d$/.test(p) && p.length===4) return "سنة ميلادية سهلة التخمين";
+  if(up || down) return "حروف أو أرقام متتالية";
+  /* نمط مكرر زي AB1AB1AB — وحدة بتتكرر مرتين فأكتر */
+  for(var u=2; u<=Math.floor(p.length/2); u++){
+    var unit = p.slice(0,u), ok = true;
+    for(var q=0;q<p.length;q++) if(p[q] !== unit[q%u]){ ok = false; break; }
+    if(ok) return "نمط مكرر";
+  }
   return null;
 }
-/* الفحص الكامل: بيرجع رسالة الخطأ أو null لو الرقم صالح */
+/* الفحص الكامل: بيرجع رسالة الخطأ أو null لو صالحة */
 function pinCheck(pin, exceptUserId){
-  var p = toEnDigits(String(pin||"")).trim();
-  if(!/^\d+$/.test(p)) return "الرقم السري لازم يكون أرقام بس";
-  if(p.length < PIN_LEN) return "الرقم السري لازم "+PIN_LEN+" أرقام على الأقل";
-  if(p.length > 12) return "الرقم طويل أوي — "+PIN_LEN+" لـ ١٢ رقم";
+  var p = normPin(pin);
+  if(!p) return "اكتب كلمة السر";
+  if(!/^[A-Z0-9]+$/.test(p)) return "كلمة السر حروف إنجليزية وأرقام بس — من غير مسافات أو رموز";
+  if(p.length < PIN_LEN) return "كلمة السر لازم "+PIN_LEN+" خانات على الأقل (المكتوب "+p.length+")";
+  if(p.length > 16) return "كلمة السر طويلة أوي — من "+PIN_LEN+" لـ ١٦ خانة";
+  if(!/[A-Z]/.test(p)) return "لازم تحتوي على حرف إنجليزي واحد على الأقل";
+  if(!/[0-9]/.test(p)) return "لازم تحتوي على رقم واحد على الأقل";
   var w = pinWeak(p);
-  if(w) return "الرقم ده مايصلحش: "+w;
-  var owner = pinOwner(p, exceptUserId);
-  if(owner) return "الرقم ده مستخدم بالفعل لحساب تاني — اختار رقم غيره";
+  if(w) return "كلمة السر دي ماتنفعش: "+w;
+  if(pinOwner(p, exceptUserId)) return "كلمة السر دي مستخدمة بالفعل لحساب تاني — اختار غيرها";
   return null;
 }
 function genPin(){
-  for(var tries=0; tries<500; tries++){
-    var p = "";
-    for(var i=0;i<PIN_LEN;i++) p += Math.floor(Math.random()*10);
-    if(p[0]==="0") continue;
+  for(var tries=0; tries<800; tries++){
+    var chars = [];
+    /* ٥ حروف و٣ أرقام مخلوطين */
+    for(var i=0;i<5;i++) chars.push(PIN_ALPHA[Math.floor(Math.random()*PIN_ALPHA.length)]);
+    for(var j=0;j<3;j++) chars.push(PIN_DIGIT[Math.floor(Math.random()*PIN_DIGIT.length)]);
+    for(var k=chars.length-1;k>0;k--){
+      var r = Math.floor(Math.random()*(k+1));
+      var t = chars[k]; chars[k] = chars[r]; chars[r] = t;
+    }
+    var p = chars.join("");
     if(pinWeak(p)) continue;
     if(pinOwner(p, null)) continue;
     return p;
   }
-  return String(Date.now()).slice(-PIN_LEN);
+  return "S" + Date.now().toString(36).toUpperCase().slice(-7);
 }
-/* أرقام الحسابات القديمة القصيرة/المكررة محتاجة تغيير */
 function weakUsers(){
   var seen = {}, dup = {};
   DB.users.forEach(function(u){
-    var p = String(u.pin||"");
+    var p = normPin(u.pin);
     if(seen[p]) dup[p] = 1;
     seen[p] = 1;
   });
   return DB.users.filter(function(u){
-    var p = String(u.pin||"");
-    return p.length < PIN_LEN || pinWeak(p) || dup[p];
+    var p = normPin(u.pin);
+    return !p || p.length < PIN_LEN || !/[A-Z]/.test(p) || !/[0-9]/.test(p) ||
+           !/^[A-Z0-9]+$/.test(p) || pinWeak(p) || dup[p];
   });
 }
 
@@ -5054,7 +5068,7 @@ function renderLogin(){
   var picked = UI.sector==="reg" || UI.sector==="srv";
 
   h += '<div style="font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:9px;text-align:center">'+
-    (picked ? 'اكتب رقمك السري للدخول' : 'اختر طريقة الدخول')+'</div>';
+    (picked ? 'اكتب كلمة السر للدخول' : 'اختر طريقة الدخول')+'</div>';
 
   SECTORS.forEach(function(x){
     h += '<button class="who'+(UI.sector===x.id?" on":"")+'" data-lact="sec" data-s="'+x.id+'">'+
@@ -5066,9 +5080,10 @@ function renderLogin(){
   if(picked){
     var lock = lockLeft();
     h += '<div style="margin-top:12px">'+
-      '<input type="password" id="pin" inputmode="numeric" autocomplete="off" placeholder="••••••" '+
+      '<input type="password" id="pin" autocomplete="off" placeholder="••••••••" '+
       (lock?'disabled ':'')+
-      'style="text-align:center;letter-spacing:.5em;font-size:20px;padding:13px 11px;font-family:Cairo,sans-serif">'+
+      'style="text-align:center;letter-spacing:.34em;font-size:19px;padding:13px 11px;'+
+      'font-family:Cairo,sans-serif;text-transform:uppercase;direction:ltr">'+
       '<button class="btn block" data-lact="go" style="margin-top:10px"'+(lock?' disabled':'')+'>دخول</button>';
     if(lock){
       h += '<div class="note bad" id="lockNote" style="margin-top:11px;text-align:center">'+
@@ -5090,8 +5105,7 @@ function renderLogin(){
   var linked = !!(c && c.enabled && c.code);
   h += '<div style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line-2);text-align:center">'+
     (linked
-      ? '<div style="font-size:11.5px;color:var(--muted)">مربوط بمدرسة <b>'+esc(c.code)+'</b> · '+
-        '<button data-lact="invp" style="color:var(--ink-2);font-weight:600;font-size:11.5px;text-decoration:underline">تغيير</button></div>'
+      ? '<div style="font-size:11.5px;color:var(--muted)">مربوط بمدرسة <b>'+esc(schoolLabel(c))+'</b></div>'
       : '<button data-lact="invp" style="color:var(--ink-2);font-weight:600;font-size:13px">جهاز جديد؟ الصق كود الربط</button>')+
     '</div>';
   box.innerHTML = h;
@@ -5117,8 +5131,8 @@ function doLogin(){
   if(lockLeft() > 0) return;
   if(UI.sector!=="reg" && UI.sector!=="srv"){ toast("اختار القسم الأول"); return; }
   var el = document.getElementById("pin");
-  var v = toEnDigits((el ? el.value : "")).trim();
-  if(!v){ toast("اكتب رقمك السري"); return; }
+  var v = normPin(el ? el.value : "");
+  if(!v){ toast("اكتب كلمة السر"); return; }
 
   var u = null, wrongSector = null;
   for(var i=0;i<DB.users.length;i++){
@@ -5134,7 +5148,7 @@ function doLogin(){
     setTries(tries().n + 1);
     if(el){ el.value = ""; }
     renderLogin();
-    toast("الرقم السري غير صحيح");
+    toast("كلمة السر غير صحيحة");
     return;
   }
   setTries(0);
@@ -5160,35 +5174,36 @@ function logout(){
    ============================================================ */
 /* حقل رقم سري بزر توليد وفحص فوري */
 function pinField(id, value, exceptId){
-  return '<label class="f"><span>الرقم السري ('+PIN_LEN+' أرقام على الأقل)</span>'+
+  return '<label class="f"><span>كلمة السر ('+PIN_LEN+' خانات على الأقل، حروف إنجليزية وأرقام)</span>'+
     '<div style="display:flex;gap:7px">'+
-    '<input type="text" id="'+id+'" inputmode="numeric" value="'+esc(value||"")+'" '+
+    '<input type="text" id="'+id+'" autocomplete="off" value="'+esc(value||"")+'" '+
       'data-act="pinLive" data-except="'+esc(exceptId||"")+'" data-msg="'+id+'_msg" '+
-      'style="flex:1;letter-spacing:.15em;font-variant-numeric:tabular-nums">'+
+      'style="flex:1;letter-spacing:.14em;direction:ltr;text-align:center;text-transform:uppercase">'+
     '<button class="btn ghost" data-act="pinGen" data-for="'+id+'" data-msg="'+id+'_msg">توليد</button>'+
     '</div><div id="'+id+'_msg" class="pinmsg"></div></label>';
 }
 function pinMsgHTML(err, pin){
   if(!pin) return '';
   if(err) return '<span style="color:var(--danger)">✕ '+esc(err)+'</span>';
-  return '<span style="color:var(--seal)">✓ رقم صالح وغير مستخدم</span>';
+  return '<span style="color:var(--seal)">✓ كلمة سر قوية وغير مستخدمة</span>';
 }
 
 /* ---------- بطاقة الأرقام في الإعدادات ---------- */
 function pinsCard(){
   var weak = weakUsers();
-  var h = '<div class="card"><div class="hd"><h3>الأرقام السرية والدخول</h3>'+
+  var h = '<div class="card"><div class="hd"><h3>كلمات السر والدخول</h3>'+
     '<span class="tag '+(weak.length?"bad":"ok")+'">'+(weak.length? weak.length+" يحتاج تغيير" : "كله سليم")+'</span></div><div class="bd">'+
-    '<div class="note">الدخول بقى برقم سري واحد بس — من غير قايمة أسماء. الرقم نفسه هو اللي بيحدد صاحب الحساب، '+
-    'عشان كده لازم كل واحد يكون له رقم مختلف تمامًا، و'+PIN_LEN+' أرقام على الأقل عشان محدش يخمّنه.</div>';
+    '<div class="note">الدخول بكلمة سر واحدة — من غير قايمة أسماء. كلمة السر نفسها هي اللي بتحدد صاحب الحساب، '+
+    'عشان كده لازم كل واحد يكون له كلمة سر مختلفة تمامًا، '+PIN_LEN+' خانات على الأقل بحروف إنجليزية وأرقام '+
+    'عشان يستحيل تخمينها.</div>';
 
   if(weak.length){
-    h += '<div class="note bad"><b>'+weak.length+' حساب أرقامه ضعيفة أو مكررة</b> — أي حد يقدر يخمّنها ويدخل مكانهم. '+
-      'اضغط الزرار تحت وهيتولّد أرقام جديدة قوية للكل، وتطبعها وتوزعها.</div>'+
-      '<button class="btn danger block" data-act="fixPins" style="margin-bottom:11px">توليد أرقام جديدة للحسابات الضعيفة ('+weak.length+')</button>';
+    h += '<div class="note bad"><b>'+weak.length+' حساب كلمة سره ضعيفة أو مكررة</b> — أي حد يقدر يخمّنها ويدخل مكانهم. '+
+      'اضغط الزرار تحت وهيتولّد كلمات سر جديدة قوية للكل، وتطبعها وتوزعها.</div>'+
+      '<button class="btn danger block" data-act="fixPins" style="margin-bottom:11px">توليد كلمات سر جديدة للحسابات الضعيفة ('+weak.length+')</button>';
   }
   h += '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
-    '<button class="btn ghost" data-act="pinSheet">كشف الأرقام للطباعة</button>'+
+    '<button class="btn ghost" data-act="pinSheet">كشف كلمات السر للطباعة</button>'+
     '<button class="btn ghost" data-act="pinSlips">قصاصات لكل موظف</button>'+
     '</div></div></div>';
   return h;
@@ -5200,18 +5215,18 @@ function pinSheet(){
     return (o[a.role]-o[b.role]) || sortAr(a.name,b.name);
   });
   var t = '<table class="tbl"><thead><tr><th>م</th><th>الاسم</th><th>الصفة</th>'+
-    '<th>الرقم السري</th><th>الحالة</th><th>توقيع الاستلام</th></tr></thead><tbody>';
+    '<th>كلمة السر</th><th>الحالة</th><th>توقيع الاستلام</th></tr></thead><tbody>';
   rows.forEach(function(u,i){
     var err = pinCheck(u.pin, u.id);
     t += '<tr><td class="rownum">'+(i+1)+'</td><td><b style="font-weight:600">'+esc(u.name)+'</b></td>'+
       '<td>'+esc(ROLES[u.role]?ROLES[u.role].name:u.role)+'</td>'+
-      '<td class="num" style="font-size:16px;letter-spacing:.12em"><b>'+esc(u.pin)+'</b></td>'+
+      '<td style="font-size:15px;letter-spacing:.11em;direction:ltr;text-align:center"><b>'+esc(u.pin)+'</b></td>'+
       '<td>'+(err?'<span class="tag bad">ضعيف</span>':'<span class="tag ok">سليم</span>')+'</td>'+
       '<td style="min-width:110px"></td></tr>';
   });
   t += '</tbody></table>';
-  paper(pWrap("كشف الأرقام السرية — سري", t)+
-    '<div class="card"><div class="bd"><div class="note bad">الورقة دي سرية. سلّم كل واحد رقمه ووقّع، ومتسيبهاش في مكان مفتوح.</div></div></div>');
+  paper(pWrap("كشف كلمات السر — سري", t)+
+    '<div class="card"><div class="bd"><div class="note bad">الورقة دي سرية. سلّم كل واحد كلمة سره ووقّع، ومتسيبهاش في مكان مفتوح.</div></div></div>');
   UI.tab = "settings";
   render();
 }
@@ -5224,10 +5239,10 @@ function pinSlips(){
       '<div style="font-weight:700;font-size:15px;margin:3px 0">'+esc(u.name)+'</div>'+
       '<div style="font-size:12px;color:var(--muted)">'+esc(ROLES[u.role]?ROLES[u.role].name:u.role)+'</div>'+
       '<div style="margin:9px 0;padding:9px;background:var(--line-2);border-radius:9px">'+
-        '<div style="font-size:11px;color:var(--muted)">الرقم السري</div>'+
-        '<div style="font-size:26px;font-weight:800;letter-spacing:.2em;font-family:Cairo,sans-serif">'+esc(u.pin)+'</div>'+
+        '<div style="font-size:11px;color:var(--muted)">كلمة السر</div>'+
+        '<div style="font-size:24px;font-weight:800;letter-spacing:.16em;font-family:Cairo,sans-serif;direction:ltr">'+esc(u.pin)+'</div>'+
       '</div>'+
-      '<div style="font-size:11px;color:var(--muted)">افتح لينك البرنامج واكتب الرقم ده — هيفتح حسابك على طول.<br>متديهوش لحد.</div>'+
+      '<div style="font-size:11px;color:var(--muted)">افتح لينك البرنامج واكتب كلمة السر دي — هيفتح حسابك على طول.<br>متديهاش لحد.</div>'+
       '</div></div>';
   });
   paper(h+'</div>');
@@ -5250,7 +5265,7 @@ Object.assign(ACTS, {
     if(!confirm("هيتولّد رقم جديد لـ "+weak.length+" حساب. الأرقام القديمة مش هتشتغل تاني. متأكد؟")) return;
     weak.forEach(function(u){ u.pin = genPin(); });
     saveNow(); render();
-    toast("اتولّدت "+weak.length+" أرقام — اطبع الكشف ووزّعه");
+    toast("اتولّدت "+weak.length+" كلمة سر — اطبع الكشف ووزّعه");
   },
   pinSheet: pinSheet,
   pinSlips: pinSlips
@@ -5262,7 +5277,7 @@ document.addEventListener("input", function(e){
   if(!el || !el.dataset || el.dataset.act!=="pinLive") return;
   var msg = document.getElementById(el.dataset.msg);
   if(!msg) return;
-  var v = toEnDigits(el.value).trim();
+  var v = normPin(el.value);
   msg.innerHTML = pinMsgHTML(v? pinCheck(v, el.dataset.except||null) : null, v);
 });
 
@@ -5286,7 +5301,7 @@ saveTeacher = function(){
   var id = MODAL.dataset.tid;
   var t = id ? teacherById(id) : null;
   var u = t ? userOfTeacher(t.id) : null;
-  var p = toEnDigits(val("t_pin")).trim();
+  var p = normPin(val("t_pin"));
   var err = pinCheck(p, u ? u.id : null);
   if(err){ toast(err); return; }
   var secs = readSectors("t_sec");
@@ -5308,7 +5323,7 @@ modalUser = function(id){
 var _saveUserBase = saveUser;
 saveUser = function(){
   var id = MODAL.dataset.uid;
-  var p = toEnDigits(val("u_p")).trim();
+  var p = normPin(val("u_p"));
   var err = pinCheck(p, id || null);
   if(err){ toast(err); return; }
   _saveUserBase();
@@ -6577,6 +6592,24 @@ var WISH_TRACKS = [
   { id:"bus", name:"الأعمال",                 subjects:["إدارة أعمال","المحاسبة"] },
   { id:"art", name:"الآداب والفنون",          subjects:["اللغة الأجنبية الثانية","علم النفس"] }
 ];
+/* نوعية التعليم — بتحدد الطالب هيظهر في أنهي قسم */
+var EDU_TYPES = [
+  {id:"reg",  name:"نظامي", sector:"reg", note:"الفترة الأولى — دراسة منتظمة"},
+  {id:"srv",  name:"خدمات", sector:"srv", note:"الفترة الثانية — فصول الخدمات"},
+  {id:"home", name:"منازل", sector:"reg", note:"انتساب — امتحانات فقط"}
+];
+function eduType(id){
+  for(var i=0;i<EDU_TYPES.length;i++) if(EDU_TYPES[i].id===id) return EDU_TYPES[i];
+  return EDU_TYPES[0];
+}
+function eduName(id){ return eduType(id).name; }
+function wishEdu(w){ return (w && w.edu) ? w.edu : "reg"; }
+/* الرغبات اللي تخص الفترة الحالية */
+function wishesOfSector(){
+  wishesInit();
+  var sec = curSector();
+  return DB.wishes.filter(function(w){ return eduType(wishEdu(w)).sector === sec; });
+}
 function wishTrack(id){
   for(var i=0;i<WISH_TRACKS.length;i++) if(WISH_TRACKS[i].id===id) return WISH_TRACKS[i];
   return null;
@@ -6647,6 +6680,12 @@ function wishFormHTML(){
   h += '<label class="f"><span>فصلك في السنة السابقة</span>'+
     '<input type="text" id="w_cls" value="'+esc(f.prevClass||"")+'" placeholder="مثال: ١ / ٣"></label>';
 
+  h += '<label class="f"><span>نوعية التعليم</span><select id="w_edu">'+
+    '<option value="">— اختر النوعية —</option>'+
+    EDU_TYPES.map(function(e){
+      return '<option value="'+e.id+'"'+((f.edu||"")===e.id?" selected":"")+'>'+esc(e.name)+' — '+esc(e.note)+'</option>';
+    }).join("")+'</select></label>';
+
   h += '<label class="f"><span>المسار</span><select id="w_trk">'+
     '<option value="">— اختر المسار —</option>'+
     WISH_TRACKS.map(function(t){
@@ -6680,6 +6719,7 @@ function wishDoneHTML(w){
     '<div><b>الاسم:</b> '+esc(w.name)+'</div>'+
     '<div><b>الرقم القومي:</b> <span style="direction:ltr;display:inline-block">'+esc(w.natId)+'</span></div>'+
     '<div><b>الفصل السابق:</b> '+esc(w.prevClass)+'</div>'+
+    '<div><b>نوعية التعليم:</b> '+esc(eduName(wishEdu(w)))+'</div>'+
     '<div><b>المسار:</b> '+esc(wishTrackName(w.track))+'</div>'+
     '<div><b>مادة التخصص:</b> '+esc(w.subject)+'</div>'+
     '<div style="color:var(--muted);font-size:12px"><b>وقت التسجيل:</b> '+esc(fmtDate(w.date))+' '+esc(w.time||"")+'</div>'+
@@ -6693,6 +6733,7 @@ function readWishForm(){
   e = document.getElementById("w_name"); if(e) o.name = e.value;
   e = document.getElementById("w_nat");  if(e) o.natId = toEnDigits(e.value).replace(/\D/g,"");
   e = document.getElementById("w_cls");  if(e) o.prevClass = e.value;
+  e = document.getElementById("w_edu");  if(e) o.edu = e.value;
   e = document.getElementById("w_trk");  if(e) o.track = e.value;
   e = document.getElementById("w_sub");  if(e) o.subject = e.value;
   UI.wish = o;
@@ -6706,6 +6747,7 @@ function saveWish(){
   err = natIdCheck(o.natId);
   if(err){ toast(err); return; }
   if(!tidy(o.prevClass)){ toast("اكتب فصلك في السنة السابقة"); return; }
+  if(!o.edu || !EDU_TYPES.some(function(x){ return x.id===o.edu; })){ toast("اختار نوعية التعليم"); return; }
   if(!o.track){ toast("اختار المسار"); return; }
   if(!o.subject || wishSubjects(o.track).indexOf(o.subject)<0){ toast("اختار مادة التخصص"); return; }
 
@@ -6720,6 +6762,7 @@ function saveWish(){
     name: cleanName(o.name),
     natId: o.natId,
     prevClass: tidy(o.prevClass),
+    edu: o.edu,
     track: o.track,
     subject: o.subject,
     date: today(),
@@ -6738,32 +6781,43 @@ function saveWish(){
 function viewWishes(){
   wishesInit();
   var f = UI.filters;
-  var all = DB.wishes.slice().sort(function(a,b){
+  var all = wishesOfSector().sort(function(a,b){
     return (b.date+(b.time||"")) < (a.date+(a.time||"")) ? -1 : 1;
   });
   var list = f.wTrack ? all.filter(function(w){ return w.track===f.wTrack; }) : all;
+  if(f.wEdu) list = list.filter(function(w){ return wishEdu(w)===f.wEdu; });
   if(f.wq){
     var q = f.wq.trim();
     list = list.filter(function(w){
       return w.name.indexOf(q)>=0 || String(w.natId).indexOf(q)>=0 || String(w.prevClass).indexOf(q)>=0;
     });
   }
-  var byTrack = {};
-  all.forEach(function(w){ byTrack[w.track] = (byTrack[w.track]||0)+1; });
+  var byTrack = {}, byEdu = {};
+  all.forEach(function(w){
+    byTrack[w.track] = (byTrack[w.track]||0)+1;
+    byEdu[wishEdu(w)] = (byEdu[wishEdu(w)]||0)+1;
+  });
+  var eduHere = EDU_TYPES.filter(function(e){ return e.sector===curSector(); });
 
-  var h = pageHd("رغبات الطلاب", all.length+" طالب سجّل رغبته",
+  var h = pageHd("رغبات الطلاب",
+    all.length+" طالب سجّل رغبته في قسم "+sectorName(curSector()),
     '<button class="btn" data-act="wExcel">⬇ تنزيل إكسيل</button>'+
     '<button class="btn ghost" data-act="wPdf" style="margin-right:6px">⬇ تنزيل PDF</button>');
 
   if(!all.length){
     return h + '<div class="card"><div class="bd"><div class="empty"><div class="big">★</div>'+
       '<b>مفيش تسجيلات لسه</b>'+
-      '<p>الطلاب بيسجّلوا من صفحة البداية بزرار «الدخول كطالب» — من غير رقم سري. '+
-      'ابعتلهم رابط البرنامج وهما هيسجّلوا بنفسهم، والبيانات هتظهر هنا فورًا.</p></div></div></div>';
+      '<p>الطلاب بيسجّلوا من صفحة البداية بزرار «الدخول كطالب» — من غير كلمة سر. '+
+      'ابعتلهم رابط البرنامج وهما هيسجّلوا بنفسهم، والبيانات هتظهر هنا فورًا. '+
+      'اللي بيختار ' + esc(eduHere.map(function(e){ return e.name; }).join(" أو ")) +
+      ' بيظهر في القسم ده، واللي بيختار نوعية تانية بيظهر في قسمها.</p></div></div></div>';
   }
 
   h += '<div class="stats" style="margin-bottom:12px">'+
-    stat("إجمالي المسجّلين", all.length, "طالب","acc")+
+    stat("إجمالي المسجّلين", all.length, "في "+sectorName(curSector()),"acc")+
+    eduHere.map(function(e){
+      return stat(e.name, byEdu[e.id]||0, "طالب", (byEdu[e.id]&&e.id==="home")?"acc-g":"");
+    }).join("")+
     WISH_TRACKS.map(function(t){
       return stat(t.name, byTrack[t.id]||0,
         all.length? Math.round((byTrack[t.id]||0)/all.length*100)+"%" : "", "");
@@ -6786,6 +6840,14 @@ function viewWishes(){
     '<label class="f" style="margin:0"><span>بحث بالاسم أو الرقم القومي أو الفصل</span>'+
     '<input type="text" id="wq" value="'+esc(f.wq||"")+'" placeholder="اكتب للبحث…"></label></div></div>';
 
+  if(eduHere.length>1){
+    h += '<div class="chips noprint">'+
+      '<button class="'+(f.wEdu?"":"on")+'" data-act="wEduAll">كل النوعيات</button>'+
+      eduHere.map(function(e){
+        return '<button class="'+(f.wEdu===e.id?"on":"")+'" data-act="wEduFilter" data-e="'+e.id+'">'+
+          esc(e.name)+' ('+(byEdu[e.id]||0)+')</button>';
+      }).join("")+'</div>';
+  }
   h += '<div class="chips noprint"><button class="'+(f.wTrack?"":"on")+'" data-act="wAll">كل المسارات</button>'+
     WISH_TRACKS.filter(function(t){ return byTrack[t.id]; }).map(function(t){
       return '<button class="'+(f.wTrack===t.id?"on":"")+'" data-act="wFilter" data-t="'+t.id+'">'+
@@ -6796,14 +6858,15 @@ function viewWishes(){
   h += '<div class="card"><div class="hd"><h3>'+list.length+' تسجيل</h3>'+
     '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div>'+
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
-    '<th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الفصل السابق</th>'+
+    '<th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الفصل السابق</th><th>النوعية</th>'+
     '<th>المسار</th><th>مادة التخصص</th><th>تاريخ التسجيل</th><th class="noprint"></th></tr></thead><tbody>';
-  if(!list.length) h += '<tr><td colspan="8"><div class="empty"><b>مفيش نتائج مطابقة</b></div></td></tr>';
+  if(!list.length) h += '<tr><td colspan="9"><div class="empty"><b>مفيش نتائج مطابقة</b></div></td></tr>';
   list.forEach(function(w,i){
     h += '<tr><td class="rownum">'+(i+1)+'</td>'+
       '<td><b style="font-weight:600">'+esc(w.name)+'</b></td>'+
       '<td class="num" style="direction:ltr">'+esc(w.natId)+'</td>'+
       '<td>'+esc(w.prevClass)+'</td>'+
+      '<td><span class="tag '+(wishEdu(w)==="home"?"warn":"info")+'">'+esc(eduName(wishEdu(w)))+'</span></td>'+
       '<td>'+esc(wishTrackName(w.track))+'</td>'+
       '<td><b style="font-weight:600">'+esc(w.subject)+'</b></td>'+
       '<td class="num">'+fmtDate(w.date)+(w.time? ' <small style="color:var(--muted)">'+esc(w.time)+'</small>':'')+'</td>'+
@@ -6819,17 +6882,18 @@ function viewWishes(){
 function wishRows(){
   wishesInit();
   var f = UI.filters || {};
-  var list = DB.wishes.slice().sort(function(a,b){ return sortAr(a.name,b.name); });
+  var list = wishesOfSector().sort(function(a,b){ return sortAr(a.name,b.name); });
   if(f.wTrack) list = list.filter(function(w){ return w.track===f.wTrack; });
+  if(f.wEdu)   list = list.filter(function(w){ return wishEdu(w)===f.wEdu; });
   return list;
 }
 /* ملف إكسيل حقيقي بتنسيق — بيفتح في إكسيل مباشرة */
 function wishExcel(){
   var list = wishRows();
   if(!list.length){ toast("مفيش بيانات للتصدير"); return; }
-  var head = ["م","الاسم رباعي","الرقم القومي","الفصل السابق","المسار","مادة التخصص","تاريخ التسجيل","وقت التسجيل"];
+  var head = ["م","الاسم رباعي","الرقم القومي","الفصل السابق","نوعية التعليم","المسار","مادة التخصص","تاريخ التسجيل","وقت التسجيل"];
   var rows = list.map(function(w,i){
-    return [i+1, w.name, w.natId, w.prevClass, wishTrackName(w.track), w.subject, w.date, w.time||""];
+    return [i+1, w.name, w.natId, w.prevClass, eduName(wishEdu(w)), wishTrackName(w.track), w.subject, w.date, w.time||""];
   });
   var fname = "رغبات-الطلاب-"+today();
 
@@ -6843,7 +6907,7 @@ function wishExcel(){
       head
     ].concat(rows);
     var ws = X.utils.aoa_to_sheet(aoa);
-    ws["!cols"] = [{wch:5},{wch:32},{wch:18},{wch:14},{wch:24},{wch:24},{wch:13},{wch:10}];
+    ws["!cols"] = [{wch:5},{wch:32},{wch:18},{wch:14},{wch:13},{wch:24},{wch:24},{wch:13},{wch:10}];
     ws["!merges"] = [0,1,2,3].map(function(r){
       return { s:{r:r,c:0}, e:{r:r,c:head.length-1} };
     });
@@ -6924,16 +6988,22 @@ function wishPdf(){
     '<div class="t">كشف رغبات الطلاب — مسارات البكالوريا المصرية</div>'+
     '<div class="s">العام الدراسي '+esc(DB.meta.year||"")+' — تاريخ الطباعة '+fmtDate(today())+'</div></div>'+
     '<div class="sum"><div><b>'+list.length+'</b><span>إجمالي المسجّلين</span></div>'+
+    EDU_TYPES.filter(function(e){ return e.sector===curSector(); }).map(function(e){
+      var n = list.filter(function(w){ return wishEdu(w)===e.id; }).length;
+      return '<div><b>'+n+'</b><span>'+esc(e.name)+'</span></div>';
+    }).join("")+
     WISH_TRACKS.map(function(t){
       return '<div><b>'+(byTrack[t.id]||0)+'</b><span>'+esc(t.name)+'</span></div>';
     }).join("")+'</div>'+
     '<table><thead><tr><th style="width:28px">م</th><th>الاسم رباعي</th>'+
-    '<th style="width:100px">الرقم القومي</th><th style="width:60px">الفصل السابق</th>'+
+    '<th style="width:100px">الرقم القومي</th><th style="width:58px">الفصل السابق</th>'+
+    '<th style="width:55px">النوعية</th>'+
     '<th style="width:120px">المسار</th><th style="width:110px">مادة التخصص</th>'+
     '<th style="width:65px">التاريخ</th></tr></thead><tbody>';
   list.forEach(function(w,i){
     html += '<tr><td>'+(i+1)+'</td><td class="r">'+esc(w.name)+'</td>'+
       '<td style="direction:ltr">'+esc(w.natId)+'</td><td>'+esc(w.prevClass)+'</td>'+
+      '<td>'+esc(eduName(wishEdu(w)))+'</td>'+
       '<td>'+esc(wishTrackName(w.track))+'</td><td>'+esc(w.subject)+'</td>'+
       '<td>'+esc(w.date)+'</td></tr>';
   });
@@ -6956,7 +7026,9 @@ function wishPdf(){
 }
 
 Object.assign(ACTS, {
-  wAll:    function(){ UI.filters.wTrack = ""; render(); },
+  wAll:      function(){ UI.filters.wTrack = ""; render(); },
+  wEduAll:   function(){ UI.filters.wEdu = ""; render(); },
+  wEduFilter:function(el){ UI.filters.wEdu = el.dataset.e; render(); },
   wFilter: function(el){ UI.filters.wTrack = el.dataset.t; render(); },
   wExcel:  wishExcel,
   wPdf:    wishPdf,
