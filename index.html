@@ -3984,38 +3984,59 @@ save = function(){ _saveBase(); syncPush(); };
 saveNow = function(){ var r = _saveNowBase(); syncPush(); return r; };
 
 /* ---------- إعدادات المزامنة في الواجهة ---------- */
+/* اسم المدرسة للعرض — الكود نفسه سري ومبيظهرش لغير وكيل شئون الطلاب */
+function schoolLabel(c){
+  if(DB && DB.meta && DB.meta.school && DB.meta.school.indexOf(".......")<0) return DB.meta.school;
+  return (c && c.code) ? c.code : "—";
+}
+function canSeeSync(){ return !!UI.user && UI.user.role==="deputy"; }
+
 function syncCard(){
   var c = syncCfgLoad() || {};
   var has = cfgValid(c.cfg);
+
+  /* لغير وكيل شئون الطلاب: حالة الاتصال بس، من غير أي إعدادات أو أزرار */
+  if(!canSeeSync()){
+    return '<div class="card"><div class="hd"><h3>المزامنة</h3>'+
+      '<span id="syncPill" class="syncpill '+SYNC.status+'">'+esc(syncLabel())+'</span></div><div class="bd">'+
+      '<div class="note">'+(SYNC.on
+        ? 'الجهاز متصل بمدرسة <b>'+esc(schoolLabel(c))+'</b>، وكل تعديل بيتحفظ ويوصل باقي الأجهزة تلقائي.'
+        : 'المزامنة مش شغالة دلوقتي. البيانات بتتحفظ على الجهاز، وهترفع أول ما الاتصال يرجع.')+
+      '</div>'+
+      '<div class="note warn">إعدادات الربط بتتظبط من <b>وكيل شئون الطلاب</b> — لو فيه مشكلة في المزامنة كلّمه.</div>'+
+      '</div></div>';
+  }
+
   var h = '<div class="card"><div class="hd"><h3>المزامنة والعمل الجماعي</h3>'+
     '<span id="syncPill" class="syncpill '+SYNC.status+'">'+esc(syncLabel())+'</span></div><div class="bd">';
 
-  if(!has && embeddedCfg()){
-    h += '<div class="note">دي نسخة مجهّزة لمدرسة <b>'+esc(embeddedCfg().code)+'</b> — بتتوصل بالسحابة لوحدها أول ما تفتح.</div>';
-  }else if(!has){
+  if(!has){
     h += '<div class="note warn"><b>البرنامج شغال على الجهاز ده بس دلوقتي.</b> '+
       'عشان الوكيل يدخّل بيانات والمعلمين يشوفوها على موبايلاتهم، لازم تربطه بقاعدة بيانات فايربيز — مجانية وتكفي مدرسة كاملة. '+
       'اضغط «خطوات الربط» وامشي معاها ٥ دقايق.</div>';
   }else{
     h += '<div class="note '+(SYNC.on?"":"warn")+'">'+
-      (SYNC.on ? 'المزامنة شغالة على كود المدرسة <b>'+esc(c.code)+'</b>. أي تعديل بيوصل باقي الأجهزة في ثواني.'
+      (SYNC.on ? 'المزامنة شغالة على مدرسة <b>'+esc(schoolLabel(c))+'</b>. أي تعديل بيوصل باقي الأجهزة في ثواني.'
                : 'الإعدادات محفوظة بس المزامنة مقفولة. اضغط «حفظ وتشغيل».')+'</div>'+
-      '<div class="note warn">عايز تنقل الجهاز ده لمدرسة تانية؟ غيّر <b>كود المدرسة</b> و<b>إعدادات فايربيز</b> '+
-      'تحت واضغط «حفظ وتشغيل». وعايز توقف المزامنة خالص؟ اضغط «فصل الجهاز عن المدرسة». '+
-      'في الحالتين بيانات المدرسة الحالية بتفضل على السحابة زي ما هي.</div>';
+      '<div class="note bad"><b>القسم ده حسّاس.</b> تغيير كود المدرسة أو إعدادات فايربيز بينقل الجهاز لمدرسة تانية '+
+      'وبيوقف وصول البيانات. متلمسهاش غير لو إنت متأكد.</div>';
   }
-  h += '<label class="f"><span>كود المدرسة (نفس الكود على كل الأجهزة)</span>'+
+  h += '<div id="syncFields" style="display:none">'+
+    '<label class="f"><span>كود المدرسة (نفس الكود على كل الأجهزة)</span>'+
     '<input type="text" id="sy_code" value="'+esc(c.code||"")+'" placeholder="مثال: nile-2027"></label>'+
     '<label class="f"><span>إعدادات فايربيز — الصق الكود اللي فايربيز بيديهولك</span>'+
-    '<textarea id="sy_cfg" style="min-height:110px;direction:ltr;font-size:11.5px" placeholder=\'{ "apiKey": "...", "projectId": "...", "databaseURL": "..." }\'>'+
+    '<textarea id="sy_cfg" style="min-height:110px;direction:ltr;font-size:11.5px">'+
     esc(c.cfg? JSON.stringify(c.cfg, null, 1) : "")+'</textarea></label>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="btn" data-act="syncSave">حفظ وتشغيل</button>'+
     (SYNC.on?'<button class="btn ghost" data-act="syncOff">إيقاف المزامنة</button>':'')+
     (has?'<button class="btn ghost" data-act="invUnlink" style="color:var(--danger)">فصل الجهاز عن المدرسة</button>':'')+
+    '</div></div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
     (SYNC.on?'<button class="btn seal" data-act="syncInvite">دعوة جهاز جديد</button>':'')+
     '<button class="btn ghost" data-act="syncHelp">خطوات الربط</button>'+
     (SYNC.on?'<button class="btn ghost" data-act="syncForce">رفع بيانات الجهاز ده للسحابة</button>':'')+
+    '<button class="btn ghost" data-act="syncShowFields" id="syncToggle">'+(has?"إظهار إعدادات الربط":"إدخال إعدادات الربط")+'</button>'+
     '</div>';
   if(SYNC.status==="err") h += '<div class="note bad" style="margin-top:10px"><b>المشكلة:</b> '+esc(SYNC.msg)+'</div>';
   if(inFrame()) h += '<div class="note warn" style="margin-top:10px"><b>انتبه:</b> البرنامج شغال دلوقتي جوه معاينة داخل صفحة تانية، '+
@@ -4128,6 +4149,7 @@ function applyInvite(text){
   return true;
 }
 function modalInviteShow(){
+  if(!canSeeSync()){ toast("الدعوة بتتعمل من وكيل شئون الطلاب"); return; }
   var code = inviteCode();
   if(!code){ toast("اضبط المزامنة الأول"); return; }
   var msg = "لينك برنامج «سجل» بتاع "+DB.meta.school+"\n\n"+
@@ -4212,6 +4234,14 @@ Object.assign(ACTS, {
     if(b){ b.style.display = "block"; var t = document.getElementById("invIn"); if(t) t.focus(); }
   },
   invUnlink: function(){ closeModal(); unlinkSchool(); },
+  syncShowFields: function(){
+    var b = document.getElementById("syncFields");
+    if(!b) return;
+    var show = b.style.display === "none";
+    b.style.display = show ? "block" : "none";
+    var t = document.getElementById("syncToggle");
+    if(t) t.textContent = show ? "إخفاء إعدادات الربط" : "إظهار إعدادات الربط";
+  },
   invApply: function(){
     if(!applyInvite(val("invIn"))) return;
     MODAL.classList.remove("wide");
@@ -4226,22 +4256,8 @@ Object.assign(ACTS, {
   }
 });
 
-/* زر «جهاز جديد» في شاشة الدخول */
-var _renderLoginBase = renderLogin;
-renderLogin = function(){
-  _renderLoginBase();
-  var box = document.getElementById("loginCard");
-  if(!box) return;
-  var c = syncCfgLoad();
-  var linked = !!(c && c.enabled && c.code);
-  box.insertAdjacentHTML("beforeend",
-    '<div style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line-2);text-align:center">'+
-    (linked
-      ? '<div style="font-size:11.5px;color:var(--muted)">مربوط بمدرسة <b>'+esc(c.code)+'</b> · '+
-        '<button data-lact="invp" style="color:var(--ink-2);font-weight:600;font-size:11.5px;text-decoration:underline">تغيير المدرسة</button></div>'
-      : '<button data-lact="invp" style="color:var(--ink-2);font-weight:600;font-size:13px">جهاز جديد؟ الصق كود الربط</button>')+
-    '</div>');
-};
+/* شاشة الدخول بتتبني كاملة في مكان واحد — مفيش إضافات من هنا */
+
 document.addEventListener("click", function(e){
   var el = e.target.closest ? e.target.closest("[data-lact='invp']") : null;
   if(el){ e.preventDefault(); modalInvitePaste(); }
