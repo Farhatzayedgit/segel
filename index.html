@@ -502,7 +502,7 @@ function blankDB(){
     assign:[], schedule:[], attend:{}, marks:{}, behavior:[], notices:[],
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
-    sectors:{}, wishes:[]
+    sectors:{}, wishes:[], forms:[], entries:[]
   };
 }
 
@@ -517,7 +517,7 @@ function load(){
     DB.absRules = Object.assign(blankDB().absRules, d.absRules||{});
     DB.bac = Object.assign(blankDB().bac, d.bac||{});
     if(!DB.sectors || typeof DB.sectors!=="object") DB.sectors = {};
-    ["users","teachers","classes","subjects","students","assign","schedule","behavior","notices","staff","leaves","locations","dutyPlan","events","holidays","wishes"].forEach(function(k){
+    ["users","teachers","classes","subjects","students","assign","schedule","behavior","notices","staff","leaves","locations","dutyPlan","events","holidays","wishes","forms","entries"].forEach(function(k){
       if(!Array.isArray(DB[k])) DB[k]=[];
     });
     if(!DB.attend||typeof DB.attend!=="object") DB.attend={};
@@ -760,13 +760,13 @@ var NAV = {
     ["times","أوقات اليوم","◷"],
     ["dash","المؤشرات","▤"],["subs","الاحتياطي","⇄"],["events","الأحداث","☰"],
     ["absence","غياب الطلاب","!"],["staff","العاملون","✎"],["classes","الفصول","▦"],
-    ["students","الطلاب","👤"],["wishes","رغبات الطلاب","★"],["home","طلاب المنازل","▤"],
+    ["students","الطلاب","👤"],["wishes","استمارات الطلاب","★"],["home","طلاب المنازل","▤"],
     ["docs","الورقيات","⎙"],["docsStaff","ورقيات العاملين","⎙"],["schedule","الجداول","☷"],
     ["dailyRep","التقرير اليومي","⎙"],["settings","الإعدادات","⚙"]
   ],
   deputy:[
     ["today","لوحة اليوم","◉"],["students","الطلاب","👤"],["home","طلاب المنازل","▤"],
-    ["wishes","رغبات الطلاب","★"],["docs","الورقيات","⎙"],["classes","الفصول","▦"],
+    ["wishes","استمارات الطلاب","★"],["docs","الورقيات","⎙"],["classes","الفصول","▦"],
     ["absence","الغياب والإنذارات","!"],["events","الأحداث","☰"],["assign","التكليفات","⇄"],
     ["schedule","الجداول","☷"],["teachers","المعلمون","✎"],
     ["reports","الكشوف","⎙"],["settings","الإعدادات","⚙"]
@@ -885,7 +885,7 @@ function render(){
     case "myduty":     h = viewMyDuty(); break;
     case "calendar":   h = viewCalendar(); break;
     case "times":      h = viewTimes(); break;
-    case "wishes":     h = viewWishes(); break;
+    case "wishes":     h = viewForms(); break;
     case "home":       h = viewHome(); break;
     case "docs":       h = viewDocs("student"); break;
     case "docsStaff":  h = viewDocs("staff"); break;
@@ -964,23 +964,28 @@ function viewStudents(){
       '<label class="f"><span>الفصل</span><select id="fcls">'+optClasses(f.cls, f.lvl)+'</select></label>'+
     '</div></div></div>';
 
+  if(UI.user.role==="deputy" || UI.user.role==="manager")
+    h += selBar("students", list.map(function(x){ return x.id; }), "طالب");
   h += printHd("كشف بأسماء الطلاب");
   h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' طالب</h3>'+
     '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة الكشف</button></div>'+
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    (can?'<th class="noprint" style="width:34px"></th>':'')+
     '<th>م</th><th>الاسم</th><th>الفصل</th><th>الصف / النظام</th><th>رقم الجلوس</th><th>الغياب</th><th>الحالة</th>'+
     '</tr></thead><tbody>';
   if(!list.length){
-    h += '<tr><td colspan="7"><div class="empty"><div class="big">👤</div><b>مفيش طلاب مطابقين</b>'+
+    h += '<tr><td colspan="8"><div class="empty"><div class="big">👤</div><b>مفيش طلاب مطابقين</b>'+
       '<p>'+(DB.students.length?'جرّب تغيّر الفلاتر.':'ابدأ بإضافة الفصول ثم الطلاب.')+'</p></div></td></tr>';
   }
   list.forEach(function(s,i){
     var c = classById(s.classId);
     var st = attendStats(s.id, s.classId);
     var a = absState(st.abs);
-    h += '<tr'+(can?' data-act="openStudent" data-id="'+s.id+'" style="cursor:pointer"':'')+'>'+
-      '<td class="rownum">'+(i+1)+'</td>'+
-      '<td><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
+    h += '<tr'+(selHas("students",s.id)?' style="background:#fdf0ef"':'')+'>'+
+      (can? selCell("students", s.id) : '')+
+      '<td class="rownum"'+(can?' data-act="openStudent" data-id="'+s.id+'" style="cursor:pointer"':'')+'>'+(i+1)+'</td>'+
+      '<td'+(can?' data-act="openStudent" data-id="'+s.id+'" style="cursor:pointer"':'')+'>'+
+      '<b style="font-weight:600">'+esc(s.name)+'</b></td>'+
       '<td>'+esc(c?c.name:"— غير مسكّن —")+'</td>'+
       '<td><small>'+(c?esc(levelName(c.level))+' · '+esc(systemName(c.system)):"—")+'</small></td>'+
       '<td class="num">'+esc(s.seat||"—")+'</td>'+
@@ -1223,14 +1228,20 @@ function viewTeachers(){
       '<p>لما تضيف معلم، بيتعمل له حساب دخول تلقائي، ويشوف الفصول اللي تسندها له بس.</p>'+
       (isDep?'<button class="btn" data-act="addTeacher">+ إضافة أول معلم</button>'+impBtn("teachers",{},"استيراد من إكسيل"):'')+'</div></div></div>';
   }
+  var tlist = DB.teachers.slice().sort(function(a,b){ return sortAr(a.name,b.name); });
+  if(isDep) h += selBar("teachers", tlist.map(function(x){ return x.id; }), "معلم");
   h += '<div class="card"><div class="bd flush">';
-  DB.teachers.slice().sort(function(a,b){ return sortAr(a.name,b.name); }).forEach(function(t){
+  tlist.forEach(function(t){
     var a = assignsOfTeacher(t.id);
     var cls = {}; a.forEach(function(x){ cls[x.classId]=1; });
-    h += '<button class="list-item" data-act="openTeacher" data-id="'+t.id+'">'+
+    h += '<div class="list-item"'+(selHas("teachers",t.id)?' style="background:#fdf0ef"':'')+'>'+
+      (isDep? '<button class="btn '+(selHas("teachers",t.id)?"seal":"ghost")+' sm" data-act="selTog" '+
+        'data-k="teachers" data-id="'+t.id+'" style="width:28px;padding:4px 0">'+
+        (selHas("teachers",t.id)?"✓":"")+'</button>' : '')+
       '<span class="av">'+esc(initials(t.name))+'</span>'+
       '<span class="tx"><b>'+esc(t.name)+'</b><small>'+esc(t.subject||"—")+' · '+Object.keys(cls).length+' فصل · '+a.length+' تكليف'+
-      (t.phone?' · '+esc(t.phone):'')+'</small></span><span class="chev">‹</span></button>';
+      (t.phone?' · '+esc(t.phone):'')+'</small></span>'+
+      '<button class="btn ghost sm" data-act="openTeacher" data-id="'+t.id+'">فتح</button></div>';
   });
   h += '</div></div>';
   return h;
@@ -3726,7 +3737,7 @@ function embeddedCfg(){
 }
 
 /* المجموعات اللي بتتزامن كوحدة واحدة (نادرًا ما تتعدّل من جهازين مع بعض) */
-var BULK = ["meta","weights","bac","control","absRules","users","teachers","classes","subjects","students","assign","schedule","behavior","staff","leaves","locations","dutyPlan","events","holidays","sectors","wishes"];
+var BULK = ["meta","weights","bac","control","absRules","users","teachers","classes","subjects","students","assign","schedule","behavior","staff","leaves","locations","dutyPlan","events","holidays","sectors","wishes","forms","entries"];
 /* المجموعات اللي بتتزامن عنصر عنصر (كل معلم بيكتب في خانته) */
 var GRAIN = ["attend","marks","staffAtt","subs","duty"];
 
@@ -3973,7 +3984,7 @@ function onRemote(sn){
   BULK.forEach(function(k){
     if(v[k]===undefined) return;
     var incoming = v[k];
-    if(["users","teachers","classes","subjects","students","assign","schedule","behavior","staff","leaves","locations","dutyPlan","events","holidays","wishes"].indexOf(k)>=0){
+    if(["users","teachers","classes","subjects","students","assign","schedule","behavior","staff","leaves","locations","dutyPlan","events","holidays","wishes","forms","entries"].indexOf(k)>=0){
       incoming = Array.isArray(incoming) ? incoming.filter(Boolean) : [];
     }
     if(JSON.stringify(DB[k]) !== JSON.stringify(incoming)){ DB[k] = incoming; changed = true; }
@@ -5099,11 +5110,21 @@ function renderLogin(){
   if(!box) return;
 
   /* شاشة الطالب: تسجيل الرغبات من غير رقم سري */
+  if(UI.entryDone){ box.innerHTML = entryDoneHTML(UI.entryDone); return; }
   if(UI.wishDone){ box.innerHTML = wishDoneHTML(UI.wishDone); return; }
   if(UI.stu){
-    box.innerHTML = wishFormHTML();
-    var fn = document.getElementById("w_name");
-    if(fn) fn.focus();
+    if(!UI.formId){ box.innerHTML = formsPickHTML(); return; }
+    if(UI.formId==="track"){
+      box.innerHTML = wishFormHTML();
+      var fn = document.getElementById("w_name");
+      if(fn) fn.focus();
+      return;
+    }
+    var frm = formById(UI.formId);
+    if(!frm){ UI.formId = null; box.innerHTML = formsPickHTML(); return; }
+    box.innerHTML = entryFormHTML(frm);
+    var fn2 = document.getElementById("e_name");
+    if(fn2) fn2.focus();
     return;
   }
 
@@ -6747,7 +6768,7 @@ function wishFormHTML(){
   }
 
   h += '<button class="btn block" data-lact="wsave" style="margin-top:4px">تسجيل الرغبة</button>'+
-    '<button class="btn ghost block" data-lact="wback" style="margin-top:8px">رجوع</button>';
+    '<button class="btn ghost block" data-lact="fback" style="margin-top:8px">رجوع للاستمارات</button>';
   return h;
 }
 function wishDoneHTML(w){
@@ -6843,7 +6864,8 @@ function viewWishes(){
   });
   var eduHere = EDU_TYPES.filter(function(e){ return e.sector===curSector(); });
 
-  var h = pageHd("رغبات الطلاب",
+  var h = backBtn("كل الاستمارات");
+  h += pageHd("تحديد المسار",
     all.length+" طالب سجّل رغبته في قسم "+sectorName(curSector()),
     '<button class="btn" data-act="wExcel">⬇ تنزيل إكسيل</button>'+
     '<button class="btn ghost" data-act="wPdf" style="margin-right:6px">⬇ تنزيل PDF</button>');
@@ -7806,17 +7828,21 @@ function viewHome(){
     '<label class="f"><span>الصف</span><select id="hlvl">'+optLevels(f.hLvl)+'</select></label>'+
     '</div></div></div>';
 
+  h += selBar("home", shown.map(function(x){ return x.id; }), "طالب");
   h += printHd("كشف طلاب المنازل");
   h += '<div class="card"><div class="hd"><h3>'+shown.length+' طالب</h3>'+
     '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div>'+
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
-    '<th>م</th><th>الاسم</th><th>الرقم القومي</th><th>تاريخ الميلاد</th><th>النوع</th>'+
-    '<th>الصف</th><th>المسار</th><th>ولي الأمر</th><th>الهاتف</th><th class="noprint"></th></tr></thead><tbody>';
-  if(!shown.length) h += '<tr><td colspan="10"><div class="empty"><div class="big">▤</div>'+
+    '<th class="noprint" style="width:34px"></th><th>م</th><th>الاسم</th><th>الرقم القومي</th>'+
+    '<th>تاريخ الميلاد</th><th>النوع</th><th>الصف</th><th>المسار</th><th>ولي الأمر</th>'+
+    '<th>الهاتف</th><th class="noprint"></th></tr></thead><tbody>';
+  if(!shown.length) h += '<tr><td colspan="11"><div class="empty"><div class="big">▤</div>'+
     '<b>مفيش طلاب منازل</b><p>ضيفهم يدويًا، أو استوردهم من إكسيل، '+
     'أو رحّلهم من شاشة «رغبات الطلاب» — اللي اختار نوعية «منازل» بيترحّل هنا.</p></div></td></tr>';
   shown.forEach(function(s,i){
-    h += '<tr><td class="rownum">'+(i+1)+'</td>'+
+    h += '<tr'+(selHas("home",s.id)?' style="background:#fdf0ef"':'')+'>'+
+      selCell("home", s.id)+
+      '<td class="rownum">'+(i+1)+'</td>'+
       '<td><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
       '<td class="num" style="direction:ltr">'+esc(s.natId||"—")+'</td>'+
       '<td class="num">'+esc(birthFromNat(s.natId)||"—")+'</td>'+
@@ -8559,6 +8585,603 @@ Object.assign(ACTS, {
 });
 document.addEventListener("change", function(e){
   if(e.target && e.target.id==="docMonth"){ UI.docMonth = e.target.value; render(); }
+});
+/* ============================================================
+   التحديد الجماعي + نظام استمارات الطلاب
+   ============================================================ */
+
+/* ---------- التحديد الجماعي ---------- */
+function selInit(kind){
+  if(!UI.sel || UI.sel.kind !== kind) UI.sel = { kind:kind, ids:{} };
+  return UI.sel;
+}
+function selHas(kind, id){ selInit(kind); return !!UI.sel.ids[id]; }
+function selCount(kind){
+  selInit(kind);
+  var n = 0;
+  for(var k in UI.sel.ids) if(UI.sel.ids[k]) n++;
+  return n;
+}
+function selIds(kind){
+  selInit(kind);
+  var a = [];
+  for(var k in UI.sel.ids) if(UI.sel.ids[k]) a.push(k);
+  return a;
+}
+function selCell(kind, id){
+  var on = selHas(kind, id);
+  return '<td class="noprint"><button class="btn '+(on?"seal":"ghost")+' sm" data-act="selTog" '+
+    'data-k="'+kind+'" data-id="'+id+'" style="width:28px;padding:4px 0">'+(on?"✓":"")+'</button></td>';
+}
+function selBar(kind, allIds, noun){
+  var n = selCount(kind);
+  var allOn = allIds.length && allIds.every(function(id){ return selHas(kind,id); });
+  return '<div class="card noprint" style="border-color:'+(n?"var(--danger)":"var(--line)")+'"><div class="bd">'+
+    '<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">'+
+    '<button class="btn ghost sm" data-act="selAll" data-k="'+kind+'" data-ids="'+esc(allIds.join(","))+'">'+
+      (allOn? "إلغاء تحديد الكل" : "تحديد الكل ("+allIds.length+")")+'</button>'+
+    (n? '<button class="btn ghost sm" data-act="selNone" data-k="'+kind+'">إلغاء التحديد</button>' : '')+
+    '<span style="flex:1;font-size:12.5px;color:var(--muted)">'+
+      (n? '<b style="color:var(--ink)">'+n+'</b> '+esc(noun)+' محدد' : 'محدّش متحدد')+'</span>'+
+    '<button class="btn danger'+(n?"":" ghost")+'" data-act="selDel" data-k="'+kind+'"'+(n?"":" disabled")+'>'+
+      'حذف المحدد'+(n? " ("+n+")" : "")+'</button>'+
+    '</div></div></div>';
+}
+
+Object.assign(ACTS, {
+  selTog: function(el){
+    selInit(el.dataset.k);
+    var id = el.dataset.id;
+    UI.sel.ids[id] = !UI.sel.ids[id];
+    render();
+  },
+  selAll: function(el){
+    var kind = el.dataset.k;
+    selInit(kind);
+    var ids = (el.dataset.ids||"").split(",").filter(Boolean);
+    var allOn = ids.length && ids.every(function(id){ return UI.sel.ids[id]; });
+    ids.forEach(function(id){ UI.sel.ids[id] = !allOn; });
+    render();
+  },
+  selNone: function(el){ selInit(el.dataset.k); UI.sel.ids = {}; render(); },
+  selDel: function(el){
+    var kind = el.dataset.k;
+    var ids = selIds(kind);
+    if(!ids.length){ toast("محدّش متحدد"); return; }
+    var what = kind==="teachers" ? "معلم" : (kind==="entries" ? "تسجيل" : "طالب");
+    var extra = kind==="teachers"
+      ? "\nهيتشال معاهم حساباتهم وتكليفاتهم وحصصهم من الجداول."
+      : (kind==="students" || kind==="home"
+         ? "\nهيتشال معاهم درجاتهم وغيابهم وسجل سلوكهم."
+         : "");
+    if(!confirm("حذف "+ids.length+" "+what+" نهائيًا؟"+extra+"\nمفيش تراجع.")) return;
+    var n = 0;
+    ids.forEach(function(id){
+      if(kind==="teachers") n += killTeacher(id) ? 1 : 0;
+      else if(kind==="entries") n += killEntry(id) ? 1 : 0;
+      else n += killStudent(id) ? 1 : 0;
+    });
+    UI.sel = { kind:kind, ids:{} };
+    saveNow(); render();
+    toast("اتحذف "+n+" "+what);
+  }
+});
+function killStudent(id){
+  if(!studentById(id)) return false;
+  DB.students = DB.students.filter(function(s){ return s.id!==id; });
+  DB.behavior = DB.behavior.filter(function(b){ return b.studentId!==id; });
+  for(var k in DB.marks) if(k.indexOf(id+"|")===0) delete DB.marks[k];
+  for(var a in DB.attend) if(DB.attend[a][id]) delete DB.attend[a][id];
+  (DB.wishes||[]).forEach(function(w){ if(w.moved && w.moved.studentId===id) delete w.moved; });
+  DB.events.forEach(function(e){
+    if(e.students) e.students = e.students.filter(function(x){ return x!==id; });
+  });
+  return true;
+}
+function killTeacher(id){
+  if(!teacherById(id)) return false;
+  DB.teachers = DB.teachers.filter(function(t){ return t.id!==id; });
+  DB.users = DB.users.filter(function(u){ return u.teacherId!==id; });
+  DB.assign = DB.assign.filter(function(a){ return a.teacherId!==id; });
+  DB.schedule.forEach(function(s){ if(s.teacherId===id) s.teacherId = ""; });
+  DB.staff = (DB.staff||[]).filter(function(x){ return x.teacherId!==id; });
+  DB.dutyPlan = (DB.dutyPlan||[]).filter(function(p){ return p.staffId!=="T"+id; });
+  for(var k in DB.subs) if(DB.subs[k]===id) delete DB.subs[k];
+  return true;
+}
+
+/* ============================================================
+   استمارات الطلاب
+   ------------------------------------------------------------
+   «تحديد المسار» استمارة مدمجة وبياناتها ثابتة ما بتتمسحش.
+   وأي بيان جديد تطلبه من الطلاب بيبقى استمارة مستقلة بمكانها.
+   ============================================================ */
+var FIELD_TYPES = [
+  {id:"text",     name:"نص"},
+  {id:"textarea", name:"نص طويل"},
+  {id:"num",      name:"رقم"},
+  {id:"phone",    name:"هاتف"},
+  {id:"date",     name:"تاريخ"},
+  {id:"select",   name:"اختيار من قائمة"},
+  {id:"level",    name:"الصف الدراسي"},
+  {id:"edu",      name:"نوعية التعليم"}
+];
+var TRACK_FORM = {
+  id:"track", builtin:true, active:true,
+  name:"تحديد المسار",
+  desc:"الاسم والرقم القومي والفصل السابق ونوعية التعليم والمسار ومادة التخصص"
+};
+function formsInit(){
+  if(!Array.isArray(DB.forms)) DB.forms = [];
+  if(!Array.isArray(DB.entries)) DB.entries = [];
+  DB.forms.forEach(function(f){ if(!Array.isArray(f.fields)) f.fields = []; });
+}
+function allForms(){
+  formsInit();
+  return [TRACK_FORM].concat(DB.forms);
+}
+function formById(id){
+  var a = allForms();
+  for(var i=0;i<a.length;i++) if(a[i].id===id) return a[i];
+  return null;
+}
+function activeForms(){ return allForms().filter(function(f){ return f.active!==false; }); }
+function formCount(fid){
+  formsInit();
+  if(fid==="track"){ wishesInit(); return DB.wishes.length; }
+  return DB.entries.filter(function(e){ return e.formId===fid; }).length;
+}
+function entriesOf(fid){
+  formsInit();
+  return DB.entries.filter(function(e){ return e.formId===fid; })
+    .sort(function(a,b){ return (b.date+(b.time||"")) < (a.date+(a.time||"")) ? -1 : 1; });
+}
+function entryByNat(fid, nat, exceptId){
+  var n = toEnDigits(String(nat||"")).replace(/\D/g,"");
+  if(!n) return null;
+  var list = entriesOf(fid);
+  for(var i=0;i<list.length;i++){
+    if(list[i].id===exceptId) continue;
+    if(String(list[i].natId)===n) return list[i];
+  }
+  return null;
+}
+
+/* ---------- شاشة الطالب: اختيار الاستمارة ---------- */
+function formsPickHTML(){
+  var list = activeForms();
+  var h = '<div style="text-align:center;margin-bottom:12px">'+
+    '<div style="font-family:Cairo,sans-serif;font-weight:700;font-size:16px">استمارات الطلاب</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-top:3px">اختار الاستمارة اللي هتسجّل فيها</div></div>';
+  if(!list.length){
+    h += '<div class="note warn">مفيش استمارات مفتوحة دلوقتي. راجع إدارة المدرسة.</div>';
+  }
+  list.forEach(function(f){
+    h += '<button class="who" data-lact="fpick" data-f="'+esc(f.id)+'" style="margin-bottom:7px">'+
+      '<span class="av" style="background:var(--gold)">★</span>'+
+      '<span class="tx"><b>'+esc(f.name)+'</b><small>'+esc(f.desc||"")+'</small></span>'+
+      '<span class="chev">‹</span></button>';
+  });
+  h += '<button class="btn ghost block" data-lact="wback" style="margin-top:8px">رجوع</button>';
+  return h;
+}
+/* ---------- نموذج استمارة مخصصة ---------- */
+function entryFormHTML(f){
+  var v = UI.entry || {};
+  var h = '<div style="text-align:center;margin-bottom:12px">'+
+    '<div style="font-family:Cairo,sans-serif;font-weight:700;font-size:16px">'+esc(f.name)+'</div>'+
+    (f.desc? '<div style="font-size:12px;color:var(--muted);margin-top:3px">'+esc(f.desc)+'</div>':'')+
+    '</div>';
+  h += '<label class="f"><span>الاسم رباعي زي شهادة الميلاد</span>'+
+    '<input type="text" id="e_name" value="'+esc(v.name||"")+'"></label>'+
+    '<label class="f"><span>الرقم القومي (١٤ رقم)</span>'+
+    '<input type="text" id="e_nat" inputmode="numeric" maxlength="14" value="'+esc(v.natId||"")+'" '+
+    'style="letter-spacing:.12em;direction:ltr;text-align:center"></label>';
+  (f.fields||[]).forEach(function(fd){
+    var cur = (v.values && v.values[fd.id]) || "";
+    h += '<label class="f"><span>'+esc(fd.label)+(fd.req?' *':'')+'</span>';
+    if(fd.type==="textarea") h += '<textarea id="ef_'+fd.id+'">'+esc(cur)+'</textarea>';
+    else if(fd.type==="select") h += '<select id="ef_'+fd.id+'"><option value="">— اختر —</option>'+
+      (fd.options||[]).map(function(o){ return '<option'+(cur===o?" selected":"")+'>'+esc(o)+'</option>'; }).join("")+'</select>';
+    else if(fd.type==="level") h += '<select id="ef_'+fd.id+'"><option value="">— اختر الصف —</option>'+
+      LEVELS.map(function(l){ return '<option'+(cur===l.name?" selected":"")+'>'+esc(l.name)+'</option>'; }).join("")+'</select>';
+    else if(fd.type==="edu") h += '<select id="ef_'+fd.id+'"><option value="">— اختر النوعية —</option>'+
+      EDU_TYPES.map(function(e){ return '<option'+(cur===e.name?" selected":"")+'>'+esc(e.name)+'</option>'; }).join("")+'</select>';
+    else if(fd.type==="date") h += '<input type="date" id="ef_'+fd.id+'" value="'+esc(cur)+'">';
+    else if(fd.type==="num") h += '<input type="number" id="ef_'+fd.id+'" value="'+esc(cur)+'">';
+    else if(fd.type==="phone") h += '<input type="tel" id="ef_'+fd.id+'" value="'+esc(cur)+'">';
+    else h += '<input type="text" id="ef_'+fd.id+'" value="'+esc(cur)+'">';
+    if(fd.hint) h += '<div style="font-size:11.5px;color:var(--muted);margin-top:4px">'+esc(fd.hint)+'</div>';
+    h += '</label>';
+  });
+  h += '<button class="btn block" data-lact="esave" style="margin-top:4px">تسجيل البيانات</button>'+
+    '<button class="btn ghost block" data-lact="fback" style="margin-top:8px">رجوع للاستمارات</button>';
+  return h;
+}
+function saveEntry(){
+  formsInit();
+  var f = formById(UI.formId);
+  if(!f) return;
+  var name = cleanName((document.getElementById("e_name")||{}).value || "");
+  var nat  = toEnDigits((document.getElementById("e_nat")||{}).value || "").replace(/\D/g,"");
+  var err = nameCheck(name);
+  if(err){ toast(err); return; }
+  err = natIdCheck(nat);
+  if(err){ toast(err); return; }
+  var values = {}, missing = null;
+  (f.fields||[]).forEach(function(fd){
+    var el = document.getElementById("ef_"+fd.id);
+    var v = el ? String(el.value||"").trim() : "";
+    values[fd.id] = v;
+    if(fd.req && !v && !missing) missing = fd.label;
+  });
+  if(missing){ toast("اكتب: "+missing); return; }
+  var dup = entryByNat(f.id, nat, null);
+  if(dup){ toast("الرقم القومي ده مسجّل قبل كده في الاستمارة دي باسم "+dup.name); return; }
+  var now = new Date();
+  var e = { id:uid("e"), formId:f.id, name:name, natId:nat, values:values,
+            date:today(),
+            time:(now.getHours()<10?"0":"")+now.getHours()+":"+(now.getMinutes()<10?"0":"")+now.getMinutes() };
+  DB.entries.push(e);
+  saveNow();
+  UI.entryDone = { form:f, entry:e };
+  UI.entry = null;
+  renderLogin();
+}
+function entryDoneHTML(d){
+  var f = d.form, e = d.entry;
+  var h = '<div style="text-align:center">'+
+    '<div style="width:52px;height:52px;margin:0 auto 11px;border-radius:14px;display:grid;place-items:center;'+
+    'background:#e2f0e9;color:#146a4e;font-size:26px">✓</div>'+
+    '<div style="font-family:Cairo,sans-serif;font-weight:700;font-size:17px">اتسجّلت بياناتك</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-top:4px">'+esc(f.name)+'</div></div>'+
+    '<div style="background:#fbfcfa;border:1px solid var(--line);border-radius:11px;padding:12px;margin-top:13px;font-size:13.5px;line-height:2">'+
+    '<div><b>الاسم:</b> '+esc(e.name)+'</div>'+
+    '<div><b>الرقم القومي:</b> <span style="direction:ltr;display:inline-block">'+esc(e.natId)+'</span></div>';
+  (f.fields||[]).forEach(function(fd){
+    if(!e.values[fd.id]) return;
+    h += '<div><b>'+esc(fd.label)+':</b> '+esc(e.values[fd.id])+'</div>';
+  });
+  h += '<div style="color:var(--muted);font-size:12px"><b>وقت التسجيل:</b> '+fmtDate(e.date)+' '+esc(e.time)+'</div></div>'+
+    '<button class="btn block" data-lact="fnew" style="margin-top:12px">تسجيل طالب آخر</button>'+
+    '<button class="btn ghost block" data-lact="wback" style="margin-top:8px">رجوع للصفحة الرئيسية</button>';
+  return h;
+}
+
+document.addEventListener("click", function(ev){
+  var el = ev.target.closest ? ev.target.closest("[data-lact]") : null;
+  if(!el) return;
+  var a = el.dataset.lact;
+  if(a==="fpick"){
+    ev.preventDefault();
+    UI.formId = el.dataset.f;
+    UI.entry = {}; UI.wish = {}; UI.entryDone = null; UI.wishDone = null;
+    renderLogin();
+  }
+  if(a==="fback"){ ev.preventDefault(); UI.formId = null; UI.entry = null; UI.wish = null; renderLogin(); }
+  if(a==="fnew"){ ev.preventDefault(); UI.entryDone = null; UI.entry = {}; renderLogin(); }
+  if(a==="esave"){ ev.preventDefault(); saveEntry(); }
+});
+
+/* ============================================================
+   شاشة الوكيل: قائمة الاستمارات
+   ============================================================ */
+function viewForms(){
+  formsInit();
+  if(UI.sub && UI.sub.form){
+    return UI.sub.form==="track" ? viewWishes() : viewEntries(UI.sub.form);
+  }
+  var list = allForms();
+  var h = pageHd("استمارات الطلاب", list.length+" استمارة",
+    '<button class="btn" data-act="addForm">+ استمارة جديدة</button>');
+  h += '<div class="note">كل استمارة ليها مكانها وبياناتها المستقلة، والبيانات المسجّلة بتفضل محفوظة '+
+    'وتقدر تعدّلها أو تصدّرها في أي وقت. لما تحتاج تطلب بيان جديد من الطلاب، اعمل استمارة جديدة '+
+    'وحدّد خاناتها، وهتظهر لهم في صفحة الدخول.</div>';
+
+  h += '<div class="card"><div class="bd flush">';
+  list.forEach(function(f){
+    var n = formCount(f.id);
+    h += '<button class="list-item" data-act="openForm" data-id="'+esc(f.id)+'">'+
+      '<span class="av">'+(f.builtin?"★":"▤")+'</span>'+
+      '<span class="tx"><b>'+esc(f.name)+'</b><small>'+esc(f.desc||"")+
+      (f.builtin? " · استمارة مدمجة" : " · "+(f.fields||[]).length+" خانة")+'</small></span>'+
+      '<span class="tag '+(n?"info":"")+'">'+n+' تسجيل</span>'+
+      (f.active===false? '<span class="tag warn">مقفولة</span>' : '<span class="tag ok">مفتوحة</span>')+
+      '<span class="chev">‹</span></button>';
+  });
+  h += '</div></div>';
+  return h;
+}
+
+/* ---------- تسجيلات استمارة مخصصة ---------- */
+function viewEntries(fid){
+  formsInit();
+  var f = formById(fid);
+  if(!f) return '<div class="empty"><b>الاستمارة مش موجودة</b></div>';
+  var list = entriesOf(fid);
+  var q = (UI.filters.eq||"").trim();
+  var shown = q ? list.filter(function(e){
+    return e.name.indexOf(q)>=0 || String(e.natId).indexOf(q)>=0;
+  }) : list;
+
+  var h = backBtn("كل الاستمارات");
+  h += pageHd(f.name, list.length+" تسجيل",
+    '<button class="btn ghost" data-act="editForm" data-id="'+esc(f.id)+'">تعديل الاستمارة</button>'+
+    '<button class="btn" data-act="entXls" data-id="'+esc(f.id)+'" style="margin-right:6px">⬇ إكسيل</button>'+
+    '<button class="btn ghost" data-act="entPdf" data-id="'+esc(f.id)+'" style="margin-right:6px">⬇ PDF</button>');
+
+  if(f.active===false) h += '<div class="note warn">الاستمارة دي <b>مقفولة</b> — مش ظاهرة للطلاب. '+
+    'افتحها من «تعديل الاستمارة».</div>';
+
+  h += '<div class="card noprint"><div class="bd"><label class="f" style="margin:0">'+
+    '<span>بحث بالاسم أو الرقم القومي</span>'+
+    '<input type="text" id="eq" value="'+esc(q)+'" placeholder="اكتب للبحث…"></label></div></div>';
+
+  h += selBar("entries", shown.map(function(e){ return e.id; }), "تسجيل");
+
+  h += printHd(f.name);
+  h += '<div class="card"><div class="hd"><h3>'+shown.length+' تسجيل</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th class="noprint" style="width:34px"></th><th>م</th><th>الاسم</th><th>الرقم القومي</th>'+
+    (f.fields||[]).map(function(fd){ return '<th>'+esc(fd.label)+'</th>'; }).join("")+
+    '<th>تاريخ التسجيل</th><th class="noprint"></th></tr></thead><tbody>';
+  if(!shown.length) h += '<tr><td colspan="'+((f.fields||[]).length+6)+'">'+
+    '<div class="empty"><div class="big">▤</div><b>مفيش تسجيلات</b>'+
+    '<p>الطلاب بيسجّلوا من صفحة البداية ← «الدخول كطالب» ← «'+esc(f.name)+'».</p></div></td></tr>';
+  shown.forEach(function(e,i){
+    h += '<tr'+(selHas("entries",e.id)?' style="background:#fdf0ef"':'')+'>'+
+      selCell("entries", e.id)+
+      '<td class="rownum">'+(i+1)+'</td>'+
+      '<td><b style="font-weight:600">'+esc(e.name)+'</b></td>'+
+      '<td class="num" style="direction:ltr">'+esc(e.natId)+'</td>'+
+      (f.fields||[]).map(function(fd){ return '<td>'+esc(e.values[fd.id]||"—")+'</td>'; }).join("")+
+      '<td class="num">'+fmtDate(e.date)+'</td>'+
+      '<td class="noprint"><button class="btn ghost sm" data-act="editEntry" data-id="'+e.id+'">تعديل</button></td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+
+/* ---------- تصدير الاستمارة ---------- */
+function entryDoc(fid){
+  var f = formById(fid);
+  var list = entriesOf(fid).sort(function(a,b){ return sortAr(a.name,b.name); });
+  return {
+    id:"ent_"+fid, name:f.name, short:f.name.slice(0,20),
+    build:function(){
+      return {
+        title: f.name + " — كشف التسجيلات",
+        head: ["م","الاسم رباعي","الرقم القومي"]
+          .concat((f.fields||[]).map(function(fd){ return fd.label; }))
+          .concat(["تاريخ التسجيل"]),
+        widths: [4,30,17].concat((f.fields||[]).map(function(){ return 18; })).concat([13]),
+        rows: list.map(function(e,i){
+          return [i+1, e.name, e.natId]
+            .concat((f.fields||[]).map(function(fd){ return e.values[fd.id]||""; }))
+            .concat([e.date]);
+        }),
+        summary: [["تسجيل", list.length]]
+      };
+    }
+  };
+}
+
+/* ---------- بناء وتعديل الاستمارة ---------- */
+function modalForm(id){
+  formsInit();
+  var f = id ? formById(id) : null;
+  if(f && f.builtin){
+    openModal(mHead("تحديد المسار")+
+      '<div class="mb"><div class="note">دي استمارة مدمجة في البرنامج — خاناتها ثابتة '+
+      '(الاسم، الرقم القومي، الفصل السابق، نوعية التعليم، المسار، مادة التخصص) '+
+      'عشان الترحيل التلقائي يشتغل صح. تقدر تقفلها أو تفتحها للطلاب بس.</div>'+
+      '<label class="f"><span>الحالة</span><select id="fm_act">'+
+      '<option value="1"'+(f.active!==false?" selected":"")+'>مفتوحة للطلاب</option>'+
+      '<option value="0"'+(f.active===false?" selected":"")+'>مقفولة</option></select></label>'+
+      '</div>'+mFoot("حفظ","saveFormState"));
+    MODAL.dataset.fid = f.id;
+    return;
+  }
+  UI.fdraft = f ? JSON.parse(JSON.stringify(f))
+                : { id:uid("f"), name:"", desc:"", active:true, fields:[] };
+  renderFormModal();
+}
+function renderFormModal(){
+  var d = UI.fdraft;
+  var h = mHead(d.name ? "تعديل استمارة" : "استمارة جديدة")+'<div class="mb">'+
+    '<label class="f"><span>اسم الاستمارة</span><input type="text" id="fm_n" value="'+esc(d.name)+'" '+
+    'placeholder="مثال: استمارة بيانات ولي الأمر"></label>'+
+    '<label class="f"><span>وصف مختصر يظهر للطالب</span><input type="text" id="fm_d" value="'+esc(d.desc||"")+'"></label>'+
+    '<label class="f"><span>الحالة</span><select id="fm_act">'+
+    '<option value="1"'+(d.active!==false?" selected":"")+'>مفتوحة للطلاب</option>'+
+    '<option value="0"'+(d.active===false?" selected":"")+'>مقفولة</option></select></label>'+
+    '<div class="note">كل استمارة بتاخد <b>الاسم</b> و<b>الرقم القومي</b> تلقائي. ضيف تحتهم الخانات اللي محتاجها.</div>'+
+    '<div style="font-size:12.5px;font-weight:700;margin:12px 0 7px;font-family:Cairo,sans-serif">الخانات ('+d.fields.length+')</div>';
+
+  if(!d.fields.length) h += '<div class="note warn">مفيش خانات لسه — ضيف خانة واحدة على الأقل.</div>';
+  d.fields.forEach(function(fd, i){
+    h += '<div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;background:#fbfcfa">'+
+      '<div style="display:flex;gap:7px;align-items:center;margin-bottom:7px">'+
+      '<span class="tag">'+(i+1)+'</span>'+
+      '<b style="flex:1;font-size:13px">'+esc(fd.label||"خانة بدون اسم")+'</b>'+
+      '<button class="btn ghost sm" data-act="fldUp" data-i="'+i+'"'+(i===0?" disabled":"")+'>▲</button>'+
+      '<button class="btn ghost sm" data-act="fldDn" data-i="'+i+'"'+(i===d.fields.length-1?" disabled":"")+'>▼</button>'+
+      '<button class="btn ghost sm" data-act="fldDel" data-i="'+i+'" style="color:var(--danger)">حذف</button>'+
+      '</div>'+
+      '<div class="grid2">'+
+      '<label class="f"><span>اسم الخانة</span><input type="text" data-fld="label" data-i="'+i+'" value="'+esc(fd.label||"")+'"></label>'+
+      '<label class="f"><span>النوع</span><select data-fld="type" data-i="'+i+'">'+
+        FIELD_TYPES.map(function(t){ return '<option value="'+t.id+'"'+(fd.type===t.id?" selected":"")+'>'+esc(t.name)+'</option>'; }).join("")+
+      '</select></label>'+
+      '</div>'+
+      (fd.type==="select"
+        ? '<label class="f"><span>الاختيارات (كل اختيار في سطر)</span>'+
+          '<textarea data-fld="options" data-i="'+i+'" style="min-height:66px">'+esc((fd.options||[]).join("\n"))+'</textarea></label>'
+        : '')+
+      '<label class="f" style="margin:0"><span>إجباري؟</span><select data-fld="req" data-i="'+i+'">'+
+      '<option value="1"'+(fd.req?" selected":"")+'>إجباري</option>'+
+      '<option value="0"'+(!fd.req?" selected":"")+'>اختياري</option></select></label>'+
+      '</div>';
+  });
+  h += '<button class="btn ghost block" data-act="fldAdd">+ إضافة خانة</button>';
+  if(d.name && !TRACK_FORM.id===false){}
+  h += (formById(d.id) && !formById(d.id).builtin
+    ? '<button class="btn ghost block" data-act="delForm" data-id="'+esc(d.id)+'" style="margin-top:9px;color:var(--danger)">حذف الاستمارة وتسجيلاتها</button>'
+    : '');
+  h += '</div>'+mFoot("حفظ الاستمارة","saveForm");
+  openModal(h);
+  MODAL.classList.add("wide");
+}
+function readFormModal(){
+  var d = UI.fdraft;
+  var e;
+  e = document.getElementById("fm_n"); if(e) d.name = e.value.trim();
+  e = document.getElementById("fm_d"); if(e) d.desc = e.value.trim();
+  e = document.getElementById("fm_act"); if(e) d.active = e.value==="1";
+  return d;
+}
+
+Object.assign(ACTS, {
+  openForm: function(el){ UI.sub = {form: el.dataset.id}; UI.filters = {}; UI.sel = null; render(); },
+  addForm:  function(){ modalForm(null); },
+  editForm: function(el){ modalForm(el.dataset.id); },
+  saveFormState: function(){
+    var f = formById(MODAL.dataset.fid);
+    if(f){ f.active = val("fm_act")==="1"; if(f.builtin) TRACK_FORM.active = f.active; }
+    saveNow(); closeModal(); render(); toast("اتحفظ");
+  },
+  fldAdd: function(){
+    readFormModal();
+    UI.fdraft.fields.push({ id:uid("fd"), label:"", type:"text", req:false, options:[] });
+    renderFormModal();
+  },
+  fldDel: function(el){
+    readFormModal();
+    UI.fdraft.fields.splice(Number(el.dataset.i), 1);
+    renderFormModal();
+  },
+  fldUp: function(el){
+    readFormModal();
+    var i = Number(el.dataset.i);
+    if(i>0){ var t = UI.fdraft.fields[i-1]; UI.fdraft.fields[i-1] = UI.fdraft.fields[i]; UI.fdraft.fields[i] = t; }
+    renderFormModal();
+  },
+  fldDn: function(el){
+    readFormModal();
+    var i = Number(el.dataset.i);
+    if(i < UI.fdraft.fields.length-1){
+      var t = UI.fdraft.fields[i+1]; UI.fdraft.fields[i+1] = UI.fdraft.fields[i]; UI.fdraft.fields[i] = t;
+    }
+    renderFormModal();
+  },
+  saveForm: function(){
+    formsInit();
+    var d = readFormModal();
+    if(!d.name){ toast("اكتب اسم الاستمارة"); return; }
+    if(!d.fields.length){ toast("ضيف خانة واحدة على الأقل"); return; }
+    for(var i=0;i<d.fields.length;i++){
+      if(!d.fields[i].label){ toast("خانة رقم "+(i+1)+" من غير اسم"); return; }
+      if(d.fields[i].type==="select" && !(d.fields[i].options||[]).length){
+        toast("خانة «"+d.fields[i].label+"» محتاجة اختيارات"); return;
+      }
+    }
+    var ex = DB.forms.filter(function(f){ return f.id===d.id; })[0];
+    if(ex){
+      ex.name = d.name; ex.desc = d.desc; ex.active = d.active; ex.fields = d.fields;
+    }else{
+      DB.forms.push(d);
+    }
+    UI.fdraft = null;
+    MODAL.classList.remove("wide");
+    saveNow(); closeModal(); render(); toast("اتحفظت الاستمارة");
+  },
+  delForm: function(el){
+    var id = el.dataset.id;
+    var n = formCount(id);
+    if(!confirm("حذف الاستمارة و"+n+" تسجيل جواها نهائيًا؟")) return;
+    DB.forms = DB.forms.filter(function(f){ return f.id!==id; });
+    DB.entries = DB.entries.filter(function(e){ return e.formId!==id; });
+    UI.fdraft = null; UI.sub = null;
+    MODAL.classList.remove("wide");
+    saveNow(); closeModal(); render(); toast("اتحذفت");
+  },
+  editEntry: function(el){
+    formsInit();
+    var e = DB.entries.filter(function(x){ return x.id===el.dataset.id; })[0];
+    if(!e) return;
+    var f = formById(e.formId);
+    if(!f) return;
+    var h = mHead("تعديل تسجيل — "+f.name)+'<div class="mb">'+
+      '<label class="f"><span>الاسم</span><input type="text" id="ee_n" value="'+esc(e.name)+'"></label>'+
+      '<label class="f"><span>الرقم القومي</span><input type="text" id="ee_nat" maxlength="14" '+
+      'value="'+esc(e.natId)+'" style="direction:ltr;text-align:center"></label>';
+    (f.fields||[]).forEach(function(fd){
+      var cur = e.values[fd.id]||"";
+      h += '<label class="f"><span>'+esc(fd.label)+'</span>';
+      if(fd.type==="textarea") h += '<textarea id="ee_'+fd.id+'">'+esc(cur)+'</textarea>';
+      else if(fd.type==="select") h += '<select id="ee_'+fd.id+'"><option value="">—</option>'+
+        (fd.options||[]).map(function(o){ return '<option'+(cur===o?" selected":"")+'>'+esc(o)+'</option>'; }).join("")+'</select>';
+      else if(fd.type==="level") h += '<select id="ee_'+fd.id+'"><option value="">—</option>'+
+        LEVELS.map(function(l){ return '<option'+(cur===l.name?" selected":"")+'>'+esc(l.name)+'</option>'; }).join("")+'</select>';
+      else if(fd.type==="edu") h += '<select id="ee_'+fd.id+'"><option value="">—</option>'+
+        EDU_TYPES.map(function(x){ return '<option'+(cur===x.name?" selected":"")+'>'+esc(x.name)+'</option>'; }).join("")+'</select>';
+      else if(fd.type==="date") h += '<input type="date" id="ee_'+fd.id+'" value="'+esc(cur)+'">';
+      else h += '<input type="text" id="ee_'+fd.id+'" value="'+esc(cur)+'">';
+      h += '</label>';
+    });
+    h += '<button class="btn ghost block" data-act="delEntry" data-id="'+e.id+'" style="color:var(--danger)">حذف التسجيل</button>'+
+      '</div>'+mFoot("حفظ","saveEntryEdit");
+    openModal(h);
+    MODAL.dataset.eid = e.id;
+  },
+  saveEntryEdit: function(){
+    var e = DB.entries.filter(function(x){ return x.id===MODAL.dataset.eid; })[0];
+    if(!e) return;
+    var f = formById(e.formId);
+    var name = cleanName(val("ee_n"));
+    var nat = toEnDigits(val("ee_nat")).replace(/\D/g,"");
+    var err = nameCheck(name) || natIdCheck(nat);
+    if(err){ toast(err); return; }
+    if(entryByNat(e.formId, nat, e.id)){ toast("الرقم القومي مسجّل لطالب تاني في الاستمارة دي"); return; }
+    e.name = name; e.natId = nat;
+    (f.fields||[]).forEach(function(fd){
+      var el = document.getElementById("ee_"+fd.id);
+      if(el) e.values[fd.id] = String(el.value||"").trim();
+    });
+    saveNow(); closeModal(); render(); toast("اتحفظ");
+  },
+  delEntry: function(el){
+    if(!confirm("حذف التسجيل ده؟")) return;
+    killEntry(el.dataset.id);
+    saveNow(); closeModal(); render(); toast("اتحذف");
+  },
+  entXls: function(el){ docExcel(entryDoc(el.dataset.id)); },
+  entPdf: function(el){ docPdf(entryDoc(el.dataset.id)); }
+});
+function killEntry(id){
+  formsInit();
+  var n = DB.entries.length;
+  DB.entries = DB.entries.filter(function(e){ return e.id!==id; });
+  return DB.entries.length < n;
+}
+/* تعديل خانات الاستمارة أثناء البناء */
+document.addEventListener("input", function(ev){
+  var el = ev.target;
+  if(!el || !el.dataset || !el.dataset.fld || !UI.fdraft) return;
+  var i = Number(el.dataset.i), fd = UI.fdraft.fields[i];
+  if(!fd) return;
+  if(el.dataset.fld==="label") fd.label = el.value;
+  if(el.dataset.fld==="options") fd.options = el.value.split(/\n/).map(function(x){ return x.trim(); }).filter(Boolean);
+});
+document.addEventListener("change", function(ev){
+  var el = ev.target;
+  if(el && el.id==="eq"){ UI.filters.eq = el.value; render(); return; }
+  if(!el || !el.dataset || !el.dataset.fld || !UI.fdraft) return;
+  var i = Number(el.dataset.i), fd = UI.fdraft.fields[i];
+  if(!fd) return;
+  if(el.dataset.fld==="type"){ fd.type = el.value; readFormModal(); renderFormModal(); }
+  if(el.dataset.fld==="req") fd.req = el.value==="1";
 });
 </script>
 </body>
