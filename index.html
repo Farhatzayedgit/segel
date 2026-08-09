@@ -948,13 +948,21 @@ function viewStudents(){
   }).sort(function(a,b){ return sortAr(a.name,b.name); });
 
   var can = UI.user.role!=="student";
-  var g0 = gate("classes");
-  if(g0) return pageHd("الطلاب","")+g0;
+  /* مانقفلش الشاشة طول ما فيه طلاب — حتى لو الفترة لسه مفيهاش فصول */
+  if(!myStudents().length){
+    var g0 = gate("classes");
+    if(g0) return pageHd("الطلاب","")+g0;
+  }
   var h = pageHd("الطلاب", myStudents().length+" طالب في قسم "+sectorName(curSector()),
     (UI.user.role==="deputy"?'<button class="btn" data-act="addStudent">+ إضافة طالب</button>'+
       impBtn("students",{},"استيراد من إكسيل")+
       '<button class="btn ghost sm noprint" data-act="impTpl" data-tg="students" style="margin-right:6px">نموذج جاهز</button>':''));
 
+  if(!myClasses().length && UI.user.role!=="student"){
+    h += '<div class="note warn"><b>فترة '+esc(sectorName(curSector()))+' لسه مفيهاش فصول.</b> '+
+      'الطلاب دول موجودين ومحفوظين، بس مش هيبان لهم غياب ولا درجات لحد ما تعمل الفصول وتسكّنهم. '+
+      '<button class="btn sm" data-act="tab" data-tab="classes" style="margin-top:6px">إنشاء الفصول</button></div>';
+  }
   var unas = unassignedStudents();
   if(unas.length && UI.user.role!=="student"){
     h += '<div class="note warn"><b>'+unas.length+' طالب من غير تسكين على فصل.</b> '+
@@ -6405,7 +6413,12 @@ function migrateSectors(){
 function userSectors(u){
   return (u && Array.isArray(u.sectors) && u.sectors.length) ? u.sectors : ["reg"];
 }
-function userInSector(u, sec){ return userSectors(u).indexOf(sec) >= 0; }
+/* المدير والوكلاء مسؤولون عن المدرسة كلها — بيشتغلوا على الفترتين */
+function schoolWideRole(r){ return r==="manager" || r==="deputy" || r==="admin"; }
+function userInSector(u, sec){
+  if(u && schoolWideRole(u.role)) return true;
+  return userSectors(u).indexOf(sec) >= 0;
+}
 function teacherInSector(tid, sec){
   sec = sec || curSector();
   var u = userOfTeacher(tid);
@@ -6623,7 +6636,10 @@ function setHeaderSector(){
   var el = document.getElementById("hdSchool");
   if(el) el.textContent = DB.meta.school + " — " + sectorName(curSector());
   var b = document.getElementById("btnSector");
-  if(b && UI.user) b.style.display = userSectors(UI.user).length>1 ? "" : "none";
+  if(b && UI.user){
+    var both = schoolWideRole(UI.user.role) || userSectors(UI.user).length>1;
+    b.style.display = both ? "" : "none";
+  }
 }
 
 /* ---------- حقل اختيار الفترات ---------- */
