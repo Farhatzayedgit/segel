@@ -1206,10 +1206,15 @@ function viewClass(id){
 
   /* الطلاب */
   h += '<div class="card"><div class="hd"><h3>طلاب الفصل ('+studs.length+')</h3>'+
-    (isDep?'<button class="btn ghost sm" data-act="addStudent" data-cid="'+c.id+'">+ طالب</button>'+
+    (isDep?'<button class="btn sm" data-act="asgOpen" data-id="'+c.id+'">⇄ تسكين طلاب موجودين</button>'+
+      '<button class="btn ghost sm" data-act="addStudent" data-cid="'+c.id+'" style="margin-right:6px">+ طالب جديد</button>'+
       impBtn("students",{classId:c.id},"استيراد إكسيل"):'')+
     '</div><div class="bd flush">';
-  if(!studs.length) h += '<div class="empty"><b>الفصل فاضي</b><p>ضيف الطلاب واحد واحد أو الصق قائمة أسماء دفعة واحدة.</p></div>';
+  if(!studs.length) h += '<div class="empty"><div class="big">👤</div><b>الفصل فاضي</b>'+
+    '<p>لو عندك طلاب مسجّلين بالفعل، اضغط <b>«تسكين طلاب موجودين»</b> واختار منهم. '+
+    'ولو الطلاب لسه ما اتسجّلوش، ضيفهم واحد واحد أو استوردهم من إكسيل.</p>'+
+    (isDep? '<button class="btn" data-act="asgOpen" data-id="'+c.id+'">⇄ تسكين طلاب موجودين</button>':'')+
+    '</div>';
   studs.forEach(function(s,i){
     var st = attendStats(s.id,c.id), a = absState(st.abs);
     h += '<button class="list-item" data-act="openStudent" data-id="'+s.id+'">'+
@@ -9295,6 +9300,189 @@ document.addEventListener("change", function(ev){
   if(!fd) return;
   if(el.dataset.fld==="type"){ fd.type = el.value; readFormModal(); renderFormModal(); }
   if(el.dataset.fld==="req") fd.req = el.value==="1";
+});
+/* ============================================================
+   تسكين الطلاب الموجودين على الفصل
+   ------------------------------------------------------------
+   بدل ما تضيف الطالب من الأول، تختار من الطلاب المسجّلين فعلًا
+   في الفترة الحالية — بنفس الشكل في النظامي والخدمات.
+   ============================================================ */
+
+function asgInit(cid){
+  var c = classById(cid);
+  if(!c) return null;
+  if(!UI.asg || UI.asg.classId !== cid){
+    var sel = {};
+    studentsOf(cid).forEach(function(s){ sel[s.id] = true; });
+    UI.asg = { classId:cid, tab:"level", q:"", sel:sel, start:JSON.stringify(sel) };
+  }
+  return UI.asg;
+}
+/* الطلاب المرشّحون: طلاب الفترة الحالية (من غير المنازل) */
+function asgPool(cid){
+  var c = classById(cid);
+  if(!c) return [];
+  var a = UI.asg || {};
+  var list = myStudents();
+  if(a.tab === "level"){
+    list = list.filter(function(s){
+      var sc = classById(s.classId);
+      var lv = sc ? sc.level : num(s.level, 0);
+      return String(lv) === String(c.level) || (!s.classId && !s.level);
+    });
+  }else if(a.tab === "in"){
+    list = list.filter(function(s){ return !!s.classId; });
+  }else if(a.tab === "free"){
+    list = list.filter(function(s){ return !s.classId; });
+  }
+  if(a.q){
+    var q = a.q.trim();
+    if(q) list = list.filter(function(s){
+      return String(s.name).indexOf(q)>=0 || String(s.natId||"").indexOf(q)>=0 ||
+             String(s.seat||"").indexOf(q)>=0;
+    });
+  }
+  return list.sort(function(x,y){
+    var xi = x.classId===cid ? 0 : 1, yi = y.classId===cid ? 0 : 1;
+    return xi-yi || sortAr(x.name, y.name);
+  });
+}
+function asgCounts(cid){
+  var c = classById(cid);
+  var all = myStudents();
+  var lvl = all.filter(function(s){
+    var sc = classById(s.classId);
+    var lv = sc ? sc.level : num(s.level, 0);
+    return String(lv) === String(c.level) || (!s.classId && !s.level);
+  }).length;
+  return {
+    level: lvl,
+    in: all.filter(function(s){ return !!s.classId; }).length,
+    free: all.filter(function(s){ return !s.classId; }).length,
+    all: all.length
+  };
+}
+function modalAssignStudents(cid){
+  if(!asgInit(cid)) return;
+  renderAssignModal();
+}
+function renderAssignModal(){
+  var a = UI.asg;
+  var cid = a.classId, c = classById(cid);
+  if(!c){ closeModal(); return; }
+  var pool = asgPool(cid);
+  var cnt = asgCounts(cid);
+  var chosen = 0, moving = 0;
+  for(var k in a.sel) if(a.sel[k]) chosen++;
+  pool.forEach(function(s){
+    if(a.sel[s.id] && s.classId && s.classId!==cid) moving++;
+  });
+
+  var h = mHead("تسكين طلاب على "+c.name)+'<div class="mb">';
+  h += '<div class="note">اختار من الطلاب المسجّلين في فترة <b>'+esc(sectorName(curSector()))+'</b>. '+
+    'اللي متحدد هيبقى في الفصل، واللي تشيل تحديده هيخرج منه ويفضل موجود من غير تسكين.</div>';
+
+  h += '<div class="chips">'+
+    asgChip("level","طلاب "+levelName(c.level), cnt.level)+
+    asgChip("free","غير المسكّنين", cnt.free)+
+    asgChip("in","المسكّنين", cnt.in)+
+    asgChip("all","كل الطلاب", cnt.all)+
+    '</div>';
+
+  h += '<label class="f"><span>بحث بالاسم أو الرقم القومي أو رقم الجلوس</span>'+
+    '<input type="text" id="asgq" value="'+esc(a.q||"")+'" placeholder="اكتب للبحث…"></label>';
+
+  var allOn = pool.length && pool.every(function(s){ return a.sel[s.id]; });
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:9px">'+
+    '<button class="btn ghost sm" data-act="asgAll">'+(allOn?"إلغاء تحديد المعروض":"تحديد المعروض ("+pool.length+")")+'</button>'+
+    '<span style="flex:1;font-size:12.5px;color:var(--muted)">'+
+      '<b style="color:var(--ink)">'+chosen+'</b> هيبقوا في الفصل</span>'+
+    '</div>';
+  if(moving) h += '<div class="note warn"><b>'+moving+' طالب</b> من اللي اخترتهم مسكّنين على فصل تاني — '+
+    'هيتنقلوا لـ«'+esc(c.name)+'».</div>';
+
+  h += '<div class="tbl-wrap" style="max-height:44vh;border:1px solid var(--line);border-radius:10px">'+
+    '<table class="tbl"><thead><tr><th style="width:34px"></th><th>م</th><th>الاسم</th>'+
+    '<th>الفصل الحالي</th><th>رقم الجلوس</th></tr></thead><tbody>';
+  if(!pool.length) h += '<tr><td colspan="5"><div class="empty"><b>مفيش طلاب مطابقين</b>'+
+    '<p>غيّر التصنيف من فوق أو امسح البحث.</p></div></td></tr>';
+  pool.slice(0,400).forEach(function(s,i){
+    var on = !!a.sel[s.id];
+    var here = s.classId===cid;
+    h += '<tr'+(on?' style="background:#eef5f1"':'')+'>'+
+      '<td><button class="btn '+(on?"seal":"ghost")+' sm" data-act="asgTog" data-id="'+s.id+'" '+
+      'style="width:28px;padding:4px 0">'+(on?"✓":"")+'</button></td>'+
+      '<td class="rownum">'+(i+1)+'</td>'+
+      '<td><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
+      '<td>'+(here? '<span class="tag ok">في الفصل ده</span>'
+             : (s.classId? '<span class="tag warn">'+esc(className(s.classId))+'</span>'
+                         : '<span class="tag">غير مسكّن</span>'))+'</td>'+
+      '<td class="num">'+esc(s.seat||"—")+'</td></tr>';
+  });
+  h += '</tbody></table></div>';
+  if(pool.length>400) h += '<div style="font-size:11.5px;color:var(--muted);margin-top:5px">'+
+    'معروض أول ٤٠٠ — استخدم البحث للوصول للباقي.</div>';
+  h += '</div>'+mFoot("حفظ التسكين","asgSave");
+
+  openModal(h);
+  MODAL.classList.add("wide");
+  var q = document.getElementById("asgq");
+  if(q && a.q){ q.focus(); try{ q.setSelectionRange(a.q.length, a.q.length); }catch(e){} }
+}
+function asgChip(id, label, n){
+  var on = (UI.asg && UI.asg.tab===id);
+  return '<button class="'+(on?"on":"")+'" data-act="asgTab" data-t="'+id+'">'+esc(label)+' ('+n+')</button>';
+}
+
+Object.assign(ACTS, {
+  asgOpen: function(el){ modalAssignStudents(el.dataset.id); },
+  asgTab:  function(el){ if(UI.asg){ UI.asg.tab = el.dataset.t; renderAssignModal(); } },
+  asgTog:  function(el){
+    if(!UI.asg) return;
+    var id = el.dataset.id;
+    UI.asg.sel[id] = !UI.asg.sel[id];
+    renderAssignModal();
+  },
+  asgAll: function(){
+    if(!UI.asg) return;
+    var pool = asgPool(UI.asg.classId);
+    var allOn = pool.length && pool.every(function(s){ return UI.asg.sel[s.id]; });
+    pool.forEach(function(s){ UI.asg.sel[s.id] = !allOn; });
+    renderAssignModal();
+  },
+  asgSave: function(){
+    if(!UI.asg) return;
+    var cid = UI.asg.classId, sel = UI.asg.sel;
+    var added = 0, moved = 0, removed = 0;
+    DB.students.forEach(function(s){
+      if((s.edu||"reg")==="home" || s.status==="left") return;
+      var want = !!sel[s.id];
+      if(want && s.classId!==cid){
+        if(s.classId) moved++; else added++;
+        s.classId = cid;
+        var c = classById(cid);
+        if(c) s.level = c.level;
+        s.edu = classSector(c);
+      }else if(!want && s.classId===cid){
+        s.classId = "";
+        removed++;
+      }
+    });
+    UI.asg = null;
+    MODAL.classList.remove("wide");
+    saveNow(); closeModal(); render();
+    var m = [];
+    if(added) m.push("اتسكّن "+added);
+    if(moved) m.push("اتنقل "+moved);
+    if(removed) m.push("اتشال "+removed);
+    toast(m.length ? m.join(" · ") : "مفيش تغيير");
+  }
+});
+document.addEventListener("input", function(e){
+  if(!e.target || e.target.id!=="asgq" || !UI.asg) return;
+  UI.asg.q = e.target.value;
+  clearTimeout(ACTS._asgq);
+  ACTS._asgq = setTimeout(function(){ renderAssignModal(); }, 300);
 });
 </script>
 </body>
