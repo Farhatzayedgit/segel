@@ -936,9 +936,8 @@ function printHd(title){
    ============================================================ */
 function viewStudents(){
   var f = UI.filters;
-  var mine = myClassIds();
-  var list = DB.students.filter(function(s){
-    if(!mine[s.classId]) return false;
+  var list = myStudents().filter(function(s){
+    if(f.cls === "__none") return !s.classId;
     if(f.cls && s.classId!==f.cls) return false;
     if(f.lvl && String(classById(s.classId)&&classById(s.classId).level)!==String(f.lvl)) return false;
     if(f.q){
@@ -956,6 +955,12 @@ function viewStudents(){
       impBtn("students",{},"استيراد من إكسيل")+
       '<button class="btn ghost sm noprint" data-act="impTpl" data-tg="students" style="margin-right:6px">نموذج جاهز</button>':''));
 
+  var unas = unassignedStudents();
+  if(unas.length && UI.user.role!=="student"){
+    h += '<div class="note warn"><b>'+unas.length+' طالب من غير تسكين على فصل.</b> '+
+      'دول بيظهروا في القوائم والكشوف، بس مش هيبان لهم غياب ولا درجات لحد ما تسكّنهم. '+
+      '<button class="btn sm" data-act="showUnassigned" style="margin-top:6px">عرضهم</button></div>';
+  }
   h += '<div class="card noprint"><div class="bd">'+
     '<div class="grid3">'+
       '<label class="f"><span>بحث بالاسم أو الرقم القومي أو رقم الجلوس</span>'+
@@ -1001,7 +1006,8 @@ function optLevels(sel){
   return h;
 }
 function optClasses(sel, lvl){
-  var h = '<option value="">كل الفصول</option>';
+  var h = '<option value="">كل الفصول</option>'+
+    '<option value="__none"'+(sel==="__none"?" selected":"")+'>— غير المسكّنين —</option>';
   myClasses().filter(function(c){ return !lvl || String(c.level)===String(lvl); })
     .sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); })
     .forEach(function(c){ h += '<option value="'+c.id+'"'+(sel===c.id?" selected":"")+'>'+esc(c.name)+'</option>'; });
@@ -2654,6 +2660,7 @@ var ACTS = {
     DB.bac.target = num(val("b_tg"),600);
     saveNow(); render(); toast("اتحفظت إعدادات البكالوريا");
   },
+  showUnassigned: function(){ UI.filters.cls = "__none"; UI.filters.lvl = ""; render(); },
   addUser: function(){ modalUser(null); },
   editUser: function(el){ modalUser(el.dataset.id); },
   saveUser: saveUser,
@@ -6315,10 +6322,23 @@ function myClassIds(){
   myClasses().forEach(function(c){ m[c.id] = 1; });
   return m;
 }
+/* طلاب الفترة الحالية:
+   المسكّنين على فصولها + اللي لسه من غير تسكين وبينتموا لنوعيتها.
+   طلاب المنازل ليهم قسمهم المستقل. */
 function myStudents(){
-  var m = myClassIds();
+  var m = myClassIds(), sec = curSector();
   return DB.students.filter(function(s){
-    return m[s.classId] && s.status!=="left" && (s.edu||"reg")!=="home";
+    if(s.status==="left") return false;
+    if((s.edu||"reg")==="home") return false;
+    if(s.classId) return !!m[s.classId];
+    return (s.edu||"reg") === sec;
+  });
+}
+/* غير المسكّنين في الفترة الحالية */
+function unassignedStudents(){
+  var sec = curSector();
+  return DB.students.filter(function(s){
+    return s.status!=="left" && !s.classId && (s.edu||"reg")===sec;
   });
 }
 function mySchedule(){
