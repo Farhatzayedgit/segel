@@ -633,7 +633,7 @@ function blankDB(){
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
     sectors:{}, wishes:[],
-    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[]
+    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[]
   };
 }
 
@@ -665,7 +665,7 @@ function load(){
     curriculumInit();
     migrateSubjectHours();
     actInit();
-    calCfg(); examsInit(); xfInit(); logInit(); lessonInit(); msgInit();
+    calCfg(); examsInit(); xfInit(); logInit(); lessonInit(); msgInit(); dupOkInit();
     idxBump();
   }catch(e){ DB = seed(); }
 }
@@ -2119,6 +2119,17 @@ function digitDiff(a,b){
   for(var i=0;i<a.length;i++) if(a[i]!==b[i]) n++;
   return n;
 }
+/* ============================================================
+   قرارات التكرار: «ده مظبوط» بتتحفظ عشان الحالة ما ترجعش تظهر
+   ============================================================ */
+function dupOkInit(){ if(!Array.isArray(DB.dupOk)) DB.dupOk = []; return DB.dupOk; }
+function groupKey(list){
+  return list.map(function(x){ return x.id; }).sort().join("|");
+}
+function isDupOk(key){ dupOkInit(); return DB.dupOk.indexOf(key)>=0; }
+function markDupOk(key){ dupOkInit(); if(DB.dupOk.indexOf(key)<0) DB.dupOk.push(key); }
+function clearDupOk(){ DB.dupOk = []; _susCache = null; _susN = -1; }
+
 var _susCache = null, _susN = -1;
 function suspectDuplicates(){
   /* الفحص ده O(n²) — بنخزّن نتيجته لحد ما عدد الطلاب يتغيّر */
@@ -2145,7 +2156,8 @@ function suspectDuplicates(){
     }
     if(g.length>1){
       used[act[i].id] = 1;
-      groups.push({ list:g, why: Object.keys(reasons).join(" · ") });
+      var key = groupKey(g);
+      if(!isDupOk(key)) groups.push({ list:g, why: Object.keys(reasons).join(" · "), key:key });
     }
   }
   _susCache = groups; _susN = DB.students.length;
@@ -2185,14 +2197,163 @@ function mergeDuplicate(group){
   enrichStudent(best);
   return best;
 }
+/* ============================================================
+   دمج سجلين: تختار الاسم والرقم القومي الصح، والباقي بيتجمّع
+   ============================================================ */
+var MERGE_FIELDS = [
+  ["classId",   "الفصل",           function(v){ var c=classById(v); return c?c.name:""; }],
+  ["edu",       "نوعية التعليم",    function(v){ return v?eduName(v):""; }],
+  ["level",     "الصف",            function(v){ return v?levelName(v):""; }],
+  ["bacTrack",  "المسار",          function(v){ return v?wishTrackName(v):""; }],
+  ["bacSubject","مادة التخصص",     null],
+  ["prevClass", "الفصل السابق",     null],
+  ["guardian",  "ولي الأمر",        null],
+  ["phone",     "الهاتف",          null],
+  ["religion",  "الديانة",         null],
+  ["actId",     "النشاط التربوي",   function(v){ return v?actName(v):""; }],
+  ["vocId",     "التربية المهنية",  function(v){ return v?actName(v):""; }],
+  ["seat",      "رقم الجلوس",       null],
+  ["notes",     "ملاحظات",         null]
+];
+function modalMergePair(key){
+  var ids = String(key||"").split("|");
+  var list = ids.map(function(i){ return studentById(i); }).filter(Boolean);
+  if(list.length<2){ toast("السجلات مش موجودة"); return; }
+  UI.mergeKey = key;
+
+  function pick(field, label, fmt){
+    var vals = [], seen = {};
+    list.forEach(function(st,i){
+      var v = st[field];
+      if(v===undefined || v===null || v==="") return;
+      var show = fmt ? fmt(v) : String(v);
+      if(!show) return;
+      if(seen[String(v)]) return;
+      seen[String(v)] = 1;
+      vals.push({ v:String(v), show:show, i:i });
+    });
+    if(!vals.length) return "";
+    if(vals.length===1){
+      return '<div class="list-item" style="padding:6px 0;border:0">'+
+        '<span class="tx"><b style="font-size:12.5px">'+esc(label)+'</b>'+
+        '<small>'+esc(vals[0].show)+' — هيتاخد تلقائيًا</small></span></div>'+
+        '<input type="hidden" class="mgf" data-f="'+field+'" value="'+esc(vals[0].v)+'">';
+    }
+    return '<div style="padding:7px 0;border-bottom:1px solid var(--line-2)">'+
+      '<div style="font-size:12.5px;font-weight:700;margin-bottom:4px">'+esc(label)+' — اختار الصح</div>'+
+      vals.map(function(o,k){
+        return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:3px 0">'+
+          '<input type="radio" name="mf_'+field+'" class="mgf" data-f="'+field+'" value="'+esc(o.v)+'"'+
+          (k===0?" checked":"")+' style="width:16px;height:16px">'+esc(o.show)+'</label>';
+      }).join("")+'</div>';
+  }
+
+  /* الاسم والرقم القومي أهم اختيارين */
+  var nameOpts = '<div style="padding:7px 0;border-bottom:1px solid var(--line-2)">'+
+    '<div style="font-size:12.5px;font-weight:700;margin-bottom:4px">الاسم — اختار الصح</div>'+
+    list.map(function(st,i){
+      return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:3px 0">'+
+        '<input type="radio" name="mf_name" class="mgf" data-f="name" value="'+esc(st.name)+'"'+
+        (i===0?" checked":"")+' style="width:16px;height:16px">'+esc(st.name)+'</label>';
+    }).join("")+'</div>';
+  var natOpts = '<div style="padding:7px 0;border-bottom:1px solid var(--line-2)">'+
+    '<div style="font-size:12.5px;font-weight:700;margin-bottom:4px">الرقم القومي — اختار الصح</div>'+
+    list.map(function(st,i){
+      return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:3px 0">'+
+        '<input type="radio" name="mf_natId" class="mgf" data-f="natId" value="'+esc(st.natId||"")+'"'+
+        (i===0?" checked":"")+' style="width:16px;height:16px">'+
+        '<span style="direction:ltr">'+esc(st.natId||"بدون رقم")+'</span></label>';
+    }).join("")+'</div>';
+
+  var rest = MERGE_FIELDS.map(function(f){ return pick(f[0], f[1], f[2]); }).join("");
+
+  /* بيانات هتتنقل مهما كان */
+  var tot = { marks:0, days:0, notes:0 };
+  list.forEach(function(st){
+    var im = studentImpact(st.id);
+    tot.marks+=im.marks; tot.days+=im.days; tot.notes+=im.notes;
+  });
+  var keep = impactLines(tot);
+
+  openModal(mHead("دمج السجلين في حساب واحد")+
+    '<div class="mb">'+
+    '<div class="note">هيفضل <b>سجل واحد</b> فيه اللي تختاره. أي بيان موجود في واحد بس هيتاخد تلقائيًا، '+
+    'واللي مختلف هتختار منه.</div>'+
+    (keep.length?'<div class="note ok"><b>هيتنقل للسجل الموحّد:</b> '+esc(keep.join(" · "))+'</div>':'')+
+    nameOpts + natOpts + rest +
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="doMergePair">دمج في سجل واحد</button></div>');
+}
+function doMergePair(){
+  var ids = String(UI.mergeKey||"").split("|");
+  var list = ids.map(function(i){ return studentById(i); }).filter(Boolean);
+  if(list.length<2){ closeModal(); return; }
+
+  /* اللي عليه بيانات أكتر يبقى هو السجل الباقي */
+  var best = list[0], bestScore = -1;
+  list.forEach(function(st){
+    var im = studentImpact(st.id);
+    var sc = im.marks*10 + im.days*3 + im.notes + (st.classId?5:0);
+    if(sc > bestScore){ bestScore = sc; best = st; }
+  });
+
+  /* الاختيارات */
+  var chosen = {};
+  Array.prototype.slice.call(document.querySelectorAll(".mgf")).forEach(function(el){
+    if(el.type==="radio" && !el.checked) return;
+    chosen[el.dataset.f] = el.value;
+  });
+
+  markUndo("دمج سجلين");
+  /* نقل الدرجات والغياب والسلوك للسجل الباقي */
+  list.forEach(function(st){
+    if(st.id===best.id) return;
+    for(var k in DB.marks){
+      if(k.indexOf(st.id+"|")!==0) continue;
+      var nk = best.id + k.slice(st.id.length);
+      if(DB.marks[nk]===undefined) DB.marks[nk] = DB.marks[k];
+      delete DB.marks[k];
+    }
+    for(var a in DB.attend){
+      if(DB.attend[a][st.id]===undefined) continue;
+      if(DB.attend[a][best.id]===undefined) DB.attend[a][best.id] = DB.attend[a][st.id];
+      delete DB.attend[a][st.id];
+    }
+    DB.behavior.forEach(function(b){ if(b.studentId===st.id) b.studentId = best.id; });
+    msgInit();
+    DB.msgs.forEach(function(m){ if(m.sid===st.id) m.sid = best.id; });
+    /* البيانات الإضافية: نكمّل الناقص */
+    if(st.extra) for(var x in st.extra) if(!xfGet(best,x)) xfSet(best, x, st.extra[x]);
+    DB.students = DB.students.filter(function(y){ return y.id!==st.id; });
+  });
+
+  /* تطبيق الاختيارات */
+  for(var f in chosen){
+    var v = chosen[f];
+    if(v==="" ) continue;
+    if(f==="level"){ setStudentLevel(best, num(v,0)); continue; }
+    if(f==="classId"){ assignStudentToClass(best, v); continue; }
+    best[f] = (f==="natId") ? toEnDigits(v).replace(/\D/g,"") : v;
+  }
+  if(best.edu) best.sector = eduType(best.edu).sector;
+  enrichStudent(best);
+
+  UI.mergeKey = null;
+  _susCache = null; _susN = -1;
+  saveNow(); closeModal(); render(); modalSuspects();
+  toastUndo("اتدمجوا في سجل واحد: "+best.name);
+}
 /* شاشة المراجعة: بتعرض كل مجموعة مشتبه فيها وتقارن بياناتهم عشان تحذف الغلط */
 function modalSuspects(){
   var groups = suspectDuplicates();
   if(!groups.length){
     openModal(mHead("تكرار مشتبه فيه")+
       '<div class="mb"><div class="empty"><div class="big">'+icon("attend",34)+'</div>'+
-      '<b>مفيش تكرار مشتبه فيه</b><p>مفيش أسماء متشابهة ولا أرقام قومية فيها غلطة كتابة.</p></div></div>'+
-      mFoot("تمام","close"));
+      '<b>مفيش تكرار مشتبه فيه</b><p>مفيش أسماء متشابهة ولا أرقام قومية فيها غلطة كتابة.</p></div>'+
+      ((DB.dupOk||[]).length? '<div class="note"><b>'+DB.dupOk.length+' حالة</b> علّمت عليها «مظبوط». '+
+        '<button class="btn ghost sm" data-act="resetDupOk" style="margin-right:6px">رجّعها للمراجعة</button></div>':'')+
+      '</div>'+mFoot("تمام","close"));
     return;
   }
   var extra = groups.reduce(function(a,g){ return a + g.list.length - 1; }, 0);
@@ -2214,15 +2375,23 @@ function modalSuspects(){
             'style="color:var(--danger);margin-right:4px">حذف ده</button>'+
           '</div>';
       }).join("")+
+      '<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">'+
+        '<button class="btn sm" data-act="mergePair" data-k="'+esc(g.key)+'" style="flex:1;min-width:130px">⇄ دمج في سجل واحد</button>'+
+        '<button class="btn ghost sm" data-act="dupOk" data-k="'+esc(g.key)+'" style="flex:1;min-width:130px">✓ سيبه — ده مظبوط</button>'+
+      '</div>'+
       '</div>';
   }).join("");
-  openModal(mHead("تكرار مشتبه فيه — راجع واحذف")+
+  openModal(mHead("تكرار مشتبه فيه — راجع وقرّر")+
     '<div class="mb">'+
     '<div class="note warn"><b>'+groups.length+' حالة مشتبه فيها</b> — يعني حوالي '+extra+' سجل زيادة. '+
     'دول <u>مش</u> نفس الرقم القومي، فالبرنامج مش هيدمجهم لوحده. '+
-    'قارن البيانات واحذف الغلط بنفسك — واللي عليه درجات وغياب هو الأصلي غالبًا.</div>'+
+    'قارن البيانات وقرّر: <b>دمج</b> لو نفس الشخص · <b>حذف واحد</b> لو نسخة زيادة · '+
+    '<b>سيبه</b> لو فعلًا شخصين مختلفين (زي إخوات بأسماء متشابهة).</div>'+
     '<div style="max-height:52vh;overflow:auto">'+body+
       (groups.length>40?'<div class="note">…وكمان '+(groups.length-40)+' حالة</div>':'')+'</div>'+
+    ((DB.dupOk||[]).length? '<div class="note" style="margin-top:9px">'+
+      '<b>'+DB.dupOk.length+' حالة</b> علّمت عليها «مظبوط» ومش بتظهر. '+
+      '<button class="btn ghost sm" data-act="resetDupOk" style="margin-right:6px">رجّعها للمراجعة</button></div>':'')+
     '</div>'+mFoot("تمام","close"));
 }
 function modalDuplicates(){
@@ -2474,6 +2643,7 @@ function healthChecks(){
     desc: sus.length? "أسماء متشابهة أو أرقام قومية فيها غلطة كتابة — محتاجة مراجعة يدوية."
                     : "مفيش أسماء متشابهة مشبوهة.",
     act:"findSuspects", btn:"مراجعة" });
+
   /* ٢ طلاب في القسم الغلط */
   var mis = sectorMismatch();
   out.push({ id:"sector", ok:!mis.length, level:"bad",
@@ -6074,6 +6244,18 @@ var ACTS = {
     if(!txt){ toast("اكتب سؤالك"); return; }
     askParentQ(el.dataset.id, txt);
     saveNow(); render(); toast("اتبعت سؤالك — هيتردّ عليه من المدرسة");
+  },
+  mergePair: function(el){ modalMergePair(el.dataset.k); },
+  doMergePair: doMergePair,
+  dupOk: function(el){
+    markDupOk(el.dataset.k);
+    _susCache = null; _susN = -1;
+    saveNow(); render(); modalSuspects();
+    toast("اتسجّل إنهم مختلفين — مش هيظهروا تاني");
+  },
+  resetDupOk: function(){
+    if(!confirm("إرجاع كل الحالات اللي علّمت عليها «مظبوط» للمراجعة تاني؟")) return;
+    clearDupOk(); saveNow(); render(); toast("رجعوا للمراجعة");
   },
   linkAccounts: function(){ modalLinkAccounts(); },
   doLinkAcc: function(el){
