@@ -390,58 +390,58 @@ var LEVELS = [
 var OFFICIAL_PLAN = {
   /* الصف الأول — سنة تمهيدية مشتركة للجميع، ومش بتدخل مجموع البكالوريا */
   "1|any|none":[
-    ["اللغة العربية",100,1,50,0],
-    ["التاريخ",100,1,50,0],
-    ["اللغة الأجنبية الأولى",100,1,50,0],
-    ["الفلسفة",100,1,50,0],
-    ["الرياضيات",100,1,50,0],
-    ["العلوم",100,1,50,0],
-    ["اللغة الأجنبية الثانية",100,0,50,0],
-    ["البرمجة والذكاء الاصطناعي",100,0,50,0],
-    ["التربية الدينية",100,0,70,0]
+    ["اللغة العربية",100,1,50,0,6],
+    ["التاريخ",100,1,50,0,3],
+    ["اللغة الأجنبية الأولى",100,1,50,0,5],
+    ["الفلسفة",100,1,50,0,2],
+    ["الرياضيات",100,1,50,0,5],
+    ["العلوم",100,1,50,0,5],
+    ["اللغة الأجنبية الثانية",100,0,50,0,3],
+    ["البرمجة والذكاء الاصطناعي",100,0,50,0,2],
+    ["التربية الدينية",100,0,70,0,2]
   ],
   /* الصف الثاني بكالوريا — ٣ مواد عامة + مادة تخصص واحدة يختارها الطالب */
   "2|bac|med":[
-    ["اللغة العربية",100,1,50,0],["التاريخ المصري",100,1,50,0],["اللغة الأجنبية الأولى",100,1,50,0],
-    ["الرياضيات",100,1,50,1],["الفيزياء",100,1,50,1],
-    ["التربية الدينية",100,0,70,0]
+    ["اللغة العربية",100,1,50,0,6],["التاريخ المصري",100,1,50,0,4],["اللغة الأجنبية الأولى",100,1,50,0,5],
+    ["الرياضيات",100,1,50,1,5],["الفيزياء",100,1,50,1,6],
+    ["التربية الدينية",100,0,70,0,2]
   ],
   "2|bac|eng":[
-    ["اللغة العربية",100,1,50,0],["التاريخ المصري",100,1,50,0],["اللغة الأجنبية الأولى",100,1,50,0],
-    ["الكيمياء",100,1,50,1],["البرمجة",100,1,50,1],
-    ["التربية الدينية",100,0,70,0]
+    ["اللغة العربية",100,1,50,0,6],["التاريخ المصري",100,1,50,0,4],["اللغة الأجنبية الأولى",100,1,50,0,5],
+    ["الكيمياء",100,1,50,1,6],["البرمجة",100,1,50,1,6],
+    ["التربية الدينية",100,0,70,0,2]
   ],
   "2|bac|bus":[
-    ["اللغة العربية",100,1,50,0],["التاريخ المصري",100,1,50,0],["اللغة الأجنبية الأولى",100,1,50,0],
-    ["إدارة الأعمال",100,1,50,1],["المحاسبة",100,1,50,1],
-    ["التربية الدينية",100,0,70,0]
+    ["اللغة العربية",100,1,50,0,6],["التاريخ المصري",100,1,50,0,4],["اللغة الأجنبية الأولى",100,1,50,0,5],
+    ["إدارة الأعمال",100,1,50,1,6],["المحاسبة",100,1,50,1,6],
+    ["التربية الدينية",100,0,70,0,2]
   ],
   "2|bac|art":[
-    ["اللغة العربية",100,1,50,0],["التاريخ المصري",100,1,50,0],["اللغة الأجنبية الأولى",100,1,50,0],
-    ["علم النفس",100,1,50,1],["اللغة الأجنبية الثانية",100,1,50,1],
-    ["التربية الدينية",100,0,70,0]
+    ["اللغة العربية",100,1,50,0,6],["التاريخ المصري",100,1,50,0,4],["اللغة الأجنبية الأولى",100,1,50,0,5],
+    ["علم النفس",100,1,50,1,6],["اللغة الأجنبية الثانية",100,1,50,1,3],
+    ["التربية الدينية",100,0,70,0,2]
   ],
   /* الصف الثالث بكالوريا — مادتين تخصصيتين مستوى متقدم (ثابتة) + تربية دينية */
   "3|bac|med":[
-    ["الأحياء (مستوى متقدم)",100,1,50,0],["الكيمياء (مستوى متقدم)",100,1,50,0],
-    ["التربية الدينية",100,0,70,0]
+    ["الأحياء (مستوى متقدم)",100,1,50,0,8],["الكيمياء (مستوى متقدم)",100,1,50,0,8],
+    ["التربية الدينية",100,0,70,0,2]
   ],
   "3|bac|eng":[
-    ["الرياضيات (مستوى متقدم)",100,1,50,0],["الفيزياء (مستوى متقدم)",100,1,50,0],
-    ["التربية الدينية",100,0,70,0]
+    ["الرياضيات (مستوى متقدم)",100,1,50,0,8],["الفيزياء (مستوى متقدم)",100,1,50,0,8],
+    ["التربية الدينية",100,0,70,0,2]
   ],
   "3|bac|bus":[
-    ["الاقتصاد (مستوى متقدم)",100,1,50,0],["الرياضيات",100,1,50,0],
-    ["التربية الدينية",100,0,70,0]
+    ["الاقتصاد (مستوى متقدم)",100,1,50,0,8],["الرياضيات",100,1,50,0,5],
+    ["التربية الدينية",100,0,70,0,2]
   ],
   "3|bac|art":[
-    ["الجغرافيا (مستوى متقدم)",100,1,50,0],["الإحصاء",100,1,50,0],
-    ["التربية الدينية",100,0,70,0]
+    ["الجغرافيا (مستوى متقدم)",100,1,50,0,8],["الإحصاء",100,1,50,0,6],
+    ["التربية الدينية",100,0,70,0,2]
   ],
   /* الثانوية العامة (النظام القديم) — لسه موجود للصفوف اللي عليه */
-  "2|gen|sci":[["اللغة العربية",100,1,50,0],["اللغة الأجنبية الأولى",100,1,50,0],["اللغة الأجنبية الثانية",100,1,50,0],["الرياضيات",100,1,50,0],["الفيزياء",100,1,50,0],["الكيمياء",100,1,50,0],["الأحياء",100,1,50,0],["التربية الدينية",100,0,50,0],["التربية الوطنية",100,0,50,0]],
-  "2|gen|math":[["اللغة العربية",100,1,50,0],["اللغة الأجنبية الأولى",100,1,50,0],["اللغة الأجنبية الثانية",100,1,50,0],["الرياضيات البحتة",100,1,50,0],["الرياضيات التطبيقية",100,1,50,0],["الفيزياء",100,1,50,0],["الكيمياء",100,1,50,0],["التربية الدينية",100,0,50,0],["التربية الوطنية",100,0,50,0]],
-  "2|gen|lit":[["اللغة العربية",100,1,50,0],["اللغة الأجنبية الأولى",100,1,50,0],["اللغة الأجنبية الثانية",100,1,50,0],["التاريخ",100,1,50,0],["الجغرافيا",100,1,50,0],["الفلسفة والمنطق",100,1,50,0],["علم النفس والاجتماع",100,1,50,0],["التربية الدينية",100,0,50,0],["التربية الوطنية",100,0,50,0]]
+  "2|gen|sci":[["اللغة العربية",100,1,50,0,6],["اللغة الأجنبية الأولى",100,1,50,0,5],["اللغة الأجنبية الثانية",100,1,50,0,3],["الرياضيات",100,1,50,0,5],["الفيزياء",100,1,50,0,6],["الكيمياء",100,1,50,0,6],["الأحياء",100,1,50,0,5],["التربية الدينية",100,0,50,0,2],["التربية الوطنية",100,0,50,0,1]],
+  "2|gen|math":[["اللغة العربية",100,1,50,0,6],["اللغة الأجنبية الأولى",100,1,50,0,5],["اللغة الأجنبية الثانية",100,1,50,0,3],["الرياضيات البحتة",100,1,50,0,5],["الرياضيات التطبيقية",100,1,50,0,4],["الفيزياء",100,1,50,0,6],["الكيمياء",100,1,50,0,6],["التربية الدينية",100,0,50,0,2],["التربية الوطنية",100,0,50,0,1]],
+  "2|gen|lit":[["اللغة العربية",100,1,50,0,6],["اللغة الأجنبية الأولى",100,1,50,0,5],["اللغة الأجنبية الثانية",100,1,50,0,3],["التاريخ",100,1,50,0,3],["الجغرافيا",100,1,50,0,4],["الفلسفة والمنطق",100,1,50,0,3],["علم النفس والاجتماع",100,1,50,0,3],["التربية الدينية",100,0,50,0,2],["التربية الوطنية",100,0,50,0,1]]
 };
 OFFICIAL_PLAN["3|gen|sci"]  = OFFICIAL_PLAN["2|gen|sci"];
 OFFICIAL_PLAN["3|gen|math"] = OFFICIAL_PLAN["2|gen|math"];
@@ -455,7 +455,7 @@ function curKey(level, system, track){
 /* تحويل صف الخطة الرسمية لكائن مادة */
 function planRowToSubject(r){
   return { id:uid("ps"), name:r[0], max:num(r[1],100), counted:!!r[2],
-           pass:num(r[3],50), elective:!!r[4] };
+           pass:num(r[3],50), elective:!!r[4], periods:num(r[5],4) };
 }
 /* أول تشغيل: بنبني الهيكل من الخطة الرسمية، وبعد كده بيبقى ملك المدرسة تعدّله */
 function curriculumInit(){
@@ -2258,22 +2258,25 @@ function curSubjectsCard(key, title, can){
   var subs = curSubjects(key);
   var totalMax = subs.filter(function(s){ return s.counted; })
                      .reduce(function(a,s){ return a+num(s.max,0); },0);
+  var totalPer = subs.reduce(function(a,s){ return a+num(s.periods,0); },0);
   var h = '<div class="card"><div class="hd"><h3>'+esc(title)+'</h3>'+
     '<span class="tag info">المجموع الكلي '+totalMax+'</span>'+
+    '<span class="tag '+(totalPer>periodsCount()*5?"bad":"ok")+'">'+totalPer+' حصة أسبوعيًا</span>'+
     (can?'<button class="btn ghost sm" data-act="curSubNew" data-k="'+esc(key)+'">+ مادة</button>'+
       '<button class="btn ghost sm" data-act="curReset" data-k="'+esc(key)+'" style="margin-right:5px">⟳ الخطة الرسمية</button>':'')+
     '</div><div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
-    '<th>م</th><th>المادة</th><th>النهاية العظمى</th><th>المجموع</th><th>نسبة النجاح</th><th>النوع</th>'+
+    '<th>م</th><th>المادة</th><th>حصص أسبوعية</th><th>النهاية العظمى</th><th>المجموع</th><th>نسبة النجاح</th><th>النوع</th>'+
     (can?'<th class="noprint">ترتيب</th><th class="noprint"></th>':'')+
     '</tr></thead><tbody>';
   if(!subs.length){
-    h += '<tr><td colspan="'+(can?8:6)+'"><div class="empty"><b>مفيش مواد في الخطة دي</b>'+
+    h += '<tr><td colspan="'+(can?9:7)+'"><div class="empty"><b>مفيش مواد في الخطة دي</b>'+
       '<p>ضيف المواد يدويًا أو اضغط «الخطة الرسمية» عشان يجيب مواد الوزارة.</p></div></td></tr>';
   }
   subs.forEach(function(s,i){
     h += '<tr>'+
       '<td class="rownum">'+(i+1)+'</td>'+
       '<td><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
+      '<td class="num"><b>'+num(s.periods,4)+'</b></td>'+
       '<td class="num">'+num(s.max,100)+'</td>'+
       '<td>'+(s.counted?'<span class="tag ok">داخل المجموع</span>':'<span class="tag">خارج المجموع</span>')+'</td>'+
       '<td class="num">'+num(s.pass,50)+'%</td>'+
@@ -2304,6 +2307,7 @@ function modalCurSubject(key, idx){
     '<div class="mb">'+
     '<label class="f"><span>اسم المادة *</span><input type="text" id="cs_name" value="'+esc(s?s.name:"")+'" placeholder="مثال: اللغة العربية"></label>'+
     '<div class="grid2">'+
+      '<label class="f"><span>حصص أسبوعية</span><input type="number" id="cs_per" min="0" max="12" value="'+esc(s?num(s.periods,4):4)+'"></label>'+
       '<label class="f"><span>النهاية العظمى</span><input type="number" id="cs_max" min="1" value="'+esc(s?num(s.max,100):100)+'"></label>'+
       '<label class="f"><span>نسبة النجاح %</span><input type="number" id="cs_pass" min="0" max="100" value="'+esc(s?num(s.pass,50):50)+'"></label>'+
     '</div>'+
@@ -2323,7 +2327,7 @@ function curSubSave(el){
   var name = val("cs_name").trim();
   if(!name){ toast("اكتب اسم المادة"); return; }
   var o = {
-    name:name, max:num(val("cs_max"),100), pass:num(val("cs_pass"),50),
+    name:name, max:num(val("cs_max"),100), pass:num(val("cs_pass"),50), periods:num(val("cs_per"),4),
     counted: !!(document.getElementById("cs_counted")||{}).checked,
     elective: !!(document.getElementById("cs_elective")||{}).checked
   };
@@ -3020,6 +3024,24 @@ function teacherBusy(teacherId, day, period, ignoreId){
   }
   return null;
 }
+/* هل المعلم بيدرّس المادة دي؟ مقارنة مرنة بالاسم (تتجاهل «ال» والكلمات القصيرة) */
+function normSubjWords(x){
+  return normAr(x||"").split(/\s+/)
+    .map(function(w){ return w.replace(/^ال/,""); })
+    .filter(function(w){ return w.length>2; });
+}
+function teacherFitsSubject(t, subName){
+  var ts = normAr(t.subject||""), sn = normAr(subName||"");
+  if(!ts || !sn) return 0;
+  if(ts===sn) return 4;
+  if(ts.indexOf(sn)>=0 || sn.indexOf(ts)>=0) return 3;
+  var a = normSubjWords(ts), b = normSubjWords(sn);
+  var hits = 0;
+  a.forEach(function(w){ if(b.indexOf(w)>=0) hits++; });
+  if(hits) return hits>1 ? 2 : 1;
+  return 0;
+}
+/* ---------- جدول الفصل ---------- */
 function viewSchedule(){
   var isDep = UI.user.role==="deputy" || UI.user.role==="admin";
   var _mc = myClasses();
@@ -3918,7 +3940,8 @@ function autoSubjects(cid){
     var exists = DB.subjects.some(function(s){ return s.classId===cid && s.name===p.name; });
     if(exists) return;
     DB.subjects.push({id:uid("sb"), classId:cid, name:p.name, max:num(p.max,100),
-                      counted:!!p.counted, pass:num(p.pass,50), elective:!!p.elective});
+                      counted:!!p.counted, pass:num(p.pass,50), elective:!!p.elective,
+                      periods:num(p.periods,4), hours:num(p.periods,4)});
     added++;
   });
   save(); render(); toast(added? "اتضاف "+added+" مادة" : "المواد موجودة بالفعل");
@@ -4454,6 +4477,9 @@ var ACTS = {
   navMore: function(){ modalNavMore(); },
   gsearch: function(){ modalSearch(); },
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
+  autoAssign: function(){ modalAutoAssign(); },
+  doAutoAssign: doAutoAssign,
+  closeAsgResult: function(){ UI.asgResult=null; render(); },
   clearTeachFilters: function(){ UI.filters.tq=""; UI.filters.tsub=""; render(); },
   findDups: function(){ modalDuplicates(); },
   doMergeDups: doMergeDups,
@@ -11076,18 +11102,149 @@ function viewLoads(){
 }
 
 /* ---------- شاشة التوليد ---------- */
+/* ============================================================
+   التوزيع التلقائي للتكليفات: مين يدرّس إيه لمين
+   بيراعي تخصص المعلم ونصابه القانوني، والتوزيع العادل بينهم.
+   ============================================================ */
+/* الحصص المخطّطة للمعلم من التكليفات الحالية (مش من الجدول) */
+function plannedHours(tid, skipClassIds){
+  var skip = skipClassIds || {};
+  return DB.assign.filter(function(a){ return a.teacherId===tid && !skip[a.classId]; })
+    .reduce(function(sum, a){
+      var su = subjById(a.subjectId);
+      return sum + (su ? subjHours(su) : 0);
+    }, 0);
+}
+function autoAssignTeachers(levels, opt){
+  opt = opt || {};
+  var classes = myClasses().filter(function(c){ return levels.indexOf(Number(c.level))>=0; })
+    .sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); });
+  if(!classes.length) return { err:"مفيش فصول في الصفوف اللي اخترتها" };
+
+  var scope = {}; classes.forEach(function(c){ scope[c.id]=1; });
+
+  /* الطلب: (فصل × مادة) وحصصها — الأكبر الأول عشان يلاقي معلم فاضي */
+  var demand = [];
+  classes.forEach(function(c){
+    DB.subjects.filter(function(su){ return su.classId===c.id; }).forEach(function(su){
+      var hrs = subjHours(su);
+      if(hrs>0) demand.push({ cls:c, su:su, hrs:hrs });
+    });
+  });
+  if(!demand.length) return { err:"الفصول دي مالهاش مواد بحصص — ولّد المواد وحدّد حصصها الأول" };
+
+  /* الحِمل المبدئي = تكليفات الفصول اللي برّه النطاق (مش هنلمسها) */
+  var load = {};
+  var pool = DB.teachers.filter(function(t){ return t.status!=="left"; });
+  pool.forEach(function(t){ load[t.id] = plannedHours(t.id, scope); });
+
+  /* نمسح تكليفات الفصول اللي في النطاق بس */
+  DB.assign = DB.assign.filter(function(a){ return !scope[a.classId]; });
+
+  var res = { assigned:0, noTeacher:[], classes:classes.length, load:load };
+  demand.sort(function(a,b){ return b.hrs - a.hrs; }).forEach(function(d){
+    var best = null, bestScore = -1;
+    pool.forEach(function(t){
+      var fit = teacherFitsSubject(t, d.su.name);
+      if(opt.strict && !fit) return;
+      var n = nisabOf(t.id);
+      var used = load[t.id] || 0;
+      if(used + d.hrs > n) return;                 /* هيعدّي نصابه */
+      var free = (n - used) / Math.max(1, n);      /* نسبة المتاح — للعدالة */
+      var score = fit*1000 + free*100;
+      if(score > bestScore){ bestScore = score; best = t; }
+    });
+    if(!best){ res.noTeacher.push(d); return; }
+    load[best.id] = (load[best.id]||0) + d.hrs;
+    DB.assign.push({ id:uid("as"), classId:d.cls.id, subjectId:d.su.id, teacherId:best.id });
+    res.assigned++;
+  });
+  return res;
+}
+function modalAutoAssign(){
+  var cnt = {};
+  LEVELS.forEach(function(l){
+    cnt[l.id] = myClasses().filter(function(c){ return Number(c.level)===l.id; }).length;
+  });
+  var scope = UI.asgScope || "1";
+  openModal(mHead("توزيع التكليفات تلقائيًا")+
+    '<div class="mb">'+
+    '<div class="note">البرنامج هيوزّع مواد الفصول على المعلمين حسب <b>تخصص كل معلم</b> و<b>نصابه القانوني</b>، '+
+    'وبالعدل بينهم — اللي نصابه فاضي أكتر بياخد الأول. بعد كده تعمل «توليد الجدول».</div>'+
+    '<label class="f"><span>الأنصبة هتتوزّع على أنهي صفوف؟</span><select id="ag_scope">'+
+      '<option value="1"'+(scope==="1"?" selected":"")+'>الصف الأول فقط ('+cnt[1]+' فصل)</option>'+
+      '<option value="12"'+(scope==="12"?" selected":"")+'>الأول والثاني ('+(cnt[1]+cnt[2])+' فصل)</option>'+
+      '<option value="123"'+(scope==="123"?" selected":"")+'>الأول والثاني والثالث ('+(cnt[1]+cnt[2]+cnt[3])+' فصل)</option>'+
+      '<option value="2"'+(scope==="2"?" selected":"")+'>الصف الثاني فقط ('+cnt[2]+' فصل)</option>'+
+      '<option value="3"'+(scope==="3"?" selected":"")+'>الصف الثالث فقط ('+cnt[3]+' فصل)</option>'+
+      '<option value="23"'+(scope==="23"?" selected":"")+'>الثاني والثالث ('+(cnt[2]+cnt[3])+' فصل)</option>'+
+      '</select><small style="color:var(--muted);font-size:11.5px">الصفوف اللي برّه الاختيار تكليفاتها هتفضل زي ما هي، وحِمل معلميها هيتحسب.</small></label>'+
+    '<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">'+
+      '<input type="checkbox" id="ag_strict" style="width:18px;height:18px">'+
+      '<span>تخصص المعلم لازم يطابق المادة (من غيرها ممكن يسند مادة قريبة عند الضرورة)</span></label>'+
+    '<div class="note warn">تكليفات الصفوف المختارة هتتمسح وتتوزّع من جديد. فيه «تراجع» بعدها.</div>'+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="doAutoAssign">وزّع التكليفات</button></div>');
+}
+function doAutoAssign(){
+  var scope = val("ag_scope") || "1";
+  UI.asgScope = scope;
+  var levels = scope.split("").map(Number);
+  var strict = !!(document.getElementById("ag_strict")||{}).checked;
+  markUndo("توزيع التكليفات");
+  var r = autoAssignTeachers(levels, { strict:strict });
+  if(r.err){ toast(r.err); return; }
+  UI.asgResult = r;
+  saveNow(); closeModal(); render();
+  toastUndo("اتوزّع "+r.assigned+" تكليف على "+r.classes+" فصل"+
+    (r.noTeacher.length? " · "+r.noTeacher.length+" مادة مالقتش معلم متاح":""));
+}
+function autoAssignCard(){
+  var r = UI.asgResult;
+  if(!r) return "";
+  var h = '<div class="card noprint"><div class="hd"><div style="flex:1">'+
+    '<span class="eyebrow">آخر توزيع</span><h3>نتيجة توزيع التكليفات</h3></div>'+
+    '<button class="btn ghost sm" data-act="closeAsgResult">إخفاء</button></div><div class="bd">'+
+    '<div class="stats" style="margin-bottom:8px">'+
+      stat("تكليفات", r.assigned, "اتوزّعت", "acc-g")+
+      stat("فصول", r.classes, "في النطاق", "acc")+
+      stat("بدون معلم", r.noTeacher.length, "محتاجة إسناد يدوي", r.noTeacher.length?"acc-r":"")+
+    '</div>';
+  if(r.noTeacher.length){
+    h += '<div class="note warn"><b>مواد مالقتش معلم متاح:</b> '+
+      r.noTeacher.slice(0,12).map(function(d){ return esc(d.cls.name+" — "+d.su.name); }).join("، ")+
+      (r.noTeacher.length>12?" …":"")+
+      '<div style="margin-top:5px">يا إن كل المعلمين وصلوا نصابهم، يا إن مفيش معلم بالتخصص ده. '+
+      'اسندهم يدويًا من «التكليفات»، أو زوّد النصاب من شاشة الأنصبة.</div></div>';
+  }
+  return h+'</div></div>';
+}
 function viewGenSched(){
-  var g = gate("classes","teachers","subjects","assign");
+  var g = gate("classes","teachers","subjects");
   if(g) return g;
   var ctx = genContext();
   var days = ctx.days.length, P = ctx.P;
   var res = UI.gen || null;
 
-  var h = '<div class="note">البرنامج بيوزّع الحصص على الفصول والأيام لوحده، ويراعي:<br>'+
+  /* الخطوة ١: توزيع التكليفات */
+  var h = autoAssignCard();
+  h += '<div class="card"><div class="hd"><div style="flex:1">'+
+    '<span class="eyebrow">الخطوة ١</span><h3>توزيع الأنصبة على المعلمين</h3></div>'+
+    '<button class="btn" data-act="autoAssign">⚖ توزيع تلقائي</button></div><div class="bd">'+
+    '<div class="note">قبل ما تعمل الجدول، لازم كل مادة في كل فصل يكون لها معلم. '+
+    'الزر ده بيوزّعهم لوحده حسب التخصص والنصاب، وتقدر تختار يوزّع على الصف الأول بس ولا الأول والتاني ولا الكل.</div>'+
+    '<div style="font-size:13px">التكليفات الحالية: <b>'+DB.assign.length+'</b> · '+
+    'المعلمون اللي لهم تكليفات: <b>'+Object.keys(ctx.perTeacher).length+'</b></div>'+
+    '</div></div>';
+
+  h += '<div class="card"><div class="hd"><div style="flex:1">'+
+    '<span class="eyebrow">الخطوة ٢</span><h3>بناء الجدول</h3></div></div><div class="bd">'+
+    '<div class="note">البرنامج بيوزّع الحصص على الفصول والأيام لوحده، ويراعي:<br>'+
     '• مايحطش معلم في فصلين في نفس الوقت<br>'+
     '• مايعديش <b>النصاب القانوني</b> لكل معلم حسب درجته الوظيفية<br>'+
     '• مايكررش نفس المادة مرتين في اليوم للفصل الواحد<br>'+
-    '• يوزّع عبء المعلم على الأيام ومايسيبش خانات فاضية في نص اليوم</div>';
+    '• يوزّع عبء المعلم على الأيام ومايسيبش خانات فاضية في نص اليوم</div></div></div>';
 
   h += '<div class="stats" style="margin:11px 0">'+
     stat("الحصص المطلوبة", ctx.demand, "حصة أسبوعيًا","acc")+
