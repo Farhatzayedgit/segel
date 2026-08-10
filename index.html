@@ -348,6 +348,7 @@ table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
       </div>
     </div>
     <div class="spacer"></div>
+    <button class="iconbtn" id="btnSearch" title="بحث سريع (اضغط /)">بحث</button>
     <button class="iconbtn" id="btnSector" title="تبديل القسم (نظامي / خدمات)" data-act="switchSector">⇄</button>
     <button class="iconbtn" id="btnPrint" title="طباعة الشاشة">⎙</button>
     <button class="iconbtn" id="btnOut" title="تسجيل الخروج">⏻</button>
@@ -679,6 +680,144 @@ function save(){
   saveT = setTimeout(function(){ rawSet(JSON.stringify(DB)); }, 120);
 }
 function saveNow(){ if(saveT) clearTimeout(saveT); return rawSet(JSON.stringify(DB)); }
+
+/* ============================================================
+   ١) تثبيت مكان الشغل — البرنامج بيفتكر آخر تبويب وفلاتر كنت فيها
+   ============================================================ */
+var UIKEY = "segel_ui_v1";
+function saveUIState(){
+  try{
+    localStorage.setItem(UIKEY, JSON.stringify({
+      tab: UI.tab, sector: UI.sector, filters: UI.filters, curv: UI.curv,
+      userId: UI.user ? UI.user.id : null, at: Date.now()
+    }));
+  }catch(e){}
+}
+function loadUIState(){
+  try{
+    var o = JSON.parse(localStorage.getItem(UIKEY)||"null");
+    if(!o) return null;
+    /* بعد ٨ ساعات نبدأ من أول وجديد */
+    if(Date.now() - num(o.at,0) > 8*3600*1000) return null;
+    return o;
+  }catch(e){ return null; }
+}
+function clearUIState(){ try{ localStorage.removeItem(UIKEY); }catch(e){} }
+
+/* ============================================================
+   ٢) التراجع — أي عملية جماعية بتتسجّل وممكن ترجع فيها
+   ============================================================ */
+var UNDO = null, undoTimer = null;
+/* بناخد صورة من البيانات قبل العملية */
+function markUndo(label){
+  try{
+    UNDO = { label:label, snap: JSON.stringify(DB), at: Date.now() };
+  }catch(e){ UNDO = null; }
+}
+function undoLast(){
+  if(!UNDO){ toast("مفيش حاجة نرجع فيها"); return; }
+  try{
+    DB = JSON.parse(UNDO.snap);
+    UNDO = null;
+    saveNow(); render();
+    toast("اترجع اللي قبل العملية ✓");
+  }catch(e){ toast("مقدرتش أرجّع"); }
+}
+/* رسالة بزر تراجع بتقعد ١٥ ثانية */
+function toastUndo(msg){
+  var t = document.getElementById("toast");
+  if(!t){ toast(msg); return; }
+  t.innerHTML = esc(msg)+' <button data-act="undoLast" style="margin-right:10px;background:rgba(255,255,255,.22);'+
+    'border:0;color:#fff;padding:4px 12px;border-radius:7px;font:inherit;font-weight:700;cursor:pointer">↶ تراجع</button>';
+  t.classList.add("on");
+  if(undoTimer) clearTimeout(undoTimer);
+  undoTimer = setTimeout(function(){ t.classList.remove("on"); t.innerHTML=""; UNDO = null; }, 15000);
+}
+
+/* ============================================================
+   ٣) النسخ الاحتياطي التلقائي — بيحتفظ بآخر ٣ نسخ جوه البرنامج
+   ============================================================ */
+var SNAPKEY = "segel_snaps_v1";
+function readSnaps(){
+  try{ return JSON.parse(localStorage.getItem(SNAPKEY)||"[]") || []; }catch(e){ return []; }
+}
+function writeSnaps(a){
+  try{ localStorage.setItem(SNAPKEY, JSON.stringify(a)); return true; }catch(e){ return false; }
+}
+function autoBackup(force){
+  var snaps = readSnaps();
+  var last = snaps[0];
+  /* نسخة كل يوم على الأكثر */
+  if(!force && last && last.day===today()) return false;
+  var rec = {
+    day: today(), at: Date.now(),
+    students: DB.students.length, teachers: DB.teachers.length, classes: DB.classes.length,
+    data: JSON.stringify(DB)
+  };
+  snaps.unshift(rec);
+  snaps = snaps.slice(0,3);           /* آخر ٣ نسخ بس */
+  if(!writeSnaps(snaps)){
+    snaps = snaps.slice(0,1);          /* المساحة ضاقت — نسيب أحدث نسخة */
+    writeSnaps(snaps);
+  }
+  return true;
+}
+function restoreSnap(i){
+  var s = readSnaps()[i];
+  if(!s){ toast("النسخة مش موجودة"); return; }
+  if(!confirm("استرجاع نسخة "+fmtDate(s.day)+"؟\nكل البيانات الحالية هتتستبدل بيها.\n(هتتاخد نسخة من الوضع الحالي الأول)")) return;
+  autoBackup(true);
+  try{
+    DB = JSON.parse(s.data);
+    saveNow(); render(); toast("رجعت نسخة "+fmtDate(s.day));
+  }catch(e){ toast("النسخة تالفة"); }
+}
+/* تذكير أسبوعي بحفظ نسخة برّه البرنامج */
+var REMKEY = "segel_backup_reminder_v1";
+function backupReminderDue(){
+  try{
+    var last = num(localStorage.getItem(REMKEY),0);
+    if(!last){ localStorage.setItem(REMKEY, String(Date.now())); return false; }
+    return (Date.now()-last) > 7*24*3600*1000;
+  }catch(e){ return false; }
+}
+function snoozeBackupReminder(){
+  try{ localStorage.setItem(REMKEY, String(Date.now())); }catch(e){}
+}
+
+/* ============================================================
+   ٤) تأكيد الحذف الذكي — بيقولك الطالب عليه إيه قبل ما توافق
+   ============================================================ */
+function studentImpact(id){
+  var marks=0, days=0, notes=0;
+  for(var k in DB.marks) if(k.indexOf(id+"|")===0) marks++;
+  for(var a in DB.attend) if(DB.attend[a][id]) days++;
+  notes = DB.behavior.filter(function(b){ return b.studentId===id; }).length;
+  return {marks:marks, days:days, notes:notes};
+}
+function impactLines(im){
+  var p = [];
+  if(im.marks) p.push(im.marks+" درجة");
+  if(im.days)  p.push(im.days+" يوم غياب/حضور");
+  if(im.notes) p.push(im.notes+" ملاحظة سلوك");
+  return p;
+}
+/* نافذة تأكيد موحّدة: بتوضّح الأثر وبتطلب تأكيد صريح للعمليات الكبيرة */
+function confirmDanger(opts){
+  var lines = (opts.lines||[]).map(function(l){ return '<li>'+esc(l)+'</li>'; }).join("");
+  openModal(mHead(opts.title||"تأكيد")+
+    '<div class="mb">'+
+    '<div class="note bad"><b>'+esc(opts.head||"العملية دي مش هتترجع تلقائيًا")+'</b>'+
+      (opts.desc?'<div style="margin-top:4px">'+esc(opts.desc)+'</div>':'')+'</div>'+
+    (lines?'<div style="margin:8px 0"><b style="font-size:12.5px">هيتحذف كمان:</b>'+
+      '<ul style="margin:6px 18px 0;font-size:13px;line-height:1.9">'+lines+'</ul></div>':'')+
+    (opts.note?'<div class="note">'+esc(opts.note)+'</div>':'')+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="'+esc(opts.act)+'" '+
+      (opts.id?'data-id="'+esc(opts.id)+'" ':'')+
+      'style="background:var(--danger);border-color:var(--danger)">'+esc(opts.ok||"تأكيد الحذف")+'</button></div>');
+}
 
 /* ---------- أدوات عامة ---------- */
 var _n = 0;
@@ -1021,7 +1160,7 @@ function doLogin(){
   var v = (document.getElementById("pin")||{}).value || "";
   if(String(u.pin||"") !== String(v)){ toast("الرقم السري غير صحيح"); return; }
   UI.user = u;
-  UI.tab = NAV[u.role][0][0];
+  UI.tab = firstTabOf(u.role);
   UI.sub = null;
   document.getElementById("login").classList.add("off");
   document.getElementById("app").classList.add("on");
@@ -1036,7 +1175,106 @@ function logout(){
   renderLogin();
 }
 
-/* ---------- التنقل ---------- */
+/* ============================================================
+   البحث الموحّد — مربع واحد يلاقيلك أي طالب أو معلم أو فصل من أي شاشة
+   ============================================================ */
+function globalSearch(q){
+  q = String(q||"").trim();
+  if(!q) return [];
+  var qn = normAr(q), qd = toEnDigits(q);
+  var out = [], seen = {};
+  function push(o){ if(seen[o.key]) return; seen[o.key]=1; out.push(o); }
+
+  /* طلاب — بالاسم أو الرقم القومي */
+  DB.students.forEach(function(s){
+    if(s.status==="left") return;
+    var hitName = normAr(s.name).indexOf(qn)>=0;
+    var hitNat  = qd.length>=3 && String(s.natId||"").indexOf(qd)>=0;
+    if(!hitName && !hitNat) return;
+    var c = classById(s.classId);
+    push({ key:"s"+s.id, kind:"student", id:s.id, icon:"students", title:s.name,
+      sub:(studentLevelOf(s)?levelName(studentLevelOf(s)):"")+
+          (c?" · "+c.name:(isHomeStudent(s)?" · منازل":" · غير مسكّن"))+
+          (s.natId?" · "+s.natId:"") });
+  });
+  /* معلمين */
+  DB.teachers.forEach(function(t){
+    if(normAr(t.name).indexOf(qn)<0 && normAr(t.subject||"").indexOf(qn)<0) return;
+    push({ key:"t"+t.id, kind:"teacher", id:t.id, icon:"teachers", title:t.name,
+      sub:(t.subject||"—")+(t.phone?" · "+t.phone:"") });
+  });
+  /* فصول */
+  DB.classes.forEach(function(c){
+    if(normAr(c.name).indexOf(qn)<0) return;
+    push({ key:"c"+c.id, kind:"class", id:c.id, icon:"classes", title:c.name,
+      sub:levelName(c.level)+" · "+trackName(c.system,c.track)+" · "+sectorName(classSector(c)) });
+  });
+  return out.slice(0,40);
+}
+function modalSearch(){
+  openModal(mHead("بحث سريع")+
+    '<div class="mb">'+
+    '<input type="text" id="gsq" placeholder="اسم طالب، رقم قومي، اسم معلم، أو فصل…" autocomplete="off" '+
+      'style="width:100%;padding:12px;border:1px solid var(--line-2);border-radius:9px;font:inherit;font-size:15px">'+
+    '<div id="gsres" style="max-height:52vh;overflow:auto;margin-top:10px"></div>'+
+    '</div>');
+  var inp = document.getElementById("gsq");
+  if(inp){
+    inp.addEventListener("input", function(){ renderSearchResults(this.value); });
+    setTimeout(function(){ try{ inp.focus(); }catch(e){} }, 60);
+  }
+  renderSearchResults("");
+}
+function renderSearchResults(q){
+  var box = document.getElementById("gsres");
+  if(!box) return;
+  if(!String(q||"").trim()){
+    box.innerHTML = '<div class="empty"><b>اكتب حرفين على الأقل</b>'+
+      '<p>البحث بيلف على الطلاب والمعلمين والفصول في القسمين — نظامي وخدمات.</p></div>';
+    return;
+  }
+  var res = globalSearch(q);
+  if(!res.length){
+    box.innerHTML = '<div class="empty"><b>مفيش نتائج</b><p>جرّب جزء من الاسم أو الرقم القومي.</p></div>';
+    return;
+  }
+  var groups = { student:[], teacher:[], class:[] };
+  res.forEach(function(r){ groups[r.kind].push(r); });
+  var titles = { student:"الطلاب", teacher:"المعلمون", class:"الفصول" };
+  var h = "";
+  ["student","teacher","class"].forEach(function(k){
+    if(!groups[k].length) return;
+    h += '<div class="navgrp" style="padding:10px 4px 4px">'+titles[k]+' ('+groups[k].length+')</div>';
+    groups[k].forEach(function(r){
+      h += '<button class="list-item" data-act="gsOpen" data-kind="'+r.kind+'" data-id="'+r.id+'" '+
+        'style="width:100%;text-align:right">'+
+        '<span class="ico" style="color:var(--muted)">'+icon(r.icon)+'</span>'+
+        '<span class="tx"><b>'+esc(r.title)+'</b><small>'+esc(r.sub)+'</small></span>'+
+        '<span class="chev">‹</span></button>';
+    });
+  });
+  box.innerHTML = h;
+}
+/* بيوديك للنتيجة، وبيبدّل القسم تلقائيًا لو كانت في القسم التاني */
+function gsOpen(kind, id){
+  closeModal();
+  if(kind==="student"){
+    var s = studentById(id);
+    if(!s) return;
+    var sec = studentSector(s);
+    if(sec!==curSector()) UI.sector = sec;
+    if(isHomeStudent(s)){ UI.tab="home"; UI.sub=null; }
+    else { UI.tab="students"; UI.sub={student:s.id}; }
+  }
+  if(kind==="teacher"){ UI.tab="teachers"; UI.sub={teacher:id}; }
+  if(kind==="class"){
+    var c = classById(id);
+    if(c && classSector(c)!==curSector()) UI.sector = classSector(c);
+    UI.tab="classes"; UI.sub={cls:id};
+  }
+  setHeaderSector();
+  render();
+}
 /* أهم التبويبات اللي تظهر في الشريط السفلي على الموبايل — الباقي في «المزيد» */
 var BOTTOM_MAX = 5;
 function renderNav(){
@@ -1132,7 +1370,16 @@ function render(){
     case "mysched":    h = viewStudentSched(); break;
     default:           h = '<div class="empty"><b>الشاشة دي لسه فاضية</b></div>';
   }
+  /* تذكير أسبوعي بحفظ نسخة برّه البرنامج */
+  if(backupReminderDue() && (UI.user.role==="deputy"||UI.user.role==="manager"||UI.user.role==="admin")){
+    h = '<div class="note warn noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">'+
+      '<span style="flex:1;min-width:200px"><b>عدّى أسبوع من غير نسخة احتياطية.</b> '+
+      'بيانات البرنامج متخزّنة في المتصفح — لو اتمسح، تروح. احفظ نسخة على الجهاز دلوقتي.</span>'+
+      '<button class="btn seal sm" data-act="backupNow">⬇ حفظ نسخة</button>'+
+      '<button class="btn ghost sm" data-act="snoozeBackup">فكّرني بعدين</button></div>' + h;
+  }
   v.innerHTML = h;
+  saveUIState();
   window.scrollTo(0,0);
 }
 function go(tab, sub){ UI.tab=tab; UI.sub=sub||null; render(); }
@@ -1440,6 +1687,7 @@ function doBulkStudents(){
   var lvl = val("bk_lvl"), cls = val("bk_cls"), edu = val("bk_edu"),
       status = val("bk_status"), rel = val("bk_rel"), track = val("bk_track");
   var doEnrich = !!(document.getElementById("bk_enrich")||{}).checked;
+  markUndo("تعديل "+studs.length+" طالب");
   studs.forEach(function(s){
     if(cls==="__none__") s.classId = "";
     else if(cls) assignStudentToClass(s, cls);
@@ -1458,7 +1706,7 @@ function doBulkStudents(){
   });
   UI.bulkIds = null;
   saveNow(); closeModal(); render();
-  toast("اتعدّل "+studs.length+" طالب");
+  toastUndo("اتعدّل "+studs.length+" طالب");
 }
 function modalBulkTeachers(ids){
   var ts = ids.map(function(i){ return teacherById(i); }).filter(Boolean);
@@ -1481,13 +1729,14 @@ function doBulkTeachers(){
   var ts = ids.map(function(i){ return teacherById(i); }).filter(Boolean);
   if(!ts.length){ toast("مفيش معلمين محددين"); return; }
   var sub = val("bt_sub").trim(), status = val("bt_status");
+  markUndo("تعديل "+ts.length+" معلم");
   ts.forEach(function(t){
     if(sub) t.subject = sub;
     if(status) t.status = status;
   });
   UI.bulkIds = null;
   saveNow(); closeModal(); render();
-  toast("اتعدّل "+ts.length+" معلم");
+  toastUndo("اتعدّل "+ts.length+" معلم");
 }
 /* ============================================================
    محرك الفلاتر المتتابعة — تختار الصف فيتفلتر المسار، تختار المسار فتتفلتر المادة…
@@ -2417,12 +2666,13 @@ function doClassTransfer(el){
     .map(function(cb){ return cb.dataset.id; });
   if(!ids.length){ toast("مختارتش أي طالب"); return; }
   var moved = 0;
+  markUndo("ترحيل طلاب لفصل");
   ids.forEach(function(id){
     var s = byId(DB.students, id);
     if(s){ assignStudentToClass(s, c.id); enrichStudent(s); moved++; }
   });
   saveNow(); closeModal(); render();
-  toast("اترحّل "+moved+" طالب لفصل "+c.name);
+  toastUndo("اترحّل "+moved+" طالب لفصل "+c.name);
 }
 
 /* ============================================================
@@ -2439,8 +2689,42 @@ function viewTeachers(){
       '<p>لما تضيف معلم، بيتعمل له حساب دخول تلقائي، ويشوف الفصول اللي تسندها له بس.</p>'+
       (isDep?'<button class="btn" data-act="addTeacher">+ إضافة أول معلم</button>'+impBtn("teachers",{},"استيراد من إكسيل"):'')+'</div></div></div>';
   }
-  h += '<div class="card"><div class="bd flush">';
-  DB.teachers.slice().sort(function(a,b){ return sortAr(a.name,b.name); }).forEach(function(t){
+  /* فلاتر المعلمين — نفس أسلوب الطلاب */
+  var f = UI.filters;
+  var pool = DB.teachers.slice();
+  var subjCount = {};
+  pool.forEach(function(t){ var k=(t.subject||"").trim(); if(k) subjCount[k]=(subjCount[k]||0)+1; });
+  var list = pool.filter(function(t){
+    if(f.tsub && String(t.subject||"").trim()!==f.tsub) return false;
+    if(f.tq){
+      var q = normAr(f.tq.trim());
+      if(q && normAr(t.name).indexOf(q)<0 && normAr(t.subject||"").indexOf(q)<0 &&
+         String(t.phone||"").indexOf(toEnDigits(f.tq.trim()))<0) return false;
+    }
+    return true;
+  }).sort(function(a,b){ return sortAr(a.name,b.name); });
+
+  h += '<div class="card noprint"><div class="bd"><div class="grid2">'+
+    '<label class="f" style="margin:0"><span>بحث بالاسم أو التخصص أو الهاتف</span>'+
+      '<input type="text" id="tq" value="'+esc(f.tq||"")+'" placeholder="اكتب للبحث…"></label>'+
+    '<label class="f" style="margin:0"><span>التخصص</span><select id="tsub">'+
+      '<option value="">كل التخصصات ('+pool.length+')</option>'+
+      Object.keys(subjCount).sort(sortAr).map(function(k){
+        return '<option value="'+esc(k)+'"'+(f.tsub===k?" selected":"")+'>'+esc(k)+' ('+subjCount[k]+')</option>';
+      }).join("")+'</select></label>'+
+    '</div>'+
+    ((f.tq||f.tsub)?'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">'+
+      (f.tsub?'<span class="tag info">التخصص: '+esc(f.tsub)+'</span>':'')+
+      (f.tq?'<span class="tag info">بحث: '+esc(f.tq)+'</span>':'')+
+      '<span style="flex:1"></span><button class="btn ghost sm" data-act="clearTeachFilters">✕ مسح الفلاتر</button></div>':'')+
+    '</div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' معلم</h3>'+
+    (isDep?'<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer">'+
+      '<input type="checkbox" id="selAllTch" style="width:17px;height:17px"> تحديد الكل</label>':'')+
+    '</div><div class="bd flush">';
+  if(!list.length) h += '<div class="empty"><b>مفيش معلمين مطابقين</b><p>جرّب تغيّر الفلاتر.</p></div>';
+  list.forEach(function(t){
     var a = assignsOfTeacher(t.id);
     var cls = {}; a.forEach(function(x){ cls[x.classId]=1; });
     h += '<div class="list-item">'+
@@ -2795,6 +3079,26 @@ function viewSettings(){
     '<button class="btn ghost" data-act="wipe" style="color:var(--danger)">مسح كل البيانات</button>'+
     '</div><div class="note" style="margin:11px 0 0">عندك دلوقتي: '+DB.students.length+' طالب · '+
     DB.classes.length+' فصل · '+DB.teachers.length+' معلم · '+Object.keys(DB.attend).length+' يوم حضور مرصود</div></div></div>';
+
+  /* النسخ الداخلية التلقائية */
+  var snaps = readSnaps();
+  h += '<div class="card"><div class="hd"><h3>النسخ التلقائية داخل البرنامج</h3>'+
+    '<button class="btn ghost sm" data-act="makeSnap">+ خد نسخة دلوقتي</button></div><div class="bd">'+
+    '<div class="note">البرنامج بياخد نسخة تلقائيًا أول مرة تفتحه كل يوم، وبيحتفظ بآخر ٣ نسخ. '+
+    'دي شبكة أمان سريعة — بس مش بديل عن تنزيل ملف نسخة على الجهاز.</div>';
+  if(!snaps.length){
+    h += '<div class="empty"><b>مفيش نسخ لسه</b><p>هتتاخد أول نسخة تلقائيًا.</p></div>';
+  }else{
+    h += '<div class="bd flush" style="padding:0">';
+    snaps.forEach(function(sn,i){
+      h += '<div class="list-item">'+
+        '<span class="tx"><b>نسخة '+esc(fmtDate(sn.day))+'</b><small>'+
+        sn.students+' طالب · '+sn.classes+' فصل · '+sn.teachers+' معلم</small></span>'+
+        '<button class="btn ghost sm" data-act="restoreSnap" data-i="'+i+'">استرجاع</button></div>';
+    });
+    h += '</div>';
+  }
+  h += '</div></div>';
   return h;
 }
 function fld(label,id,val){ return '<label class="f"><span>'+esc(label)+'</span><input type="text" id="'+id+'" value="'+esc(val)+'"></label>'; }
@@ -3807,7 +4111,7 @@ function doWipe(){
    الإجراءات
    ============================================================ */
 var ACTS = {
-  tab: function(el){ UI.tab = el.dataset.tab; UI.sub=null; render(); },
+  tab: function(el){ closeModal(); UI.tab = el.dataset.tab; UI.sub=null; render(); },
   back: function(){ back(); },
   close: function(){ closeModal(); },
   print: function(){ openPrintPicker(); },
@@ -3822,7 +4126,16 @@ var ACTS = {
   editStudent: function(el){ modalStudent(el.dataset.id); },
   saveStudent: saveStudent,
   navMore: function(){ modalNavMore(); },
-  tab: function(el){ closeModal(); UI.tab = el.dataset.tab; UI.sub = null; render(); },
+  gsearch: function(){ modalSearch(); },
+  gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
+  clearTeachFilters: function(){ UI.filters.tq=""; UI.filters.tsub=""; render(); },
+  goClasses:  function(){ UI.tab="classes";  UI.sub=null; render(); },
+  goStudents: function(){ UI.tab="students"; UI.sub=null; render(); },
+  undoLast: function(){ undoLast(); },
+  backupNow: function(){ snoozeBackupReminder(); backupFile(); render(); },
+  snoozeBackup: function(){ snoozeBackupReminder(); render(); toast("هفكّرك بعد أسبوع"); },
+  restoreSnap: function(el){ restoreSnap(num(el.dataset.i,-1)); },
+  makeSnap: function(){ autoBackup(true); render(); toast("اتاخدت نسخة داخلية دلوقتي"); },
   clearStuFilters: function(){
     ["q","lvl","track","sub","cls","edu","status"].forEach(function(k){ UI.filters[k] = ""; });
     render();
@@ -3897,14 +4210,34 @@ var ACTS = {
   bulkDelStudents: function(){
     var ids = checkedIds("stuck");
     if(!ids.length){ toast("حدّد طلاب الأول من المربعات جنب الأسماء"); return; }
-    if(!confirm("متأكد من حذف "+ids.length+" طالب وكل درجاتهم وغيابهم؟")) return;
+    var tot = {marks:0, days:0, notes:0};
+    ids.forEach(function(id){
+      var im = studentImpact(id);
+      tot.marks += im.marks; tot.days += im.days; tot.notes += im.notes;
+    });
+    UI.delIds = ids;
+    confirmDanger({
+      title:"حذف "+ids.length+" طالب",
+      head:"هتحذف "+ids.length+" طالب نهائيًا",
+      desc:"دي أسماء محددة من الكشف — راجعها كويس قبل ما توافق.",
+      lines: impactLines(tot),
+      note:"بعد الحذف هيظهر زر «تراجع» لمدة ١٥ ثانية.",
+      ok:"احذف "+ids.length+" طالب", act:"doBulkDelStudents"
+    });
+  },
+  doBulkDelStudents: function(){
+    var ids = UI.delIds || [];
+    if(!ids.length){ closeModal(); return; }
+    markUndo("حذف "+ids.length+" طالب");
     ids.forEach(function(id){
       DB.students = DB.students.filter(function(s){ return s.id!==id; });
       DB.behavior = DB.behavior.filter(function(b){ return b.studentId!==id; });
       for(var k in DB.marks) if(k.indexOf(id+"|")===0) delete DB.marks[k];
       for(var a in DB.attend) if(DB.attend[a][id]) delete DB.attend[a][id];
     });
-    saveNow(); render(); toast("اتحذف "+ids.length+" طالب");
+    UI.delIds = null;
+    saveNow(); closeModal(); render();
+    toastUndo("اتحذف "+ids.length+" طالب");
   },
   bulkEditTeachers: function(){ modalBulkTeachers(checkedIds("tchck")); },
   doBulkTeachers: doBulkTeachers,
@@ -3929,22 +4262,36 @@ var ACTS = {
     var un = unassignedStudents();
     if(!un.length){ toast("مفيش طلاب غير مسكّنين"); return; }
     if(!grade2Classes().length){ toast("أنشئ فصول صف ثاني الأول"); return; }
+    markUndo("تسكين تلقائي");
     var done=0, left=0;
     un.forEach(function(s){
       var c = s.bacTrack ? classForWishTrack(s.bacTrack, eduType(s.edu||"reg").sector) : null;
       if(c){ assignStudentToClass(s, c.id); done++; } else left++;
     });
     saveNow(); render();
-    toast("اتسكّن "+done+" طالب"+(left? " · "+left+" لسه محتاج تسكين يدوي (مفيش فصل لمساره)":""));
+    toastUndo("اتسكّن "+done+" طالب"+(left? " · "+left+" لسه محتاج تسكين يدوي":""));
   },
   delStudent: function(el){
-    if(!confirm("متأكد من حذف الطالب وكل درجاته وغيابه؟")) return;
-    var id = el.dataset.id;
+    var st = studentById(el.dataset.id);
+    if(!st) return;
+    UI.delIds = [st.id];
+    confirmDanger({
+      title:"حذف الطالب", head:"هتحذف «"+st.name+"» نهائيًا",
+      lines: impactLines(studentImpact(st.id)),
+      note:"بعد الحذف هيظهر زر «تراجع» لمدة ١٥ ثانية.",
+      ok:"احذف الطالب", act:"doDelStudent"
+    });
+  },
+  doDelStudent: function(){
+    var id = (UI.delIds||[])[0];
+    if(!id){ closeModal(); return; }
+    markUndo("حذف طالب");
+    UI.delIds = null;
     DB.students = DB.students.filter(function(s){ return s.id!==id; });
     DB.behavior = DB.behavior.filter(function(b){ return b.studentId!==id; });
     for(var k in DB.marks) if(k.indexOf(id+"|")===0) delete DB.marks[k];
     for(var a in DB.attend) if(DB.attend[a][id]) delete DB.attend[a][id];
-    save(); closeModal(); UI.sub=null; render(); toast("اتحذف");
+    saveNow(); closeModal(); UI.sub=null; render(); toastUndo("اتحذف الطالب");
   },
   importStudents: function(el){ modalImport(el.dataset.cid); },
   doImport: doImport,
@@ -4148,6 +4495,16 @@ function hookInputs(root){
       el.classList.toggle("over", v!=="" && num(v)>mx);
       save(); refreshTotals(el);
     }
+    if(el.id==="tq"){
+      UI.filters.tq = el.value;
+      clearTimeout(hookInputs._tt);
+      hookInputs._tt = setTimeout(function(){
+        var pos = el.selectionStart;
+        render();
+        var n = document.getElementById("tq");
+        if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(err){} }
+      }, 260);
+    }
     if(el.id==="fq"){
       UI.filters.q = el.value;
       clearTimeout(hookInputs._t);
@@ -4195,6 +4552,11 @@ function hookInputs(root){
       var on = e.target.checked;
       Array.prototype.slice.call(document.querySelectorAll(".stuck")).forEach(function(cb){ cb.checked = on; });
     }
+    if(id==="selAllTch"){
+      var onT = e.target.checked;
+      Array.prototype.slice.call(document.querySelectorAll(".tchck")).forEach(function(cb){ cb.checked = onT; });
+    }
+    if(id==="tsub"){ UI.filters.tsub = e.target.value; render(); }
     if(id==="trkLvl"){ DB.trackLevel = num(e.target.value,2); saveNow(); render(); toast("استمارة المسار بقت لطلاب "+levelName(DB.trackLevel)); }
     if(id==="attDate"){ UI.sub.date = e.target.value; render(); }
     if(id==="ctLvl" || id==="ctCls" || id==="ctScope"){
@@ -4233,10 +4595,19 @@ function boot(){
   document.getElementById("navBottom").addEventListener("click", navClick);
   document.getElementById("btnOut").onclick = logout;
   document.getElementById("btnPrint").onclick = function(){ window.print(); };
+  var bsr = document.getElementById("btnSearch");
+  if(bsr) bsr.onclick = function(){ if(UI.user) modalSearch(); };
   var bs = document.getElementById("btnSector");
   if(bs) bs.onclick = function(){ if(ACTS.switchSector) ACTS.switchSector(); };
   OV.addEventListener("click", function(e){ if(e.target===OV) closeModal(); });
-  document.addEventListener("keydown", function(e){ if(e.key==="Escape") closeModal(); });
+  document.addEventListener("keydown", function(e){
+    if(e.key==="Escape"){ closeModal(); return; }
+    /* اضغط / في أي وقت يفتح البحث — إلا لو بتكتب في خانة */
+    var tag = (e.target && e.target.tagName || "").toLowerCase();
+    if(e.key==="/" && UI.user && tag!=="input" && tag!=="textarea" && tag!=="select"){
+      e.preventDefault(); modalSearch();
+    }
+  });
 
   var lc = document.getElementById("login");
   lc.addEventListener("click", function(e){
@@ -4477,13 +4848,14 @@ function familyFromName(name){
 }
 /* إعادة استخراج البيانات لكل الطلاب دفعة واحدة */
 function enrichAllStudents(){
+  markUndo("استخراج البيانات للكل");
   var done=0, bad=0;
   DB.students.forEach(function(s){
     if(parseNationalId(s.natId)) done++; else bad++;
     enrichStudent(s);
   });
   saveNow(); render();
-  toast("اتّحدثت بيانات "+done+" طالب"+(bad? " · "+bad+" رقمه القومي ناقص أو غلط":""));
+  toastUndo("اتّحدثت بيانات "+done+" طالب"+(bad? " · "+bad+" رقمه القومي ناقص أو غلط":""));
 }
 function parseNum(v){
   var s = toEnDigits(v).replace(/[^\d.\-]/g,"");
@@ -6843,6 +7215,12 @@ function startLockTimer(){
     el.textContent = left;
   }, 1000);
 }
+/* أول تبويب حقيقي في القائمة (عناوين المجموعات مش تبويبات) */
+function firstTabOf(role){
+  var a = NAV[role] || [];
+  for(var i=0;i<a.length;i++) if(a[i][0]!=="_g") return a[i][0];
+  return "today";
+}
 function doLogin(){
   if(lockLeft() > 0) return;
   if(UI.sector!=="reg" && UI.sector!=="srv"){ toast("اختار القسم الأول"); return; }
@@ -6869,9 +7247,16 @@ function doLogin(){
   }
   setTries(0);
   UI.user = u;
-  var nv = navFor(u);
-  UI.tab = (nv[0] && nv[0][0]) || "settings";
+  UI.tab = firstTabOf(u.role);
   UI.sub = null;
+  /* رجوع لآخر مكان كان شغال فيه (نفس المستخدم وخلال ٨ ساعات) */
+  var st = loadUIState();
+  if(st && st.userId===u.id){
+    if(navFor(u).some(function(it){ return it[0]!=="_g" && it[0]===st.tab; })) UI.tab = st.tab;
+    if(st.filters && typeof st.filters==="object") UI.filters = st.filters;
+    if(st.curv) UI.curv = st.curv;
+  }
+  autoBackup();
   document.getElementById("login").classList.add("off");
   document.getElementById("app").classList.add("on");
   document.getElementById("hdUser").textContent = u.name + " · " + (ROLES[u.role] ? ROLES[u.role].name : "");
@@ -6879,6 +7264,7 @@ function doLogin(){
   setHeaderSector();
 }
 function logout(){
+  clearUIState();
   UI.user = null; UI.sub = null;
   document.getElementById("app").classList.remove("on");
   document.getElementById("login").classList.remove("off");
@@ -7191,6 +7577,79 @@ function dayPulse(date){
 /* ============================================================
    لوحة اليوم — الشاشة الرئيسية للتشغيل
    ============================================================ */
+/* ============================================================
+   مهام اليوم — البرنامج بيقولك الشغل الناقص بدل ما تدوّر عليه
+   ============================================================ */
+function pendingTasks(){
+  var t = [];
+  var role = UI.user.role;
+  if(role!=="deputy" && role!=="manager") return t;
+
+  /* طلاب مترحّلين بدون فصل */
+  var un = unassignedStudents();
+  if(un.length){
+    t.push({ icon:"students", tone:"warn",
+      title: un.length+" طالب غير مسكّن على فصل",
+      desc: grade2Classes().length ? "فيه فصول جاهزة — سكّنهم تلقائيًا حسب المسار."
+                                   : "لازم تنشئ فصول الصف المناسب الأول.",
+      act: grade2Classes().length ? "assignAllUn" : "goClasses",
+      btn: grade2Classes().length ? "تسكين تلقائي" : "افتح الفصول" });
+  }
+  /* تسجيلات استمارات لسه مترحّلتش */
+  formsInit();
+  var srcs = [{id:"track", title:"استمارة تحديد المسار"}].concat(
+    (DB.forms||[]).map(function(f){ return {id:f.id, title:f.title}; }));
+  srcs.forEach(function(o){
+    var f = o.id==="track" ? {id:"track"} : formById(o.id);
+    if(!f) return;
+    var pend = formRows(f).filter(function(r){
+      var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
+      return nat && !DB.students.some(function(s){ return s.natId===nat; });
+    }).length;
+    if(pend) t.push({ icon:"forms", tone:"info",
+      title: pend+" تسجيل جديد في «"+o.title+"»",
+      desc:"مترحّلوش لكشف الطلاب لسه.",
+      act:"formMigrate", id:o.id, btn:"ترحيلهم" });
+  });
+  /* فصول من غير مواد */
+  var noSub = myClasses().filter(function(c){
+    return !DB.subjects.some(function(s){ return s.classId===c.id; });
+  });
+  if(noSub.length){
+    t.push({ icon:"plan", tone:"info",
+      title: noSub.length+" فصل من غير مواد مقررة",
+      desc:"ولّد مواد كل فصل من الهيكل الدراسي بضغطة.",
+      act:"goClasses", btn:"افتح الفصول" });
+  }
+  /* طلاب بيانات ناقصة */
+  var badNat = myStudents().filter(function(s){ return !parseNationalId(s.natId); }).length;
+  if(badNat){
+    t.push({ icon:"absence", tone:"warn",
+      title: badNat+" طالب رقمه القومي ناقص أو غلط",
+      desc:"من غيره مش هيتحسب المواليد ولا النوع ولا المحافظة.",
+      act:"goStudents", btn:"مراجعتهم" });
+  }
+  return t;
+}
+function tasksCard(){
+  var t = pendingTasks();
+  if(!t.length){
+    return '<div class="card noprint"><div class="bd">'+
+      '<div class="list-item" style="border:0;padding:4px 0">'+
+      '<span class="ico" style="color:var(--ok)">'+icon("attend",22)+'</span>'+
+      '<span class="tx"><b>كل حاجة تمام</b><small>مفيش مهام ناقصة دلوقتي.</small></span></div></div></div>';
+  }
+  var h = '<div class="card noprint"><div class="hd"><div style="flex:1">'+
+    '<span class="eyebrow">مهام</span><h3>محتاج منك ('+t.length+')</h3></div></div><div class="bd flush">';
+  t.forEach(function(x){
+    h += '<div class="list-item">'+
+      '<span class="ico" style="color:'+(x.tone==="warn"?"var(--danger)":"var(--muted)")+'">'+icon(x.icon,20)+'</span>'+
+      '<span class="tx"><b>'+esc(x.title)+'</b><small>'+esc(x.desc)+'</small></span>'+
+      '<button class="btn ghost sm" data-act="'+esc(x.act)+'"'+(x.id?' data-id="'+esc(x.id)+'"':'')+'>'+esc(x.btn)+'</button>'+
+      '</div>';
+  });
+  return h+'</div></div>';
+}
 function viewToday(){
   supInit();
   var date = supDate(), p = dayPulse(date);
@@ -7212,6 +7671,8 @@ function viewToday(){
 
   var gT = gate("classes","teachers");
   if(gT) return h + gT;
+
+  h += tasksCard();
 
   /* المشرف العام */
   h += '<div class="card"><div class="hd"><div style="flex:1"><span class="eyebrow">المناوبة</span>'+
@@ -9177,10 +9638,11 @@ function doFormMigrate(el){
   var lvl = num(val("mg_lvl"), 2);
   var asHome = val("mg_kind")==="home";
   var place = !!(document.getElementById("mg_place")||{}).checked;
+  markUndo("ترحيل من استمارة");
   var r = migrateFormRows(f, picked, { level:lvl, asHome:asHome, autoPlace:place && !asHome, sector:curSector() });
   UI.migRows = null;
   saveNow(); closeModal(); render();
-  toast("اترحّل "+r.add+" لـ"+levelName(lvl)+
+  toastUndo("اترحّل "+r.add+" لـ"+levelName(lvl)+
     (r.placed? " · اتسكّن "+r.placed+" على فصول":"")+
     (r.dup? " · "+r.dup+" مسجّل قبل كده":"")+
     (r.bad? " · "+r.bad+" بيانات ناقصة":""));
