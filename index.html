@@ -633,7 +633,7 @@ function blankDB(){
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
     sectors:{}, wishes:[],
-    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[]
+    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[]
   };
 }
 
@@ -665,6 +665,7 @@ function load(){
     curriculumInit();
     migrateSubjectHours();
     actInit();
+    calCfg(); examsInit();
   }catch(e){ DB = seed(); }
 }
 /* ترحيل: الصف بقى بيان مستقل في الطالب نفسه — مش مستنتج من الفصل.
@@ -4724,6 +4725,27 @@ var ACTS = {
   gsearch: function(){ modalSearch(); },
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
+  calTab:   function(el){ UI.calTab = el.dataset.t; render(); },
+  examTerm: function(el){ UI.examTerm = el.dataset.v; render(); },
+  examNew:  function(){ modalExam(null); },
+  examEdit: function(el){ modalExam(el.dataset.id); },
+  examSave: saveExam,
+  examDel: function(el){
+    examsInit();
+    var e = DB.exams.filter(function(x){ return x.id===el.dataset.id; })[0];
+    if(!e) return;
+    if(!confirm("حذف امتحان «"+e.subject+"»؟")) return;
+    markUndo("حذف امتحان");
+    DB.exams = DB.exams.filter(function(x){ return x.id!==e.id; });
+    saveNow(); render(); toastUndo("اتحذف");
+  },
+  calReset: function(){
+    if(!confirm("استعادة الخريطة الزمنية الرسمية للعام ٢٠٢٦/٢٠٢٧؟\nأي تواريخ عدّلتها هتترجع.")) return;
+    markUndo("استعادة الخريطة الزمنية");
+    DB.calendar = {};
+    calCfg();
+    saveNow(); render(); toastUndo("رجعت الخريطة الرسمية");
+  },
   actKind:   function(el){ UI.actKind = el.dataset.k; UI.actOpen=null; render(); },
   actOpen:   function(el){ UI.actOpen = (UI.actOpen===el.dataset.id? null : el.dataset.id); render(); },
   actClose:  function(){ UI.actOpen = null; render(); },
@@ -5669,6 +5691,19 @@ var IMPORT_SCHEMAS = {
       {k:"notes", label:"ملاحظات", al:["ملاحظات","ملاحظه","بيان","notes","remark"]}
     ]
   },
+  exams:{
+    title:"استيراد جدول الامتحانات",
+    hint:"محتاج عمود المادة وعمود التاريخ على الأقل. لو فيه أعمدة لميعاد البداية والنهاية والصفوف هتتعرّف لوحدها.",
+    fields:[
+      {k:"subject", label:"المادة", req:true, multi:true, al:["الماده","المادة","اسم الماده","اسم المادة","subject","الامتحان"]},
+      {k:"date", label:"التاريخ", req:true, al:["التاريخ","تاريخ","date","يوم الامتحان"]},
+      {k:"levels", label:"الصف", al:["الصف","الصفوف","المرحله","المرحلة","grade","level"]},
+      {k:"from", label:"من الساعة", al:["من الساعه","من الساعة","البدايه","البداية","start"]},
+      {k:"to", label:"إلى الساعة", al:["الي الساعه","إلى الساعة","النهايه","النهاية","end"]},
+      {k:"dur", label:"المدة", al:["المده","المدة","الزمن","duration"]},
+      {k:"notes", label:"ملاحظات", al:["ملاحظات","ملاحظه","بيان","notes"]}
+    ]
+  },
   teachers:{
     title:"استيراد المعلمين والعاملين",
     hint:"عمود الاسم إجباري. لو الملف كشف «مراجعة بيانات العاملين» الرسمي، كل الأعمدة هتتعرّف لوحدها (الكود، الرقم القومي، مادة التدريس، الدرجة المالية، المؤهل، الكادر…). الرقم القومي هو اللي بيمنع التكرار.",
@@ -6042,6 +6077,7 @@ function impRun(){
   var res;
   try{
     switch(t){
+      case "exams":      res = impExams(recs); break;
       case "home":       res = impHome(recs); break;
       case "students":   res = impStudents(recs); break;
       case "teachers":   res = impTeachers(recs); break;
@@ -6117,6 +6153,57 @@ function findStudent(rec, classId){
   return null;
 }
 
+/* استيراد جدول الامتحانات */
+function impExams(recs){
+  var r = {add:0, upd:0, skip:0, err:[]};
+  examsInit();
+  var term = UI.examTerm || "1";
+  recs.forEach(function(o,i){
+    var sub = String(o.subject||"").trim();
+    if(!sub){ r.err.push("سطر "+(i+1)+": مفيش مادة"); return; }
+    var date = parseDateCell(o.date);
+    if(!date){ r.err.push("سطر "+(i+1)+": تاريخ غير مفهوم ("+sub+")"); return; }
+    var lv = [];
+    if(o.levels){
+      String(o.levels).split(/[,،/]+/).forEach(function(x){
+        var L = parseLevel(x); if(L && lv.indexOf(L)<0) lv.push(L);
+      });
+    }
+    var ex = DB.exams.filter(function(x){
+      return String(x.term)===String(term) && normAr(x.subject)===normAr(sub) && x.date===date; })[0];
+    if(ex && UI.imp.mode==="add"){ r.skip++; return; }
+    if(!ex){ ex = { id:uid("ex"), term:term }; DB.exams.push(ex); r.add++; }
+    else r.upd++;
+    ex.subject = sub; ex.date = date; ex.levels = lv;
+    if(o.from) ex.from = normTime(o.from);
+    if(o.to)   ex.to   = normTime(o.to);
+    ex.dur = num(o.dur,0);
+    if(!ex.dur && ex.from && ex.to){
+      var a = toMin(ex.from), b = toMin(ex.to);
+      if(a!==null && b!==null && b>a) ex.dur = b-a;
+    }
+    if(o.notes) ex.notes = String(o.notes).trim();
+  });
+  return r;
+}
+/* بيفهم التاريخ من صيغ مختلفة: 2027-01-09 · 9/1/2027 · ٩-١-٢٠٢٧ */
+function parseDateCell(v){
+  var t = toEnDigits(String(v==null?"":v)).trim();
+  if(!t) return "";
+  var m = t.match(/(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+  if(m) return m[1]+"-"+("0"+m[2]).slice(-2)+"-"+("0"+m[3]).slice(-2);
+  m = t.match(/(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})/);
+  if(m) return m[3]+"-"+("0"+m[2]).slice(-2)+"-"+("0"+m[1]).slice(-2);
+  var d = new Date(t);
+  if(!isNaN(d)) return d.toISOString().slice(0,10);
+  return "";
+}
+function normTime(v){
+  var t = toEnDigits(String(v==null?"":v)).trim();
+  var m = t.match(/(\d{1,2})\s*[:.]\s*(\d{2})/);
+  if(!m) return "";
+  return ("0"+m[1]).slice(-2)+":"+m[2];
+}
 /* استيراد طلاب المنازل — الرقم القومي مفتاح منع التكرار */
 function impHome(recs){
   var r = {add:0, upd:0, skip:0, err:[]};
@@ -9134,6 +9221,179 @@ function coverageReport(){
 /* ============================================================
    التقويم الدراسي — نظام الأسبوع والإجازات الرسمية (المدير)
    ============================================================ */
+/* ============================================================
+   الخريطة الزمنية للعام الدراسي + جداول الامتحانات
+   الافتراضي من الخريطة الرسمية للعام 2026/2027 (وكلها قابلة للتعديل)
+   ============================================================ */
+var CAL_DEFAULT = {
+  yearStart:"2026-09-12", yearEnd:"2027-06-24",
+  t1From:"2026-09-12",   t1To:"2027-01-07",
+  ex1From:"2027-01-09",  ex1To:"2027-01-14",
+  midFrom:"2027-01-23",  midTo:"2027-02-04",
+  t2From:"2027-02-06",   t2To:"2027-05-20",
+  ex2From:"2027-05-22",  ex2To:"2027-05-27",
+  finFrom:"",            finTo:""            /* امتحانات الشهادة (البكالوريا) */
+};
+function calCfg(){
+  if(!DB.calendar || typeof DB.calendar!=="object") DB.calendar = {};
+  var c = DB.calendar;
+  for(var k in CAL_DEFAULT) if(c[k]===undefined) c[k] = CAL_DEFAULT[k];
+  return c;
+}
+/* الفترة اللي إحنا فيها دلوقتي */
+function currentPhase(d){
+  var c = calCfg(); d = d || today();
+  function inR(a,b){ return a && b && d>=a && d<=b; }
+  if(inR(c.ex1From,c.ex1To)) return { key:"ex1", name:"امتحانات الفصل الأول", tone:"bad" };
+  if(inR(c.ex2From,c.ex2To)) return { key:"ex2", name:"امتحانات الفصل الثاني", tone:"bad" };
+  if(inR(c.finFrom,c.finTo)) return { key:"fin", name:"امتحانات الشهادة", tone:"bad" };
+  if(inR(c.midFrom,c.midTo)) return { key:"mid", name:"إجازة نصف العام", tone:"warn" };
+  if(inR(c.t1From,c.t1To))   return { key:"t1",  name:"الفصل الدراسي الأول", tone:"ok" };
+  if(inR(c.t2From,c.t2To))   return { key:"t2",  name:"الفصل الدراسي الثاني", tone:"ok" };
+  if(c.yearStart && d < c.yearStart) return { key:"pre", name:"قبل بداية العام", tone:"" };
+  return { key:"out", name:"خارج العام الدراسي", tone:"" };
+}
+/* فرق الأيام بين تاريخين */
+function daysBetween(a,b){
+  if(!a || !b) return 0;
+  var d1 = new Date(a), d2 = new Date(b);
+  if(isNaN(d1) || isNaN(d2)) return 0;
+  return Math.round((d2-d1)/86400000);
+}
+/* عدد أيام الدراسة الفعلية (بدون الجمعة/السبت والإجازات) */
+function schoolDaysIn(from, to){
+  if(!from || !to) return 0;
+  var n = 0, d = new Date(from), end = new Date(to);
+  if(isNaN(d) || isNaN(end)) return 0;
+  var guard = 0;
+  while(d <= end && guard++ < 500){
+    var iso = d.toISOString().slice(0,10);
+    if(isSchoolDayIdx(d.getDay()) && !holidayOn(iso)) n++;
+    d.setDate(d.getDate()+1);
+  }
+  return n;
+}
+/* ---------- جدول الامتحانات ---------- */
+function examsInit(){ if(!Array.isArray(DB.exams)) DB.exams = []; return DB.exams; }
+function examsOf(term){
+  examsInit();
+  return DB.exams.filter(function(e){ return String(e.term)===String(term); })
+    .sort(function(a,b){ return (a.date||"")<(b.date||"") ? -1 : ((a.date||"")>(b.date||"") ? 1 : sortAr(a.subject,b.subject)); });
+}
+function examLevels(e){
+  if(!e.levels || !e.levels.length) return "كل الصفوف";
+  return e.levels.map(function(l){ return levelName(l); }).join("، ");
+}
+function viewExamPlan(){
+  var term = UI.examTerm || "1";
+  var list = examsOf(term);
+  var isMgr = UI.user.role==="manager" || UI.user.role==="deputy";
+  var c = calCfg();
+  var win = term==="1" ? [c.ex1From, c.ex1To] : (term==="2" ? [c.ex2From, c.ex2To] : [c.finFrom, c.finTo]);
+
+  var h = '<div class="chips noprint">'+
+    ['1','2','fin'].map(function(v){
+      var lbl = v==="1"?"امتحانات الفصل الأول":(v==="2"?"امتحانات الفصل الثاني":"امتحانات الشهادة");
+      return '<button class="'+(term===v?"on":"")+'" data-act="examTerm" data-v="'+v+'">'+esc(lbl)+'</button>';
+    }).join("")+'</div>';
+
+  h += '<div class="note">'+(win[0]&&win[1]
+      ? 'فترة الامتحانات المسجّلة: <b>'+fmtDate(win[0])+'</b> إلى <b>'+fmtDate(win[1])+'</b>'
+      : 'حدّد فترة الامتحانات من «الخريطة الزمنية» فوق.')+
+    ' — لو حطيت امتحان بره الفترة دي، البرنامج هينبّهك.</div>';
+
+  h += printHd("جدول امتحانات "+(term==="1"?"الفصل الدراسي الأول":(term==="2"?"الفصل الدراسي الثاني":"الشهادة")));
+  h += '<div class="card"><div class="hd"><h3>جدول الامتحانات ('+list.length+')</h3>'+
+    (isMgr?'<button class="btn" data-act="examNew">+ امتحان</button>'+
+      impBtn("exams",{},"استيراد جدول"):'')+
+    '<button class="btn ghost sm noprint" data-act="print" style="margin-right:5px">⎙ طباعة / تصدير</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>م</th><th>اليوم</th><th>التاريخ</th><th>المادة</th><th>الصفوف</th>'+
+    '<th>من</th><th>إلى</th><th>المدة</th><th>ملاحظات</th>'+
+    (isMgr?'<th class="noprint"></th>':'')+'</tr></thead><tbody>';
+  if(!list.length){
+    h += '<tr><td colspan="'+(isMgr?10:9)+'"><div class="empty"><div class="big">'+icon("calendar",34)+'</div>'+
+      '<b>مفيش امتحانات مسجّلة</b><p>ضيفها واحد واحد، أو ارفع ملف إكسيل/PDF فيه الجدول.</p></div></td></tr>';
+  }
+  list.forEach(function(e,i){
+    var dw = e.date ? new Date(e.date).getDay() : -1;
+    var out = (win[0]&&win[1]&&e.date) && (e.date<win[0] || e.date>win[1]);
+    h += '<tr>'+
+      '<td class="rownum">'+(i+1)+'</td>'+
+      '<td>'+(dw>=0?esc(DAYS[dw]):"—")+'</td>'+
+      '<td class="num">'+(e.date?esc(fmtDate(e.date)):"—")+
+        (out?' <span class="tag bad">بره الفترة</span>':'')+'</td>'+
+      '<td><b style="font-weight:600">'+esc(e.subject||"—")+'</b></td>'+
+      '<td><small>'+esc(examLevels(e))+'</small></td>'+
+      '<td class="num">'+esc(e.from||"—")+'</td>'+
+      '<td class="num">'+esc(e.to||"—")+'</td>'+
+      '<td class="num">'+(e.dur?esc(e.dur)+" د":"—")+'</td>'+
+      '<td><small>'+esc(e.notes||"—")+'</small></td>'+
+      (isMgr?'<td class="noprint" style="white-space:nowrap">'+
+        '<button class="btn ghost sm" data-act="examEdit" data-id="'+e.id+'">تعديل</button>'+
+        '<button class="btn ghost sm" data-act="examDel" data-id="'+e.id+'" style="color:var(--danger);margin-right:4px">حذف</button></td>':'')+
+      '</tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+function modalExam(id){
+  examsInit();
+  var e = id ? DB.exams.filter(function(x){ return x.id===id; })[0] : null;
+  var term = e ? String(e.term) : (UI.examTerm||"1");
+  var lv = e && e.levels ? e.levels : [];
+  openModal(mHead(e?"تعديل امتحان":"إضافة امتحان")+
+    '<div class="mb">'+
+    '<div class="grid2">'+
+      '<label class="f"><span>الفصل الدراسي</span><select id="ex_term">'+
+        '<option value="1"'+(term==="1"?" selected":"")+'>الفصل الأول</option>'+
+        '<option value="2"'+(term==="2"?" selected":"")+'>الفصل الثاني</option>'+
+        '<option value="fin"'+(term==="fin"?" selected":"")+'>امتحانات الشهادة</option>'+
+        '</select></label>'+
+      '<label class="f"><span>التاريخ *</span><input type="date" id="ex_date" value="'+esc(e?e.date||"":"")+'"></label>'+
+    '</div>'+
+    '<label class="f"><span>المادة *</span><input type="text" id="ex_sub" value="'+esc(e?e.subject||"":"")+'" placeholder="مثال: اللغة العربية"></label>'+
+    '<label class="f"><span>الصفوف</span>'+
+      '<div style="display:flex;gap:14px;padding:8px;border:1px solid var(--line-2);border-radius:9px">'+
+      LEVELS.map(function(l){
+        return '<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">'+
+          '<input type="checkbox" class="exLv" data-l="'+l.id+'"'+(lv.indexOf(l.id)>=0?" checked":"")+
+          ' style="width:16px;height:16px">'+esc(l.name)+'</label>';
+      }).join("")+'</div>'+
+      '<small style="color:var(--muted);font-size:11.5px">سيبها فاضية = كل الصفوف.</small></label>'+
+    '<div class="grid3">'+
+      '<label class="f"><span>من الساعة</span><input type="time" id="ex_from" value="'+esc(e?e.from||"":"")+'"></label>'+
+      '<label class="f"><span>إلى الساعة</span><input type="time" id="ex_to" value="'+esc(e?e.to||"":"")+'"></label>'+
+      '<label class="f"><span>المدة (دقيقة)</span><input type="number" id="ex_dur" min="0" value="'+esc(e?num(e.dur,0)||"":"")+'"></label>'+
+    '</div>'+
+    '<label class="f"><span>ملاحظات</span><input type="text" id="ex_notes" value="'+esc(e?e.notes||"":"")+'"></label>'+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="examSave" data-id="'+(e?e.id:"")+'">حفظ</button></div>');
+}
+function saveExam(el){
+  var id = el.dataset.id;
+  var sub = val("ex_sub").trim();
+  if(!sub){ toast("اكتب اسم المادة"); return; }
+  var date = val("ex_date");
+  if(!date){ toast("حدّد تاريخ الامتحان"); return; }
+  examsInit();
+  var e = id ? DB.exams.filter(function(x){ return x.id===id; })[0] : null;
+  if(!e){ e = { id:uid("ex") }; DB.exams.push(e); }
+  e.term = val("ex_term") || "1";
+  e.date = date; e.subject = sub;
+  e.from = val("ex_from"); e.to = val("ex_to");
+  e.dur = num(val("ex_dur"),0);
+  if(!e.dur && e.from && e.to){
+    var a = toMin(e.from), b = toMin(e.to);
+    if(a!==null && b!==null && b>a) e.dur = b-a;
+  }
+  e.notes = val("ex_notes").trim();
+  e.levels = Array.prototype.slice.call(document.querySelectorAll(".exLv"))
+    .filter(function(cb){ return cb.checked; })
+    .map(function(cb){ return num(cb.dataset.l,0); });
+  saveNow(); closeModal(); render(); toast(id?"اتحفظ":"اتضاف الامتحان");
+}
 function viewCalendar(){
   supInit();
   if(!Array.isArray(DB.holidays)) DB.holidays = [];
@@ -9142,8 +9402,65 @@ function viewCalendar(){
   var t = today();
   var upcoming = hs.filter(function(h){ return (h.to||h.from) >= t; });
 
-  var h = pageHd("التقويم الدراسي", "نظام الأسبوع والإجازات الرسمية",
+  var isMgr = UI.user.role==="manager" || UI.user.role==="deputy";
+  var tab = UI.calTab==="exams" ? "exams" : "plan";
+  var c = calCfg(), ph = currentPhase();
+
+  var h = pageHd("التقويم الدراسي", "الخريطة الزمنية والامتحانات والإجازات الرسمية",
     '<button class="btn" data-act="addHoliday">+ إجازة رسمية</button>');
+
+  h += '<div class="chips noprint">'+
+    '<button class="'+(tab==="plan"?"on":"")+'" data-act="calTab" data-t="plan">الخريطة الزمنية</button>'+
+    '<button class="'+(tab==="exams"?"on":"")+'" data-act="calTab" data-t="exams">جداول الامتحانات</button>'+
+    '</div>';
+
+  if(tab==="exams") return h + viewExamPlan();
+
+  /* ---------- الخريطة الزمنية ---------- */
+  h += '<div class="note '+(ph.tone==="bad"?"bad":(ph.tone==="warn"?"warn":"ok"))+'">'+
+    '<b>إحنا دلوقتي في: '+esc(ph.name)+'</b>'+
+    (ph.key==="t1"||ph.key==="t2" ?
+      ' — فاضل '+daysBetween(today(), ph.key==="t1"?c.t1To:c.t2To)+' يوم على نهاية الفصل' : '')+
+    '</div>';
+
+  var rows = [
+    ["بداية العام الدراسي","yearStart","", "acc"],
+    ["الفصل الدراسي الأول","t1From","t1To","acc"],
+    ["امتحانات الفصل الأول","ex1From","ex1To","acc-r"],
+    ["إجازة نصف العام","midFrom","midTo","acc-b"],
+    ["الفصل الدراسي الثاني","t2From","t2To","acc"],
+    ["امتحانات الفصل الثاني","ex2From","ex2To","acc-r"],
+    ["امتحانات الشهادة (البكالوريا)","finFrom","finTo","acc-r"],
+    ["نهاية العام الدراسي","yearEnd","","acc"]
+  ];
+  h += '<div class="card"><div class="hd"><h3>الخريطة الزمنية للعام '+esc(DB.meta.year||"")+'</h3>'+
+    (isMgr?'<button class="btn ghost sm" data-act="calReset">↻ الخريطة الرسمية</button>':'')+
+    '</div><div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>المرحلة</th><th>من</th><th>إلى</th><th>المدة</th><th>أيام دراسة</th>'+
+    '</tr></thead><tbody>';
+  rows.forEach(function(r){
+    var a = c[r[1]]||"", b = r[2]? (c[r[2]]||"") : "";
+    var span = (a&&b) ? (daysBetween(a,b)+1) : (a?1:0);
+    var sd = (a&&b && r[1].indexOf("ex")!==0 && r[1]!=="midFrom") ? schoolDaysIn(a,b) : 0;
+    h += '<tr><td><b style="font-weight:600">'+esc(r[0])+'</b></td>'+
+      '<td>'+(isMgr
+        ? '<input type="date" class="mk" style="width:auto;min-width:130px" value="'+esc(a)+'" data-act="calSet" data-k="'+r[1]+'">'
+        : (a?esc(fmtDate(a)):"—"))+'</td>'+
+      '<td>'+(r[2]? (isMgr
+        ? '<input type="date" class="mk" style="width:auto;min-width:130px" value="'+esc(b)+'" data-act="calSet" data-k="'+r[2]+'">'
+        : (b?esc(fmtDate(b)):"—")) : '<small style="color:var(--muted)">—</small>')+'</td>'+
+      '<td class="num">'+(span?span+" يوم":"—")+'</td>'+
+      '<td class="num">'+(sd?sd:"—")+'</td></tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+
+  var totalDays = schoolDaysIn(c.t1From,c.t1To) + schoolDaysIn(c.t2From,c.t2To);
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("أيام الدراسة الفعلية", totalDays, "بعد خصم الإجازات", "acc")+
+    stat("امتحانات الفصل الأول", examsOf("1").length, "مادة مسجّلة", "")+
+    stat("امتحانات الفصل الثاني", examsOf("2").length, "مادة مسجّلة", "")+
+    stat("امتحانات الشهادة", examsOf("fin").length, "مادة مسجّلة", "")+
+    '</div>';
 
   h += '<div class="card"><div class="hd"><h3>الأسبوع الدراسي</h3></div><div class="bd">'+
     '<div class="note">اختار النظام الشغّال دلوقتي. البرنامج بيوقف كل شغل اليوم اللي بره الأسبوع الدراسي — '+
@@ -12300,6 +12617,11 @@ document.addEventListener("input", function(e){
     return;
   }
   /* عدد حصص اليوم */
+  if(act==="calSet"){
+    var ck = el.dataset.k;
+    if(ck){ calCfg()[ck] = el.value; save(); }
+    return;
+  }
   if(act==="cfgPeriods"){
     var n = Math.max(1, Math.min(12, num(el.value, 8)));
     curCfg().periods = n;
