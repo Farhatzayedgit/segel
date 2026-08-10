@@ -7267,6 +7267,47 @@ var ACTS = {
     else { formsInit(); DB.formSubs[fid] = []; }
     saveNow(); render(); toastUndo("اتمسحت التسجيلات");
   },
+  wipeForms: function(){
+    formsInit();
+    var n = DB.forms.length;
+    if(!n){ toast("مفيش استمارات إضافية"); return; }
+    var subs = DB.forms.reduce(function(a,f){ return a + formSubsOf(f.id).length; }, 0);
+    if(!confirm("مسح كل الاستمارات الإضافية ("+n+" استمارة"+(subs?" و"+subs+" تسجيل":"")+")؟\n"+
+      "استمارة تحديد المسار وتسجيلاتها مش هتتأثر.\nوالطلاب اللي اترحّلوا بالفعل مش هيتأثروا.")) return;
+    markUndo("مسح الاستمارات الإضافية");
+    DB.forms.forEach(function(f){ delete DB.formSubs[f.id]; });
+    DB.forms = [];
+    UI.sub = null;
+    saveNow(); render(); toastUndo("اتمسحت "+n+" استمارة");
+  },
+  addGrade3Form: function(){
+    formsInit();
+    var exists = DB.forms.filter(function(f){ return normAr(f.title)===normAr("تحديد الشعبة"); })[0];
+    if(exists){ toast("استمارة «تحديد الشعبة» موجودة بالفعل"); UI.sub={form:exists.id}; render(); return; }
+    markUndo("إضافة استمارة تحديد الشعبة");
+    var f = {
+      id: uid("form"),
+      title: "تحديد الشعبة",
+      desc: "لطلاب الصف الثالث الثانوي — اختَر شعبتك واكتب بياناتك",
+      level: 3,
+      strictNat: false,             /* أي رقم قومي حتى لو مش مسجّل */
+      status: "open",
+      createdAt: today(),
+      fields: [
+        { id:uid("fd"), label:"الشعبة", type:"select", required:true,
+          options:["علمي","أدبي"] },
+        { id:uid("fd"), label:"شعبة العلمي (علوم / رياضيات)", type:"select", required:false,
+          options:["علوم","رياضيات"] },
+        { id:uid("fd"), label:"العنوان بالتفصيل", type:"text", required:true },
+        { id:uid("fd"), label:"رقم موبايل ولي الأمر", type:"tel", required:true }
+      ]
+    };
+    DB.forms.push(f);
+    saveNow();
+    UI.sub = { form: f.id };
+    render();
+    toastUndo("اتعملت استمارة «تحديد الشعبة» للصف الثالث");
+  },
   trkStrictBtn: function(){
     DB.trackStrict = !(DB.trackStrict!==false);
     saveNow(); render();
@@ -12920,8 +12961,10 @@ function viewFormsIndex(){
   var can = canManageForms();
   var forms = allForms();
   var byLevel = {};
+  var known = {}; LEVELS.forEach(function(l){ known[l.id] = 1; });
   forms.forEach(function(f){
     var L = num(f.level,0);
+    if(!known[L]) L = 0;              /* صف مش موجود = يروح «غير محدد» بدل ما يختفي */
     if(!byLevel[L]) byLevel[L] = [];
     byLevel[L].push(f);
   });
@@ -12931,8 +12974,17 @@ function viewFormsIndex(){
     forms.length+" استمارة · "+totalSubs+" تسجيل في قسم "+sectorName(curSector()),
     can?'<button class="btn" data-act="formNew">+ استمارة جديدة</button>':'');
 
-  h += '<div class="note">كل استمارة مخصصة لصف واحد. الطالب اللي رقمه القومي <b>مش مسجّل في الصف ده</b> '+
-    'مش هيقدر يملاها — البرنامج بيرفض التسجيل ويقوله يراجع المدرسة.</div>';
+  var shown = 0;
+  h += '<div class="note">كل استمارة مخصصة لصف واحد. لو اخترت «المسجّلين فقط»، الطالب اللي رقمه القومي '+
+    '<b>مش مسجّل في الصف ده</b> مش هيقدر يملاها.</div>';
+  if(canManageForms()){
+    h += '<div class="card noprint"><div class="bd" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">'+
+      '<span class="tag info">'+forms.length+' استمارة إجمالًا</span>'+
+      '<span style="flex:1"></span>'+
+      '<button class="btn ghost sm" data-act="addGrade3Form">+ استمارة تحديد الشعبة (الصف الثالث)</button>'+
+      ((DB.forms||[]).length? '<button class="btn ghost sm" data-act="wipeForms" style="color:var(--danger)">🧹 مسح كل الاستمارات الإضافية</button>':'')+
+      '</div></div>';
+  }
 
   LEVELS.forEach(function(l){
     var list = byLevel[l.id] || [];
