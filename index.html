@@ -570,6 +570,7 @@ var ROLES = {
   manager:{name:"مدير المدرسة",       av:"مد"},
   deputy: {name:"وكيل شئون الطلاب",   av:"طل"},
   admin:  {name:"وكيل شئون العاملين", av:"عا"},
+  scheduler:{name:"مسؤول الجدول",      av:"جد"},
   teacher:{name:"معلم",                av:"مع"},
   student:{name:"طالب / ولي أمر",      av:"طا"}
 };
@@ -633,7 +634,7 @@ function blankDB(){
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
     sectors:{}, wishes:[],
-    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[]
+    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[], sessions:[], attLog:{}, attDone:{}
   };
 }
 
@@ -665,7 +666,7 @@ function load(){
     curriculumInit();
     migrateSubjectHours();
     actInit();
-    calCfg(); examsInit(); xfInit(); logInit(); lessonInit(); msgInit(); dupOkInit();
+    calCfg(); examsInit(); xfInit(); logInit(); lessonInit(); msgInit(); dupOkInit(); sessInit(); attLogInit();
     idxBump();
   }catch(e){ DB = seed(); }
 }
@@ -797,6 +798,76 @@ function markUndo(label){
 /* ============================================================
    سجل العمليات — مين عمل إيه وإمتى
    ============================================================ */
+/* ============================================================
+   جلسات الدخول — مين دخل التطبيق وقعد قد إيه وعمل إيه
+   ============================================================ */
+function sessInit(){ if(!Array.isArray(DB.sessions)) DB.sessions = []; return DB.sessions; }
+function startSession(u){
+  sessInit();
+  var sess = {
+    id: uid("ss"), uid: u.id, name: u.name || "",
+    role: (ROLES[u.role]||{}).name || u.role,
+    teacherId: u.teacherId || "",
+    day: today(), at: Date.now(), last: Date.now(), acts: 0, what: {}
+  };
+  DB.sessions.unshift(sess);
+  if(DB.sessions.length > 300) DB.sessions = DB.sessions.slice(0,300);
+  UI.sessId = sess.id;
+  return sess;
+}
+function curSession(){
+  sessInit();
+  if(!UI.sessId) return null;
+  return DB.sessions.filter(function(x){ return x.id===UI.sessId; })[0] || null;
+}
+/* بيتنادى مع كل عملية مهمة */
+function touchSession(what){
+  var ss = curSession();
+  if(!ss) return;
+  ss.last = Date.now();
+  ss.acts++;
+  if(what) ss.what[what] = (ss.what[what]||0) + 1;
+}
+function sessMinutes(ss){
+  if(!ss) return 0;
+  return Math.max(1, Math.round((ss.last - ss.at)/60000));
+}
+function sessionsToday(){
+  sessInit();
+  var d = today();
+  return DB.sessions.filter(function(x){ return x.day===d; })
+    .sort(function(a,b){ return b.last - a.last; });
+}
+/* كارت «مين شغال دلوقتي» في لوحة اليوم */
+function sessionsCard(){
+  var list = sessionsToday();
+  if(!list.length) return "";
+  var nowT = Date.now();
+  var online = list.filter(function(x){ return nowT - x.last < 10*60000; }).length;
+  var h = '<div class="card noprint"><div class="hd"><div style="flex:1">'+
+    '<span class="eyebrow">النهاردة</span><h3>نشاط المستخدمين ('+list.length+')</h3></div>'+
+    '<span class="tag '+(online?"ok":"")+'">'+online+' متصل دلوقتي</span></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>الاسم</th><th>الصفة</th><th>الدخول</th><th>آخر نشاط</th><th>المدة</th><th>العمليات</th><th>عمل إيه</th>'+
+    '</tr></thead><tbody>';
+  list.slice(0,25).forEach(function(x){
+    var din = new Date(x.at), dl = new Date(x.last);
+    var live = nowT - x.last < 10*60000;
+    var acts = Object.keys(x.what||{}).slice(0,3)
+      .map(function(k){ return k+" ("+x.what[k]+")"; }).join("، ");
+    h += '<tr>'+
+      '<td><b style="font-weight:600">'+esc(x.name||"—")+'</b>'+
+        (live?' <span class="tag ok" style="font-size:10px">متصل</span>':'')+'</td>'+
+      '<td><small>'+esc(x.role||"—")+'</small></td>'+
+      '<td class="num">'+("0"+din.getHours()).slice(-2)+":"+("0"+din.getMinutes()).slice(-2)+'</td>'+
+      '<td class="num">'+("0"+dl.getHours()).slice(-2)+":"+("0"+dl.getMinutes()).slice(-2)+'</td>'+
+      '<td class="num">'+sessMinutes(x)+' د</td>'+
+      '<td class="num">'+num(x.acts,0)+'</td>'+
+      '<td><small>'+esc(acts||"تصفّح")+'</small></td>'+
+      '</tr>';
+  });
+  return h+'</tbody></table></div></div></div>';
+}
 function logInit(){ if(!Array.isArray(DB.oplog)) DB.oplog = []; return DB.oplog; }
 function logOp(what, extra){
   logInit();
@@ -1106,6 +1177,69 @@ function weeklyScore(m){
   return sum / (WEEKLY_COUNT * 20) * 100;   /* كل تقييم من 20 → النسبة المئوية */
 }
 /* نسبة الحضور للطالب في الفصل الحالي */
+/* ============================================================
+   الغياب بالحصة — الطابور ممكن يتأخر، فالرصد بيتم كل حصة
+   • أول مرة الطالب يتسجّل غايب، يفضل غايب طول اليوم
+   • المعلم مقدرش يعدّله بعد كده — وكيل شئون الطلاب بس اللي يقدر
+   • كل حصة بيتسجّل مين رصدها وإمتى، عشان الإشراف يعرف الفصل اللي لسه
+   ============================================================ */
+function attLogInit(){
+  if(!DB.attLog || typeof DB.attLog!=="object") DB.attLog = {};   /* مين اترصد غايب في أنهي حصة */
+  if(!DB.attDone || typeof DB.attDone!=="object") DB.attDone = {}; /* الحصص اللي اترصدت */
+  return DB.attLog;
+}
+function attLogKey(cid, date){ return cid+"|"+date; }
+function attDoneKey(cid, date, period){ return cid+"|"+date+"|"+period; }
+/* تسجيل إن حصة اترصدت */
+function markPeriodDone(cid, date, period, tid){
+  attLogInit();
+  DB.attDone[attDoneKey(cid,date,period)] = { at: Date.now(), by: tid || (UI.user&&UI.user.teacherId) || "" };
+}
+function periodDone(cid, date, period){
+  attLogInit();
+  return DB.attDone[attDoneKey(cid,date,period)] || null;
+}
+/* سجل غياب الطالب: أول حصة اترصد فيها */
+function absLog(cid, date){
+  attLogInit();
+  var k = attLogKey(cid,date);
+  if(!DB.attLog[k]) DB.attLog[k] = {};
+  return DB.attLog[k];
+}
+function absEntry(cid, date, sid){ return absLog(cid,date)[sid] || null; }
+/* هل الطالب مقفول (اترصد غايب قبل كده)؟ المعلم مقدرش يفكّه */
+function attLocked(cid, date, sid){
+  var rec = DB.attend[attKey(cid,date)] || {};
+  if(rec[sid]!=="A") return false;
+  return !!absEntry(cid, date, sid);
+}
+function canEditAtt(){
+  var r = UI.user && UI.user.role;
+  return r==="deputy" || r==="manager" || r==="admin";
+}
+/* الحصة اللي المفروض شغالة دلوقتي */
+function currentPeriod(nowM){
+  var t = (nowM===undefined) ? nowMin() : nowM;
+  var P = periodsCount();
+  for(var p=1;p<=P;p++){
+    var w = periodWindow(p);
+    if(!w) continue;
+    if(t >= w.fromMin && t <= w.toMin) return p;
+  }
+  return 0;
+}
+/* بداية ونهاية الحصة — من إعدادات الفترة نفسها */
+function periodWindow(p){
+  var c = curCfg(), st = toMin(c.start), len = Math.max(5, num(c.periodMin,45));
+  if(st===null) return null;
+  var t0 = st + (p-1)*len;
+  return { from: fromMin(t0), to: fromMin(t0+len), fromMin:t0, toMin:t0+len };
+}
+function nowMin(){
+  var d = new Date();
+  return d.getHours()*60 + d.getMinutes();
+}
+function nowHM(){ return fromMin(nowMin()); }
 function attendStats(studentId, classId){
   var o = attendIndex()[studentId+"|"+classId] || { days:0, abs:0, exc:0, late:0 };
   return { days:o.days, abs:o.abs, exc:o.exc, late:o.late, present:o.days-o.abs-o.exc,
@@ -1283,7 +1417,8 @@ var NAV = {
   ],
   deputy:[
     ["_g","المتابعة اليومية"],
-    ["today","لوحة اليوم","today"],["absence","الغياب والإنذارات","absence"],["lessons","متابعة الحصص","plan"],
+    ["today","لوحة اليوم","today"],["supervise","الإشراف اليومي","duty"],["abssheet","كشف الغائبين","absence"],
+    ["absence","الغياب والإنذارات","absence"],["lessons","متابعة الحصص","plan"],
     ["_g","الطلاب"],
     ["students","الطلاب","students"],["home","المنازل","home"],["eligib","الأهلية للامتحان","attend"],["wishes","رغبات الطلاب","grades"],
     ["_g","الشؤون الأكاديمية"],
@@ -1301,6 +1436,15 @@ var NAV = {
     ["_g","المستندات"],
     ["schedule","الجداول","schedule"],["dailyRep","التقرير اليومي","print"],
     ["staffStats","الإحصائيات","stats"],["papers","الورقيات","papers"]
+  ],
+  scheduler:[
+    ["_g","الجدول المدرسي"],
+    ["schedule","الجداول","schedule"],["acts","الأنشطة","art"],
+    ["curriculum","الهيكل الدراسي","plan"],["classes","الفصول","classes"],
+    ["teachers","المعلمون","teachers"],
+    ["_g","بياناتي"],
+    ["mydata","بياناتي","teachers"],["mylessons","دفتر الحصة","plan"],
+    ["myclasses","فصولي","classes"],["myschedule","جدولي","schedule"],["mystudents","طلابي","students"]
   ],
   teacher:[
     ["mydata","بياناتي","teachers"],["mylessons","دفتر الحصة","plan"],["myclasses","فصولي","classes"],
@@ -1565,6 +1709,8 @@ function render(){
     case "health":     h = viewHealth(); break;
     case "eligib":     h = viewEligibility(); break;
     case "oplog":      h = viewOpLog(); break;
+    case "supervise":  h = viewSupervision(); break;
+    case "abssheet":   h = viewAbsentSheets(); break;
     case "mylessons":  h = viewMyLessons(); break;
     case "lessons":    h = viewLessonsBoard(); break;
     case "home":       h = viewHome(); break;
@@ -3116,6 +3262,175 @@ function pageBar(pg, key){
     btn(pg.page+1,"›",pg.page===pg.pages)+btn(pg.pages,"»",pg.page===pg.pages)+
     '</div>';
 }
+/* ============================================================
+   لوحة الإشراف اليومي — أي فصل ما رصدش غيابه بعد ٥ دقايق من بداية
+   الحصة بيبقى أحمر: دليل إن المعلم مش في الفصل.
+   ============================================================ */
+var LATE_MIN = 5;
+function supervisionGrid(date){
+  date = date || today();
+  var di = new Date(date).getDay();
+  var P = periodsCount();
+  var classes = myClasses().sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); });
+  var isToday = (date===today());
+  var nm = nowMin();
+  return classes.map(function(c){
+    var cells = [];
+    for(var p=1;p<=P;p++){
+      var w = periodWindow(p);
+      var slot = schedCell(c.id, di, p);
+      var done = periodDone(c.id, date, p);
+      var st = "none";                       /* مفيش حصة */
+      if(slot){
+        if(done) st = "ok";
+        else if(!isToday) st = "miss";       /* يوم فات وما اترصدش */
+        else if(w && nm >= w.fromMin + LATE_MIN) st = "late";   /* أحمر */
+        else if(w && nm >= w.fromMin) st = "now";
+        else st = "wait";
+      }
+      cells.push({ p:p, slot:slot, done:done, st:st, w:w });
+    }
+    return { cls:c, cells:cells };
+  });
+}
+function viewSupervision(){
+  var date = (UI.sub && UI.sub.date) || today();
+  var grid = supervisionGrid(date);
+  var P = periodsCount();
+  var late = 0, ok = 0, tot = 0;
+  grid.forEach(function(r){ r.cells.forEach(function(x){
+    if(x.st==="none") return; tot++;
+    if(x.st==="ok") ok++; else if(x.st==="late"||x.st==="miss") late++;
+  }); });
+
+  var h = pageHd("الإشراف اليومي", fmtDate(date)+" — متابعة رصد الغياب لكل فصل وحصة",
+    '<input type="date" id="supDate" value="'+esc(date)+'" class="mk" style="width:auto;min-width:140px">'+
+    '<button class="btn ghost noprint" data-act="print" style="margin-right:6px">⎙ طباعة</button>');
+
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("حصص اليوم", tot, "في القسم الحالي", "acc")+
+    stat("اترصدت", ok, "الغياب مسجّل", "acc-g")+
+    stat("متأخرة", late, late?"المعلم غالبًا مش موجود":"تمام", late?"acc-r":"acc-g")+
+    stat("الحصة دلوقتي", currentPeriod()||"—", "حسب التوقيت", "")+
+    '</div>';
+
+  h += '<div class="note">🟩 اترصد · 🟥 عدّى '+LATE_MIN+' دقايق من بداية الحصة والغياب لسه ما اترصدش '+
+    '(دليل إن المعلم مش في الفصل) · ⬜ لسه بدري · ▪ مفيش حصة.</div>';
+
+  h += '<div class="card"><div class="hd"><h3>الفصول × الحصص</h3></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>الفصل</th>';
+  for(var p=1;p<=P;p++){
+    var w = periodWindow(p);
+    h += '<th style="text-align:center">'+p+'<br><small style="font-weight:400">'+(w?esc(w.from):"")+'</small></th>';
+  }
+  h += '</tr></thead><tbody>';
+  if(!grid.length) h += '<tr><td colspan="'+(P+1)+'"><div class="empty"><b>مفيش فصول</b></div></td></tr>';
+  grid.forEach(function(r){
+    h += '<tr><td><b style="font-weight:600">'+esc(r.cls.name)+'</b></td>';
+    r.cells.forEach(function(x){
+      var bg = x.st==="ok" ? "#e6f4ea" : (x.st==="late"||x.st==="miss" ? "#fdeaea" :
+               (x.st==="now" ? "#fdf6ec" : (x.st==="none" ? "transparent" : "#f6f7f6")));
+      var col = x.st==="ok" ? "var(--ok)" : ((x.st==="late"||x.st==="miss") ? "var(--danger)" : "var(--muted)");
+      var mark = x.st==="none" ? "▪" : (x.st==="ok" ? "✓" : ((x.st==="late"||x.st==="miss") ? "✕" : "…"));
+      var tip = x.slot ? (subjName(x.slot.subjectId)+(x.slot.teacherId?" — "+teacherName(x.slot.teacherId):"")) : "";
+      h += '<td style="text-align:center;background:'+bg+';color:'+col+';font-weight:700" title="'+esc(tip)+'">'+
+        mark+(x.slot&&x.slot.teacherId&&(x.st==="late"||x.st==="miss")
+          ? '<br><small style="font-weight:400;font-size:10px">'+esc(teacherName(x.slot.teacherId))+'</small>' : '')+
+        '</td>';
+    });
+    h += '</tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+
+  /* قائمة الحصص المتأخرة بالتفصيل */
+  var lateList = [];
+  grid.forEach(function(r){ r.cells.forEach(function(x){
+    if(x.st==="late"||x.st==="miss") lateList.push({ cls:r.cls, x:x });
+  }); });
+  if(lateList.length){
+    h += '<div class="card"><div class="hd"><h3>حصص لم يُرصد غيابها ('+lateList.length+')</h3></div><div class="bd flush">';
+    lateList.slice(0,40).forEach(function(o){
+      h += '<div class="list-item">'+
+        '<span class="ico" style="color:var(--danger)">'+icon("absence",20)+'</span>'+
+        '<span class="tx"><b>'+esc(o.cls.name)+' — الحصة '+o.x.p+'</b>'+
+        '<small>'+esc(subjName(o.x.slot.subjectId))+
+        (o.x.slot.teacherId? ' · '+esc(teacherName(o.x.slot.teacherId)) : ' · بدون معلم')+
+        (o.x.w? ' · من '+esc(o.x.w.from) : '')+'</small></span></div>';
+    });
+    h += '</div></div>';
+  }
+  return h;
+}
+/* ============================================================
+   كشوف الغياب المجمّعة — لكل حصة، مقسّمة بالفصول
+   ============================================================ */
+function absentSheet(period, date){
+  date = date || today();
+  var di = new Date(date).getDay();
+  var classes = myClasses().sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); });
+  var rows = [], n = 0;
+  classes.forEach(function(c){
+    var rec = DB.attend[attKey(c.id, date)] || {};
+    var slot = schedCell(c.id, di, period);
+    var abs = studentsOf(c.id).filter(function(s){
+      if(rec[s.id]!=="A") return false;
+      var e = absEntry(c.id, date, s.id);
+      /* اللي اترصد في الحصة دي أو قبلها (لأنه بيفضل غايب) */
+      return !e || num(e.p, 1) <= period;
+    }).sort(function(a,b){ return sortAr(a.name,b.name); });
+    if(!abs.length) return;
+    abs.forEach(function(s){ n++; rows.push({ n:n, cls:c, s:s, slot:slot }); });
+  });
+  return rows;
+}
+function viewAbsentSheets(){
+  var date = (UI.sub && UI.sub.date) || today();
+  var per = num((UI.sub&&UI.sub.per), 0) || 1;
+  var P = periodsCount();
+  var rows = absentSheet(per, date);
+  var di = new Date(date).getDay();
+
+  var h = pageHd("كشف الغائبين", fmtDate(date)+" — الحصة "+per,
+    '<input type="date" id="supDate" value="'+esc(date)+'" class="mk" style="width:auto;min-width:140px">'+
+    '<button class="btn noprint" data-act="print" style="margin-right:6px">⎙ طباعة الكشف</button>');
+
+  h += '<div class="chips noprint">';
+  for(var p=1;p<=P;p++){
+    var w = periodWindow(p);
+    h += '<button class="'+(p===per?"on":"")+'" data-act="absPer" data-p="'+p+'">الحصة '+p+
+      (w?' <small>'+esc(w.from)+'</small>':'')+'</button>';
+  }
+  h += '</div>';
+
+  h += '<div class="note noprint">الكشف بيجمع غائبي كل الفصول في الحصة دي مرتّبين بالفصل، '+
+    'وفيه خانة توقيع معلم الحصة. اطبعه ووزّعه على المعلمين للتوقيع.</div>';
+
+  h += printHd("كشف الغائبين — الحصة "+per+" — "+fmtDate(date));
+  h += '<div class="card"><div class="hd"><h3>الغائبون: '+rows.length+' طالب</h3></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th style="width:44px">م</th><th>الفصل</th><th>اسم الطالب الغائب</th>'+
+    '<th>المادة</th><th>معلم الحصة</th><th style="width:130px">توقيع معلم الحصة</th>'+
+    '</tr></thead><tbody>';
+  if(!rows.length){
+    h += '<tr><td colspan="6"><div class="empty"><div class="big">'+icon("attend",34)+'</div>'+
+      '<b>مفيش غائبين في الحصة دي</b><p>يا إما الحضور كامل، يا إما الغياب لسه ما اترصدش.</p></div></td></tr>';
+  }
+  var lastCls = "";
+  rows.forEach(function(r){
+    var newCls = (r.cls.id!==lastCls);
+    lastCls = r.cls.id;
+    h += '<tr'+(newCls?' style="border-top:2px solid var(--line-2)"':'')+'>'+
+      '<td class="rownum">'+r.n+'</td>'+
+      '<td>'+(newCls?'<b style="font-weight:600">'+esc(r.cls.name)+'</b>':'<small style="color:var(--muted)">'+esc(r.cls.name)+'</small>')+'</td>'+
+      '<td><b style="font-weight:600">'+esc(r.s.name)+'</b></td>'+
+      '<td><small>'+esc(r.slot? subjName(r.slot.subjectId) : "—")+'</small></td>'+
+      '<td><small>'+esc(r.slot&&r.slot.teacherId? teacherName(r.slot.teacherId) : "—")+'</small></td>'+
+      '<td style="height:30px"></td>'+
+      '</tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
 function viewStudents(){
   var f = UI.filters;
   var mine = myClassIds();
@@ -4347,7 +4662,7 @@ function teacherFitsSubject(t, subName){
 
 /* ---------- جدول الفصل ---------- */
 function viewSchedule(){
-  var isDep = UI.user.role==="deputy" || UI.user.role==="admin";
+  var isDep = UI.user.role==="deputy" || UI.user.role==="admin" || UI.user.role==="scheduler";
   var _mc = myClasses();
   var cid = UI.filters.schedCls;
   if(!cid || !classById(cid) || !inSector(classById(cid))) cid = _mc[0] && _mc[0].id;
@@ -4754,6 +5069,26 @@ function tabAttendance(a, c){
   if(!dsA.ok) return h + holidayBlock(dsA, "مفيش رصد غياب في اليوم ده. غيّر التاريخ لو بترصد يوم فات.");
   if(!studs.length) return h+'<div class="card"><div class="bd"><div class="empty"><b>الفصل فاضي</b><p>الوكيل لسه ما سكّنش طلاب على الفصل ده.</p></div></div></div>';
 
+  /* الحصة اللي بيرصد فيها — افتراضيًا الحصة الشغالة دلوقتي */
+  var P = periodsCount();
+  var curP = (UI.sub && UI.sub.per) || (date===today() ? (currentPeriod()||1) : 1);
+  var isDep2 = canEditAtt();
+  var doneRec = periodDone(c.id, date, curP);
+
+  h += '<div class="card noprint"><div class="hd"><h3>الحصة</h3>'+
+    (doneRec? '<span class="tag ok">اترصدت '+esc(fromMin(Math.floor((doneRec.at%86400000)/60000)||0)?"":"")+
+      (doneRec.by? esc(teacherName(doneRec.by)) : "")+'</span>' : '<span class="tag warn">لسه ما اترصدتش</span>')+
+    '</div><div class="bd"><div class="chips" style="margin:0">'+
+    (function(){ var o=""; for(var p=1;p<=P;p++){
+      var w = periodWindow(p), dn = periodDone(c.id,date,p);
+      o += '<button class="'+(p===curP?"on":"")+'" data-act="attPer" data-p="'+p+'">'+
+        'الحصة '+p+(dn?' ✓':'')+'</button>';
+    } return o; })()+'</div>'+
+    '<div class="note" style="margin:9px 0 0">الطابور ممكن يتأخر، فالرصد بيتم في أي حصة. '+
+    '<b>أول ما الطالب يتسجّل غايب، يفضل غايب طول اليوم</b> ومينفعش يتغيّر من المعلم — '+
+    'وكيل شئون الطلاب بس هو اللي يقدر يعدّل.</div>'+
+    '</div></div>';
+
   var cP=0,cA=0,cE=0,cL=0;
   studs.forEach(function(s){ var v=rec[s.id]; if(v==="A")cA++;else if(v==="E")cE++;else if(v==="L")cL++;else if(v==="P")cP++; });
   h += '<div class="stats" style="margin-bottom:11px">'+
@@ -4762,14 +5097,20 @@ function tabAttendance(a, c){
 
   h += '<div class="card"><div class="hd"><h3>كشف الحضور — '+esc(fmtDate(date))+'</h3>'+
     '<small style="color:var(--muted)">ح = حاضر · غ = غائب · ع = بعذر · ت = متأخر</small></div><div class="bd flush">';
-  function segBtn(sid,val,label,cur){
-    return '<button class="'+(cur===val?"on":"")+'" data-v="'+val+'" data-act="attSet" data-sid="'+sid+'">'+label+'</button>';
+  function segBtn(sid,val,label,cur,lock){
+    return '<button class="'+(cur===val?"on":"")+'" data-v="'+val+'" data-act="attSet" data-sid="'+sid+'"'+
+      (lock?' disabled style="opacity:.45;cursor:not-allowed"':'')+'>'+label+'</button>';
   }
   studs.forEach(function(s,i){
     var v = rec[s.id];
-    h += '<div class="att-row"><span class="no">'+(i+1)+'</span><span class="nm">'+esc(s.name)+'</span>'+
+    var lk = !isDep2 && attLocked(c.id, date, s.id);
+    var e = absEntry(c.id, date, s.id);
+    h += '<div class="att-row"><span class="no">'+(i+1)+'</span>'+
+      '<span class="nm">'+esc(s.name)+
+      (lk? ' <small style="color:var(--danger);font-size:11px">مقفول — اترصد غايب الحصة '+num(e&&e.p,0)+'</small>':'')+
+      '</span>'+
       '<span class="seg">'+
-      segBtn(s.id,"P","ح",v)+segBtn(s.id,"A","غ",v)+segBtn(s.id,"E","ع",v)+segBtn(s.id,"L","ت",v)+
+      segBtn(s.id,"P","ح",v,lk)+segBtn(s.id,"A","غ",v,lk)+segBtn(s.id,"E","ع",v,lk)+segBtn(s.id,"L","ت",v,lk)+
       '</span></div>';
   });
   h += '</div></div>';
@@ -5523,7 +5864,8 @@ function adminRoleOfTeacher(tid){
   if(!tid) return "";
   var u = DB.users.filter(function(x){ return x.teacherId===tid; })[0];
   if(!u) return "";
-  if(u.role==="manager" || u.role==="deputy" || u.role==="admin") return (ROLES[u.role]||{}).name || "";
+  if(u.role==="manager" || u.role==="deputy" || u.role==="admin" || u.role==="scheduler")
+    return (ROLES[u.role]||{}).name || "";
   return "";
 }
 /* هل ده إداري مش بيدرّس؟ */
@@ -6781,14 +7123,35 @@ var ACTS = {
 
   openTeachClass: function(el){ UI.sub={a:el.dataset.id, t:"att"}; render(); },
   tclsTab: function(el){ UI.sub.t = el.dataset.t; render(); },
+  absPer: function(el){ UI.sub = UI.sub || {}; UI.sub.per = num(el.dataset.p,1); render(); },
+  attPer: function(el){
+    UI.sub = UI.sub || {};
+    UI.sub.per = num(el.dataset.p,1);
+    render();
+  },
   attSet: function(el){
     var a = byId(DB.assign, UI.sub.a); if(!a) return;
     var date = UI.sub.date || today();
     var k = attKey(a.classId, date);
     if(!DB.attend[k]) DB.attend[k] = {};
     var sid = el.dataset.sid, v = el.dataset.v;
+    /* القفل: المعلم مقدرش يشيل غياب اترصد قبل كده */
+    if(!canEditAtt() && attLocked(a.classId, date, sid)){
+      toast("الطالب اترصد غايب قبل كده — التعديل من وكيل شئون الطلاب");
+      return;
+    }
+    var per = (UI.sub && UI.sub.per) || (date===today() ? (currentPeriod()||1) : 1);
     if(DB.attend[k][sid]===v) delete DB.attend[k][sid];
     else DB.attend[k][sid] = v;
+    /* أول رصد غياب بيتسجّل بحصته ومعلمه */
+    var log = absLog(a.classId, date);
+    if(DB.attend[k][sid]==="A"){
+      if(!log[sid]) log[sid] = { p:per, at:Date.now(), by:(UI.user&&UI.user.teacherId)||"" };
+    }else if(canEditAtt()){
+      delete log[sid];               /* الوكيل بس اللي يفك القفل */
+    }
+    markPeriodDone(a.classId, date, per);
+    touchSession("رصد غياب");
     save();
     var seg = el.parentNode;
     Array.prototype.forEach.call(seg.children, function(b){ b.classList.remove("on"); });
@@ -6798,15 +7161,40 @@ var ACTS = {
   attAll: function(el){
     var a = byId(DB.assign, UI.sub.a); if(!a) return;
     var date = UI.sub.date || today();
+    var perA = (UI.sub && UI.sub.per) || (date===today() ? (currentPeriod()||1) : 1);
+    markPeriodDone(a.classId, date, perA);
+    touchSession("رصد غياب جماعي");
     var k = attKey(a.classId, date);
-    DB.attend[k] = {};
-    studentsOf(a.classId).forEach(function(s){ DB.attend[k][s.id] = el.dataset.v; });
+    var vv = el.dataset.v;
+    if(!canEditAtt()){
+      /* المعلم مقدرش يشيل غياب مسجّل — بنحافظ على المقفولين */
+      if(!DB.attend[k]) DB.attend[k] = {};
+      studentsOf(a.classId).forEach(function(s){
+        if(attLocked(a.classId, date, s.id)) return;
+        DB.attend[k][s.id] = vv;
+      });
+    }else{
+      DB.attend[k] = {};
+      studentsOf(a.classId).forEach(function(s){ DB.attend[k][s.id] = vv; });
+      if(vv!=="A") DB.attLog[attLogKey(a.classId,date)] = {};
+    }
+    if(vv==="A"){
+      var lg = absLog(a.classId, date);
+      studentsOf(a.classId).forEach(function(s){
+        if(!lg[s.id]) lg[s.id] = { p:perA, at:Date.now(), by:(UI.user&&UI.user.teacherId)||"" };
+      });
+    }
     save(); render(); toast("اتحدد الكل");
   },
   attClear: function(){
     var a = byId(DB.assign, UI.sub.a); if(!a) return;
-    var k = attKey(a.classId, UI.sub.date || today());
+    if(!canEditAtt()){ toast("مسح اليوم من صلاحية وكيل شئون الطلاب"); return; }
+    var date = UI.sub.date || today();
+    var k = attKey(a.classId, date);
     delete DB.attend[k];
+    attLogInit();
+    delete DB.attLog[attLogKey(a.classId,date)];
+    for(var p=1;p<=periodsCount();p++) delete DB.attDone[attDoneKey(a.classId,date,p)];
     save(); render(); toast("اتمسح اليوم");
   },
   autoBeh: function(){
@@ -6930,6 +7318,7 @@ function hookInputs(root){
     if(id==="tsub"){ UI.filters.tsub = e.target.value; UI.page = {}; render(); }
     if(id==="logq"){ UI.filters.logq = e.target.value; render(); }
     if(id==="lsDate"){ UI.sub = { date: e.target.value }; render(); }
+    if(id==="supDate"){ UI.sub = UI.sub || {}; UI.sub.date = e.target.value; render(); }
     if(id==="trkLvl"){ DB.trackLevel = num(e.target.value,2); saveNow(); render(); toast("استمارة المسار بقت لطلاب "+levelName(DB.trackLevel)); }
     if(id==="attDate"){ UI.sub.date = e.target.value; render(); }
     if(id==="ctLvl" || id==="ctCls" || id==="ctScope"){
@@ -9911,6 +10300,7 @@ function doLogin(){
     if(st.curv) UI.curv = st.curv;
   }
   autoBackup();
+  startSession(u);
   document.getElementById("login").classList.add("off");
   document.getElementById("app").classList.add("on");
   document.getElementById("hdUser").textContent = u.name + " · " + (ROLES[u.role] ? ROLES[u.role].name : "");
@@ -10353,6 +10743,7 @@ function viewToday(){
 
   h += setupCard();
   h += tasksCard();
+  if(UI.user.role==="manager" || UI.user.role==="deputy") h += sessionsCard();
 
   /* المشرف العام */
   h += '<div class="card"><div class="hd"><div style="flex:1"><span class="eyebrow">المناوبة</span>'+
@@ -12438,6 +12829,21 @@ function addedOrder(s){
   var i = DB.students.indexOf(s);
   return i>=0 ? i : 0;
 }
+/* هل الصف ده اترحّل قبل كده؟ الرقم القومي أولًا، والعلامة المحفوظة احتياط.
+   كده الاسم اللي اترحّل مرة عمره ما هيظهر تاني في «الجديد فقط». */
+function migratedStudentOf(r){
+  var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
+  if(nat){
+    var byNat = DB.students.filter(function(s){ return s.natId===nat; })[0];
+    if(byNat) return byNat;
+  }
+  if(r.src && r.src.migratedTo){
+    var st = studentById(r.src.migratedTo);
+    if(st) return st;
+  }
+  return null;
+}
+function rowMigrated(r){ return !!migratedStudentOf(r); }
 function migrateRowToStudent(r, opt){
   opt = opt || {};
   var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
@@ -12495,6 +12901,7 @@ function migrateRowToStudent(r, opt){
   setStudentLevel(s, opt.level || r.level || 0);
   enrichStudent(s);
   DB.students.push(s);
+  if(r.src && typeof r.src==="object"){ r.src.migrated = true; r.src.migratedTo = s.id; }
   return {ok:true, sid:s.id, s:s};
 }
 /* ترحيل جماعي من استمارة: بيسكّن أوتوماتيك لو لقى فصل مناسب لنفس الصف */
@@ -12554,7 +12961,7 @@ function modalFormMigrate(fid){
   rows.forEach(function(r){
     var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
     r._nat = nat;
-    r._old = DB.students.filter(function(s){ return s.natId===nat; })[0] || null;
+    r._old = migratedStudentOf(r);
   });
   UI.migRows = rows;
   var isNew = rows.filter(function(r){ return !r._old; }).length;
@@ -12675,10 +13082,7 @@ function viewFormSubs(f){
       var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
       return nat && nat.length===14;
     });
-    var notMig = rowsAll.filter(function(r){
-      var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
-      return !DB.students.some(function(s){ return s.natId===nat; });
-    }).length;
+    var notMig = rowsAll.filter(function(r){ return !rowMigrated(r); }).length;
     h += '<div class="note noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
       '<span class="tag info">الصف المستهدف: '+esc(formLevelLabel(f))+'</span>'+
       '<span style="flex:1;min-width:160px">'+
@@ -13270,6 +13674,11 @@ var NISAB_SUPERVISOR_CUT = 2;
 function nisabOf(tid){
   var th = teacherById(tid);
   if(isNonTeaching(th)) return 0;          /* إداري لا يدرّس */
+  /* مسؤول الجدول بيدرّس بس بنصاب مخفّض */
+  var uu = DB.users.filter(function(x){ return x.teacherId===tid; })[0];
+  if(uu && uu.role==="scheduler"){
+    return Math.max(0, num(th && th.quotaCut, 0) || num(DB.meta.schedulerNisab, 8));
+  }
   /* المعلم بالأجر نصابه = الحصص المتعاقد عليها */
   if(th && th.hourly) return Math.max(1, num(th.hourQuota, 10));
   var s = staffById("T"+tid);
