@@ -468,6 +468,32 @@ function curriculumInit(){
     }
   }
   if(!Array.isArray(DB.tracksCustom)) DB.tracksCustom = [];
+  if(curriculumUpgrade()) changed = true;
+  return changed;
+}
+/* ترقية هيكل قديم اتبنى قبل ما نضيف «الحصص الأسبوعية»:
+   بنملا الحصص من الخطة الرسمية بمطابقة الاسم، من غير ما نلمس أي تعديل عمله الوكيل. */
+function curriculumUpgrade(){
+  var changed = false;
+  /* فهرس الحصص الرسمية بالاسم */
+  var byName = {};
+  for(var k in OFFICIAL_PLAN){
+    OFFICIAL_PLAN[k].forEach(function(r){
+      var n = normAr(r[0]);
+      if(byName[n]===undefined) byName[n] = num(r[5],0);
+    });
+  }
+  for(var key in DB.curriculum){
+    var arr = DB.curriculum[key];
+    if(!Array.isArray(arr)) continue;
+    arr.forEach(function(su){
+      if(num(su.periods,0) > 0) return;
+      var n = byName[normAr(su.name)];
+      if(!n) n = suggestHours(su);          /* مادة من عند المدرسة — نقترح رقم معقول */
+      su.periods = n;
+      changed = true;
+    });
+  }
   return changed;
 }
 function curSubjects(key){
@@ -4501,6 +4527,18 @@ var ACTS = {
   gsearch: function(){ modalSearch(); },
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
+  autoSubs: function(el){ autoSubjects(el.dataset.id); },
+  goTeachers: function(){ UI.tab="teachers"; UI.sub=null; render(); },
+  hoursFromPlan: function(){
+    markUndo("ضبط الحصص من الهيكل");
+    var n = 0;
+    DB.subjects.forEach(function(su){
+      var v = curriculumHoursFor(su);
+      if(v && v!==num(su.hours,0)){ su.hours = v; su.periods = v; n++; }
+    });
+    saveNow(); render();
+    toastUndo(n? "اتضبطت حصص "+n+" مادة من الهيكل الدراسي" : "الحصص مطابقة للهيكل بالفعل");
+  },
   fixHours: function(){
     markUndo("ضبط حصص المواد");
     var before = DB.subjects.filter(function(su){ return num(su.hours,0)===0; }).length;
@@ -10866,7 +10904,29 @@ function nisabJob(tid){
 function loadNow(tid){ return teacherPeriods(tid).length; }
 
 /* ---------- حصص المادة الأسبوعية ---------- */
-function subjHours(su){ return Math.max(0, num(su.hours, 0)); }
+/* حصص المادة الأسبوعية. لو ناقصة بنجيبها من الهيكل الدراسي فورًا وبنثبّتها،
+   عشان أي مادة تتعمل بأي طريقة (توليد / استيراد / إضافة يدوية) تبقى جاهزة للجدول. */
+function subjHours(su){
+  if(!su) return 0;
+  var h = num(su.hours, 0);
+  if(h > 0) return h;
+  h = num(su.periods, 0);
+  if(!h) h = curriculumHoursFor(su);
+  if(!h) h = suggestHours(su);
+  su.hours = h;
+  if(!su.periods) su.periods = h;
+  return h;
+}
+/* حصص المادة من خطة صفها في الهيكل الدراسي */
+function curriculumHoursFor(su){
+  var c = classById(su.classId);
+  if(!c) return 0;
+  var plan = curSubjects(curKey(c.level, c.system, c.track));
+  for(var i=0;i<plan.length;i++){
+    if(normAr(plan[i].name)===normAr(su.name)) return num(plan[i].periods,0);
+  }
+  return 0;
+}
 /* توزيع افتراضي مقترح لو الوكيل ما حددش */
 function suggestHours(su){
   var n = normAr(su.name);
@@ -10998,7 +11058,7 @@ function viewScheduleHub(){
     stBtn("classes","جداول الفصول",t)+
     stBtn("day","الجدول اليومي",t)+
     (isDep? stBtn("gen","توليد تلقائي",t) : "")+
-    (isDep? stBtn("hours","حصص المواد",t) : "")+
+    (isDep? stBtn("hours","تفاصيل الجدول",t) : "")+
     stBtn("load","الأنصبة",t)+'</div>';
   if(t==="classes") return h + viewSchedule();
   if(t==="day")   return h + viewDaySchedule();
@@ -11064,34 +11124,113 @@ function viewSubjHours(){
   var g = gate("classes","subjects");
   if(g) return g;
   var cls = myClasses().slice().sort(function(a,b){ return a.level-b.level||sortAr(a.name,b.name); });
-  var days = schoolDayIdx().length, P = periodsCount();
+  var days = schoolDayIdx().length, P = periodsCount(), cap = days*P;
+  var cfg = curCfg();
 
-  var h = '<div class="note">عدد الحصص الأسبوعية لكل مادة — ده أساس توليد الجدول. '+
-    'الجدول بيسع <b>'+(days*P)+'</b> حصة لكل فصل ('+days+' يوم × '+P+' حصة).</div>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px" class="noprint">'+
-    '<button class="btn ghost" data-act="autoHours">اقتراح توزيع مبدئي للفاضي</button></div>';
+  var h = '<div class="note">من هنا بتتحكم في كل تفاصيل الجدول: عدد حصص اليوم، وحصص كل مادة، '+
+    'ومين المعلم اللي بيدرّس كل مادة لكل فصل. أي تعديل هنا بيتطبق على التوليد بعد كده.</div>';
+
+  /* ---------- ١) إعدادات اليوم الدراسي ---------- */
+  h += '<div class="card"><div class="hd"><div style="flex:1">'+
+    '<span class="eyebrow">١</span><h3>اليوم الدراسي</h3></div>'+
+    '<span class="tag info">'+days+' يوم × '+P+' حصة = '+cap+' خانة للفصل</span></div><div class="bd">'+
+    '<div class="grid2">'+
+      '<label class="f" style="margin:0"><span>عدد الحصص في اليوم</span>'+
+        '<input type="number" id="cfg_periods" min="1" max="12" value="'+P+'" data-act="cfgPeriods"></label>'+
+      '<label class="f" style="margin:0"><span>أيام الأسبوع الدراسية</span>'+
+        '<select id="cfg_week" data-act="cfgWeek">'+
+        '<option value="normal"'+(DB.meta.weekMode!=="exams"?" selected":"")+'>٥ أيام (الأحد ← الخميس)</option>'+
+        '<option value="exams"'+(DB.meta.weekMode==="exams"?" selected":"")+'>٦ أيام (بإضافة السبت)</option>'+
+        '</select></label>'+
+    '</div>'+
+    '<div class="note" style="margin:8px 0 0">لو زوّدت عدد الحصص، سعة الفصل بتزيد وتقدر توزّع مواد أكتر. '+
+    'أوقات بداية ونهاية كل حصة بتتظبط من «أوقات اليوم».</div>'+
+    '</div></div>';
+
+  /* ---------- ٢) حصص كل مادة لكل فصل ---------- */
+  h += '<div class="card"><div class="hd"><div style="flex:1">'+
+    '<span class="eyebrow">٢</span><h3>حصص المواد لكل فصل</h3></div>'+
+    '<button class="btn ghost sm" data-act="hoursFromPlan">↻ من الهيكل الدراسي</button>'+
+    '<button class="btn ghost sm" data-act="autoHours" style="margin-right:5px">اقتراح للفاضي</button></div>'+
+    '<div class="bd"><div class="note">اكتب أي رقم تحبه — ده بمزاجك تمامًا. '+
+    'المهم مجموع الفصل ما يعديش سعته ('+cap+').</div></div></div>';
 
   cls.forEach(function(c){
     var subs = DB.subjects.filter(function(s){ return s.classId===c.id; });
     var tot = 0; subs.forEach(function(s){ tot += subjHours(s); });
-    var cap = days*P;
     h += '<div class="card"><div class="hd"><h3>'+esc(c.name)+'</h3>'+
-      '<span class="tag '+(tot===cap?"ok":(tot>cap?"bad":"warn"))+'">'+tot+' / '+cap+' حصة</span></div>'+
-      '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
-      '<th>المادة</th><th>النوع</th><th>المعلم</th><th style="width:90px">حصص أسبوعية</th></tr></thead><tbody>';
-    if(!subs.length) h += '<tr><td colspan="4"><div class="empty"><b>مفيش مواد</b></div></td></tr>';
+      '<small style="color:var(--muted)">'+esc(levelName(c.level))+' · '+esc(trackName(c.system,c.track))+'</small>'+
+      '<span style="flex:1"></span>'+
+      '<span class="tag '+(tot===cap?"ok":(tot>cap?"bad":"warn"))+'">'+tot+' / '+cap+' حصة</span>'+
+      (subs.length?'':'<button class="btn ghost sm" data-act="autoSubs" data-id="'+c.id+'">توليد المواد</button>')+
+      '</div><div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+      '<th>المادة</th><th>النوع</th><th style="width:90px">حصص أسبوعية</th>'+
+      '<th style="min-width:180px">المعلم المسؤول</th></tr></thead><tbody>';
+    if(!subs.length) h += '<tr><td colspan="4"><div class="empty"><b>مفيش مواد للفصل ده</b>'+
+      '<p>اضغط «توليد المواد» فوق عشان تيجي من الهيكل الدراسي بحصصها.</p></div></td></tr>';
     subs.forEach(function(su){
       var a = DB.assign.filter(function(x){ return x.classId===c.id && x.subjectId===su.id; })[0];
       h += '<tr><td><b style="font-weight:600">'+esc(su.name)+'</b></td>'+
         '<td>'+(su.counted?'<span class="tag info">داخل المجموع</span>':'<span class="tag">خارج المجموع</span>')+'</td>'+
-        '<td>'+(a? esc(teacherName(a.teacherId)) : '<span class="tag bad">بدون معلم</span>')+'</td>'+
         '<td><input class="mk" type="number" min="0" max="12" value="'+(subjHours(su)||"")+'" '+
-        'data-act="hrSet" data-id="'+su.id+'"></td></tr>';
+          'data-act="hrSet" data-id="'+su.id+'"></td>'+
+        '<td>'+teacherPicker(c, su, a)+'</td></tr>';
     });
     h += '</tbody></table></div></div></div>';
   });
+
+  /* ---------- ٣) المعلمون وتخصصاتهم ---------- */
+  h += subjectTeachersCard();
   return h;
 }
+/* قائمة اختيار المعلم لمادة معيّنة — المطابقين للتخصص فوق ومعلّم عليهم */
+function teacherPicker(c, su, a){
+  var cands = DB.teachers.filter(function(t){ return t.status!=="left"; })
+    .map(function(t){ return { t:t, fit:teacherFitsSubject(t, su.name), load:plannedHours(t.id,{}) }; })
+    .sort(function(x,y){ return y.fit - x.fit || x.load - y.load || sortAr(x.t.name,y.t.name); });
+  var h = '<select data-act="setAssign" data-cid="'+c.id+'" data-sid="'+su.id+'" '+
+    'style="width:100%;padding:6px 8px;border:1px solid var(--line-2);border-radius:7px;font:inherit;font-size:12.5px">'+
+    '<option value="">— بدون معلم —</option>';
+  var lastFit = -1;
+  cands.forEach(function(x){
+    if(x.fit !== lastFit){
+      if(lastFit >= 0) h += '</optgroup>';
+      h += '<optgroup label="'+(x.fit>=3?"تخصصه المادة دي":(x.fit>0?"تخصص قريب":"تخصص مختلف"))+'">';
+      lastFit = x.fit;
+    }
+    var n = nisabOf(x.t.id);
+    h += '<option value="'+x.t.id+'"'+(a&&a.teacherId===x.t.id?" selected":"")+'>'+
+      esc(x.t.name)+' — '+esc(x.t.subject||"بدون تخصص")+' ('+x.load+'/'+n+')</option>';
+  });
+  if(lastFit>=0) h += '</optgroup>';
+  return h+'</select>';
+}
+/* بطاقة: كل معلم وتخصصه وحِمله — للمراجعة السريعة */
+function subjectTeachersCard(){
+  var list = DB.teachers.filter(function(t){ return t.status!=="left"; })
+    .sort(function(a,b){ return sortAr(a.subject||"يي", b.subject||"يي") || sortAr(a.name,b.name); });
+  var h = '<div class="card"><div class="hd"><div style="flex:1">'+
+    '<span class="eyebrow">٣</span><h3>المعلمون وتخصصاتهم</h3></div>'+
+    '<button class="btn ghost sm" data-act="goTeachers">تعديل التخصصات</button></div>'+
+    '<div class="bd"><div class="note">ربط المعلم بمادته بيتم من <b>خانة التخصص</b> في بياناته. '+
+    'البرنامج بيقارن التخصص باسم المادة ويرشّح المطابقين أول القائمة.</div>'+
+    '<div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>المعلم</th><th>التخصص</th><th>النصاب</th><th>الحِمل الحالي</th><th>المواد المسندة له</th>'+
+    '</tr></thead><tbody>';
+  if(!list.length) h += '<tr><td colspan="5"><div class="empty"><b>مفيش معلمين</b></div></td></tr>';
+  list.forEach(function(t){
+    var mine = DB.assign.filter(function(a){ return a.teacherId===t.id; });
+    var names = {}; mine.forEach(function(a){ var su=subjById(a.subjectId); if(su) names[su.name]=1; });
+    var n = nisabOf(t.id), l = plannedHours(t.id,{});
+    h += '<tr><td><b style="font-weight:600">'+esc(t.name)+'</b></td>'+
+      '<td>'+esc(t.subject||'<span class="tag bad">بدون تخصص</span>')+'</td>'+
+      '<td class="num">'+n+'</td>'+
+      '<td class="num"><span class="tag '+(l>n?"bad":(l?"ok":""))+'">'+l+'</span></td>'+
+      '<td><small>'+(Object.keys(names).join("، ")||"—")+' · '+mine.length+' فصل</small></td></tr>';
+  });
+  return h+'</tbody></table></div></div></div>';
+}
+
 
 /* ---------- الأنصبة ---------- */
 function viewLoads(){
@@ -11155,14 +11294,20 @@ function autoAssignTeachers(levels, opt){
   var scope = {}; classes.forEach(function(c){ scope[c.id]=1; });
 
   /* الطلب: (فصل × مادة) وحصصها — الأكبر الأول عشان يلاقي معلم فاضي */
-  var demand = [];
+  var demand = [], noSubs = [];
   classes.forEach(function(c){
-    DB.subjects.filter(function(su){ return su.classId===c.id; }).forEach(function(su){
-      var hrs = subjHours(su);
+    var subs = DB.subjects.filter(function(su){ return su.classId===c.id; });
+    if(!subs.length){ noSubs.push(c); return; }
+    subs.forEach(function(su){
+      var hrs = subjHours(su);          /* بتظبط الحصص لوحدها لو ناقصة */
       if(hrs>0) demand.push({ cls:c, su:su, hrs:hrs });
     });
   });
-  if(!demand.length) return { err:"الفصول دي مالهاش مواد بحصص — ولّد المواد وحدّد حصصها الأول" };
+  if(!demand.length){
+    return { err: noSubs.length
+      ? "الفصول دي مفيهاش مواد أصلًا — افتح كل فصل واضغط «توليد المواد المقررة»"
+      : "مفيش مواد بحصص في الفصول دي" };
+  }
 
   /* الحِمل المبدئي = تكليفات الفصول اللي برّه النطاق (مش هنلمسها) */
   var load = {};
@@ -11415,11 +11560,43 @@ Object.assign(ACTS, {
 /* حفظ حصص المادة وأنت بتكتب */
 document.addEventListener("input", function(e){
   var el = e.target;
-  if(!el || !el.dataset || el.dataset.act!=="hrSet") return;
-  var su = subjById(el.dataset.id);
-  if(!su) return;
-  su.hours = Math.max(0, Math.min(12, num(el.value, 0)));
-  save();
+  if(!el || !el.dataset) return;
+  var act = el.dataset.act;
+  if(act==="hrSet"){
+    var su = subjById(el.dataset.id);
+    if(!su) return;
+    su.hours = Math.max(0, Math.min(12, num(el.value, 0)));
+    su.periods = su.hours;
+    save();
+    return;
+  }
+  /* عدد حصص اليوم */
+  if(act==="cfgPeriods"){
+    var n = Math.max(1, Math.min(12, num(el.value, 8)));
+    curCfg().periods = n;
+    saveNow(); render();
+    return;
+  }
+});
+/* اختيار المعلم لمادة، وأيام الأسبوع */
+document.addEventListener("change", function(e){
+  var el = e.target;
+  if(!el || !el.dataset) return;
+  if(el.dataset.act==="setAssign"){
+    var cid = el.dataset.cid, sid = el.dataset.sid, tid = el.value;
+    DB.assign = DB.assign.filter(function(a){ return !(a.classId===cid && a.subjectId===sid); });
+    if(tid) DB.assign.push({ id:uid("as"), classId:cid, subjectId:sid, teacherId:tid });
+    /* الجدول الحالي يتحدّث بالمعلم الجديد */
+    DB.schedule.forEach(function(x){ if(x.classId===cid && x.subjectId===sid) x.teacherId = tid; });
+    saveNow(); render();
+    toast(tid? "اتسند لـ"+teacherName(tid) : "اتشال المعلم");
+    return;
+  }
+  if(el.dataset.act==="cfgWeek"){
+    DB.meta.weekMode = el.value==="exams" ? "exams" : "normal";
+    saveNow(); render();
+    toast("اتغيّرت أيام الأسبوع");
+  }
 });
 
 /* معاينة حية للبيانات المشتقة في استمارة الطالب */
