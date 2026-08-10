@@ -390,15 +390,18 @@ var LEVELS = [
 var OFFICIAL_PLAN = {
   /* الصف الأول — سنة تمهيدية مشتركة للجميع، ومش بتدخل مجموع البكالوريا */
   "1|any|none":[
-    ["اللغة العربية",100,1,50,0,6],
-    ["التاريخ",100,1,50,0,3],
-    ["اللغة الأجنبية الأولى",100,1,50,0,5],
-    ["الفلسفة",100,1,50,0,2],
-    ["الرياضيات",100,1,50,0,5],
-    ["العلوم",100,1,50,0,5],
-    ["اللغة الأجنبية الثانية",100,0,50,0,3],
-    ["البرمجة والذكاء الاصطناعي",100,0,50,0,2],
-    ["التربية الدينية",100,0,70,0,2]
+    ["اللغة العربية",80,1,50,0,5,"core"],
+    ["اللغة الأجنبية الأولى",60,1,50,0,5,"core"],
+    ["التاريخ",60,1,50,0,5,"core"],
+    ["الرياضيات",60,1,50,0,5,"core"],
+    ["علوم متكاملة",60,1,50,0,5,"core"],
+    ["الفلسفة والمنطق",60,1,50,0,4,"core"],
+    ["التربية الدينية",40,0,70,0,2,"core"],
+    ["اللغة الأجنبية الثانية",40,0,50,0,2,"core"],
+    ["التربية الرياضية",10,0,50,0,1,"core"],
+    ["التربية الوطنية",10,0,50,0,1,"core"],
+    ["النشاط التربوي",10,0,50,0,1,"activity"],
+    ["التربية المهنية",20,0,50,0,1,"voc"]
   ],
   /* الصف الثاني بكالوريا — ٣ مواد عامة + مادة تخصص واحدة يختارها الطالب */
   "2|bac|med":[
@@ -455,7 +458,7 @@ function curKey(level, system, track){
 /* تحويل صف الخطة الرسمية لكائن مادة */
 function planRowToSubject(r){
   return { id:uid("ps"), name:r[0], max:num(r[1],100), counted:!!r[2],
-           pass:num(r[3],50), elective:!!r[4], periods:num(r[5],4) };
+           pass:num(r[3],50), elective:!!r[4], periods:num(r[5],4), kind:r[6]||"core" };
 }
 /* أول تشغيل: بنبني الهيكل من الخطة الرسمية، وبعد كده بيبقى ملك المدرسة تعدّله */
 function curriculumInit(){
@@ -630,7 +633,7 @@ function blankDB(){
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
     sectors:{}, wishes:[],
-    forms:[], formSubs:{}, papers:[], trackOpen:true
+    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[]
   };
 }
 
@@ -661,6 +664,7 @@ function load(){
     migrateLevels();
     curriculumInit();
     migrateSubjectHours();
+    actInit();
   }catch(e){ DB = seed(); }
 }
 /* ترحيل: الصف بقى بيان مستقل في الطالب نفسه — مش مستنتج من الفصل.
@@ -1135,7 +1139,7 @@ var NAV = {
     ["students","الطلاب","students"],["home","المنازل","home"],
     ["wishes","رغبات الطلاب","grades"],["absence","غياب الطلاب","absence"],
     ["_g","الشؤون الأكاديمية"],
-    ["curriculum","الهيكل الدراسي","plan"],["classes","الفصول","classes"],["schedule","الجداول","schedule"],
+    ["curriculum","الهيكل الدراسي","plan"],["classes","الفصول","classes"],["acts","الأنشطة","art"],["schedule","الجداول","schedule"],
     ["_g","العاملون"],
     ["staff","العاملون","staff"],["duty","توزيع الإشراف","duty"],["subs","الاحتياطي","subs"],
     ["_g","المدرسة"],
@@ -1149,7 +1153,7 @@ var NAV = {
     ["students","الطلاب","students"],["home","المنازل","home"],["wishes","رغبات الطلاب","grades"],
     ["_g","الشؤون الأكاديمية"],
     ["curriculum","الهيكل الدراسي","plan"],["classes","الفصول","classes"],
-    ["schedule","الجداول","schedule"],["teachers","المعلمون","teachers"],["assign","التكليفات","assign"],
+    ["acts","الأنشطة","art"],["schedule","الجداول","schedule"],["teachers","المعلمون","teachers"],["assign","التكليفات","assign"],
     ["_g","المستندات"],
     ["reports","الكشوف","reports"],["papers","الورقيات","papers"],
     ["events","الأحداث","events"],["settings","الإعدادات","settings"]
@@ -1416,6 +1420,7 @@ function render(){
     case "leaves":     h = viewLeaves(); break;
     case "staffStats": h = viewStaffStats(); break;
     case "curriculum": h = viewCurriculum(); break;
+    case "acts":       h = viewActivities(); break;
     case "home":       h = viewHome(); break;
     case "students":   h = UI.sub&&UI.sub.student ? viewStudent(UI.sub.student) : viewStudents(); break;
     case "classes":    h = UI.sub&&UI.sub.cls ? viewClass(UI.sub.cls) : viewClasses(); break;
@@ -1737,6 +1742,12 @@ function modalBulkStudents(ids){
         wishTracks().map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join("")+'</select></label>'+
     '</div>'+
     '<label class="f"><span>مادة التخصص</span><input type="text" id="bk_sub" placeholder="سيبها فاضية = من غير تغيير"></label>'+
+    '<div class="grid2">'+
+      '<label class="f"><span>النشاط التربوي</span><select id="bk_act"><option value="">— من غير تغيير —</option>'+
+        actsOf("activity").map(function(a){ return '<option value="'+a.id+'">'+esc(a.name)+'</option>'; }).join("")+'</select></label>'+
+      '<label class="f"><span>التربية المهنية</span><select id="bk_voc"><option value="">— من غير تغيير —</option>'+
+        actsOf("voc").map(function(a){ return '<option value="'+a.id+'">'+esc(a.name)+'</option>'; }).join("")+'</select></label>'+
+    '</div>'+
     '<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer">'+
       '<input type="checkbox" id="bk_enrich" checked style="width:18px;height:18px">'+
       '<span>إعادة استخراج البيانات من الرقم القومي والاسم (مواليد، نوع، محافظة، ولي أمر)</span></label>'+
@@ -1766,6 +1777,8 @@ function doBulkStudents(){
     if(track) s.bacTrack = track;
     var bsub = val("bk_sub").trim();
     if(bsub) s.bacSubject = bsub;
+    var bact = val("bk_act"); if(bact) s.actId = bact;
+    var bvoc = val("bk_voc"); if(bvoc) s.vocId = bvoc;
     if(doEnrich) enrichStudent(s);
   });
   UI.bulkIds = null;
@@ -2147,6 +2160,8 @@ function viewStudent(id){
     kv("نوعية التعليم", eduName(s.edu||"reg"))+
     kv("المسار", s.bacTrack?wishTrackName(s.bacTrack):(c?trackName(c.system,c.track):"—"))+
     kv("مادة التخصص", s.bacSubject||"—")+
+    kv("النشاط التربوي", s.actId?actName(s.actId):"—")+
+    kv("التربية المهنية", s.vocId?actName(s.vocId):"—")+
     '</div>';
   h += '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:14px 0 4px;font-size:13px">البيانات الشخصية</div>'+
     '<div class="grid2">'+
@@ -3949,6 +3964,14 @@ function modalStudent(id, presetCls){
       wishTracks().map(function(tr){ return '<option value="'+tr.id+'"'+((s&&s.bacTrack)===tr.id?" selected":"")+'>'+esc(tr.name)+'</option>'; }).join("")+
       '</select></label>'+
     '<label class="f"><span>مادة التخصص</span><select id="s_sub">'+studentSubjectOpts(s?s.bacTrack:"", s?s.bacSubject:"")+'</select></label>'+
+    '<label class="f"><span>النشاط التربوي</span><select id="s_act">'+
+      '<option value="">— لم يختر —</option>'+
+      actsOf("activity").map(function(a){ return '<option value="'+a.id+'"'+((s&&s.actId)===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+
+      '</select></label>'+
+    '<label class="f"><span>التربية المهنية</span><select id="s_voc">'+
+      '<option value="">— لم يختر —</option>'+
+      actsOf("voc").map(function(a){ return '<option value="'+a.id+'"'+((s&&s.vocId)===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+
+      '</select></label>'+
     '</div>'+
     '<div class="grid2">'+
     '<label class="f"><span>اسم ولي الأمر (بيتكمل من الاسم)</span><input type="text" id="s_g" value="'+esc(s?(s.guardian||""):"")+'"></label>'+
@@ -4020,6 +4043,8 @@ function saveStudent(){
   s.sector = eduType(s.edu).sector;
   s.bacTrack = val("s_trk");
   s.bacSubject = s.bacTrack ? val("s_sub") : "";
+  s.actId = val("s_act");
+  s.vocId = val("s_voc");
   if(s.edu==="home"){ s.classId = ""; }
   s.joined = val("s_j");
   s.notes = val("s_notes").trim();
@@ -4699,6 +4724,45 @@ var ACTS = {
   gsearch: function(){ modalSearch(); },
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
+  actKind:   function(el){ UI.actKind = el.dataset.k; UI.actOpen=null; render(); },
+  actOpen:   function(el){ UI.actOpen = (UI.actOpen===el.dataset.id? null : el.dataset.id); render(); },
+  actClose:  function(){ UI.actOpen = null; render(); },
+  actNew:    function(){ modalActivity(null); },
+  actEdit:   function(el){ modalActivity(el.dataset.id); },
+  actSave: function(el){
+    var id = el.dataset.id, name = val("ac_name").trim();
+    if(!name){ toast("اكتب اسم النشاط"); return; }
+    actInit();
+    var a = id ? actById(id) : null;
+    if(!a){ a = { id:uid("ac"), on:true }; DB.activities.push(a); }
+    a.name = name;
+    a.kind = val("ac_kind")==="voc" ? "voc" : "activity";
+    a.cap  = Math.max(0, num(val("ac_cap"),0));
+    saveNow(); closeModal(); render(); toast(id?"اتحفظ":"اتضاف النشاط");
+  },
+  actDel: function(el){
+    var a = actById(el.dataset.id); if(!a) return;
+    var n = studentsOfAct(a.id, a.kind).length;
+    if(!confirm("حذف نشاط «"+a.name+"»؟"+(n?"\n"+n+" طالب مختارينه هيرجعوا من غير نشاط.":""))) return;
+    markUndo("حذف نشاط");
+    var key = a.kind==="voc" ? "vocId" : "actId";
+    DB.students.forEach(function(s){ if(s[key]===a.id) s[key]=""; });
+    DB.activities = DB.activities.filter(function(x){ return x.id!==a.id; });
+    saveNow(); closeModal(); render(); toastUndo("اتحذف النشاط");
+  },
+  actToggle: function(el){
+    var a = actById(el.dataset.id); if(!a) return;
+    a.on = (a.on===false);
+    saveNow(); render(); toast(a.on?"اتفعّل":"اتوقف");
+  },
+  actDistribute: function(){
+    var kind = UI.actKind==="voc" ? "voc" : "activity";
+    markUndo("توزيع الأنشطة");
+    var r = autoDistributeActs(kind);
+    if(r.err){ toast(r.err); return; }
+    saveNow(); render();
+    toastUndo("اتوزّع "+r.done+" طالب"+(r.left? " · "+r.left+" فاضل (السعة اتملت)":""));
+  },
   genOneClass: function(el){
     var cid = el.dataset.id, c = classById(cid);
     if(!c) return;
@@ -11567,6 +11631,225 @@ function viewShortage(){
   }
   return h;
 }
+/* ============================================================
+   الأنشطة التربوية والتربية المهنية
+   المصدر: القرار الوزاري لنظام الدراسة والتقييم للصف الأول الثانوي.
+   الطالب يختار نشاطًا تربويًا واحدًا (حصة أسبوعيًا، ١٠ درجات)
+   ومادة تربية مهنية واحدة (حصة أسبوعيًا، ٢٠ درجة) — الاتنين خارج المجموع.
+   الفصل الواحد طلابه بيتوزّعوا على أنشطة مختلفة، فكل نشاط بيبقى مجموعة لوحده.
+   ============================================================ */
+var ACTIVITY_LIST = [
+  "التربية الفنية", "التربية الموسيقية", "الاقتصاد المنزلي",
+  "الكشافة والمرشدات", "المسرح والتمثيل", "الصحافة والإذاعة",
+  "خدمة المجتمع وتنمية البيئة", "النشاط العلمي والإبداعي", "المطالعة والمكتبات"
+];
+var VOC_LIST = [
+  "تكنولوجيا الصناعة", "تكنولوجيا الزراعة", "تكنولوجيا إدارة الأعمال والمشروعات"
+];
+function actInit(){
+  if(!Array.isArray(DB.activities) || !DB.activities.length){
+    DB.activities = ACTIVITY_LIST.map(function(n){
+      return { id:uid("ac"), name:n, kind:"activity", teacherId:"", cap:0, on:true };
+    }).concat(VOC_LIST.map(function(n){
+      return { id:uid("ac"), name:n, kind:"voc", teacherId:"", cap:0, on:true };
+    }));
+    return true;
+  }
+  return false;
+}
+function actsOf(kind){
+  actInit();
+  return DB.activities.filter(function(a){ return a.kind===kind; });
+}
+function actById(id){
+  actInit();
+  return DB.activities.filter(function(a){ return a.id===id; })[0] || null;
+}
+function actName(id){ var a = actById(id); return a ? a.name : "—"; }
+/* طلاب النشاط — من الصفوف اللي فيها النشاط ده */
+function studentsOfAct(actId, kind){
+  var key = kind==="voc" ? "vocId" : "actId";
+  return myStudents().filter(function(s){ return s[key]===actId; })
+    .sort(function(a,b){ return sortAr(a.name,b.name); });
+}
+/* الصفوف اللي عندها حصة نشاط في خطتها */
+function levelsWithActivity(kind){
+  var out = {};
+  myClasses().forEach(function(c){
+    curSubjects(curKey(c.level, c.system, c.track)).forEach(function(su){
+      if(su.kind===(kind==="voc"?"voc":"activity")) out[c.level] = 1;
+    });
+  });
+  return Object.keys(out).map(Number);
+}
+/* الطلاب المطلوب منهم يختاروا */
+function actEligible(kind){
+  var lv = levelsWithActivity(kind);
+  if(!lv.length) return [];
+  return myStudents().filter(function(s){ return lv.indexOf(studentLevelOf(s))>=0; });
+}
+function actUnassigned(kind){
+  var key = kind==="voc" ? "vocId" : "actId";
+  return actEligible(kind).filter(function(s){ return !s[key] || !actById(s[key]); });
+}
+/* توزيع تلقائي عادل للطلاب اللي مختاروش */
+function autoDistributeActs(kind){
+  var key = kind==="voc" ? "vocId" : "actId";
+  var open = actsOf(kind).filter(function(a){ return a.on!==false; });
+  if(!open.length) return { err:"مفيش أنشطة مفعّلة" };
+  var un = actUnassigned(kind);
+  if(!un.length) return { err:"كل الطلاب مختارين بالفعل" };
+  /* العدد الحالي لكل نشاط */
+  var cnt = {};
+  open.forEach(function(a){ cnt[a.id] = studentsOfAct(a.id, kind).length; });
+  var n = 0;
+  un.forEach(function(s){
+    /* الأقل عددًا الأول، مع احترام السعة لو محددة */
+    var best = null, bestN = Infinity;
+    open.forEach(function(a){
+      var cap = num(a.cap,0);
+      if(cap && cnt[a.id] >= cap) return;
+      if(cnt[a.id] < bestN){ bestN = cnt[a.id]; best = a; }
+    });
+    if(!best) return;
+    s[key] = best.id; cnt[best.id]++; n++;
+  });
+  return { done:n, left: actUnassigned(kind).length };
+}
+/* حِمل معلمي الأنشطة: كل مجموعة = حصة أسبوعيًا */
+function actGroupsCount(){
+  var n = 0;
+  ["activity","voc"].forEach(function(k){
+    actsOf(k).forEach(function(a){
+      if(a.on===false) return;
+      if(studentsOfAct(a.id, k).length) n++;
+    });
+  });
+  return n;
+}
+function viewActivities(){
+  actInit();
+  var kind = UI.actKind==="voc" ? "voc" : "activity";
+  var isDep = UI.user.role==="deputy" || UI.user.role==="manager";
+  var list = actsOf(kind);
+  var elig = actEligible(kind);
+  var un = actUnassigned(kind);
+  var title = kind==="voc" ? "التربية المهنية" : "الأنشطة التربوية";
+
+  var h = pageHd("الأنشطة", "الطالب يختار نشاطًا تربويًا واحدًا ومادة تربية مهنية واحدة — الاتنين خارج المجموع",
+    isDep?'<button class="btn" data-act="actDistribute">⚖ توزيع تلقائي للباقي</button>'+
+      '<button class="btn ghost" data-act="actNew" style="margin-right:6px">+ نشاط</button>':'');
+
+  h += '<div class="chips noprint">'+
+    '<button class="'+(kind==="activity"?"on":"")+'" data-act="actKind" data-k="activity">الأنشطة التربوية</button>'+
+    '<button class="'+(kind==="voc"?"on":"")+'" data-act="actKind" data-k="voc">التربية المهنية</button>'+
+    '</div>';
+
+  if(!elig.length){
+    return h + '<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("art",34)+'</div>'+
+      '<b>مفيش صفوف عليها '+esc(title)+'</b>'+
+      '<p>حصة النشاط بتيجي من الهيكل الدراسي. تأكد إن خطة الصف فيها مادة نوعها «نشاط».</p></div></div></div>';
+  }
+
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("الطلاب المعنيون", elig.length, "في القسم الحالي", "acc")+
+    stat("اختاروا", elig.length-un.length, "طالب", "acc-g")+
+    stat("لسه مختاروش", un.length, un.length?"محتاجين توزيع":"تمام", un.length?"acc-r":"")+
+    stat("المجموعات الشغالة", list.filter(function(a){ return studentsOfAct(a.id,kind).length; }).length,
+         "كل مجموعة = حصة", "")+
+    '</div>';
+
+  if(un.length){
+    h += '<div class="note warn"><b>'+un.length+' طالب لسه مختارش '+esc(title)+'.</b> '+
+      'اضغط «توزيع تلقائي» عشان يتوزّعوا بالعدل على المجموعات، أو اختار لكل طالب من صفحته.</div>';
+  }
+
+  h += printHd("كشف مجموعات "+title);
+  h += '<div class="card"><div class="hd"><h3>'+esc(title)+'</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة / تصدير</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>م</th><th>النشاط</th><th>المعلم المسؤول</th><th>عدد الطلاب</th><th>الحد الأقصى</th><th>الحالة</th>'+
+    (isDep?'<th class="noprint"></th>':'')+'</tr></thead><tbody>';
+  list.forEach(function(a,i){
+    var n = studentsOfAct(a.id, kind).length;
+    h += '<tr>'+
+      '<td class="rownum">'+(i+1)+'</td>'+
+      '<td><b style="font-weight:600;cursor:pointer" data-act="actOpen" data-id="'+a.id+'">'+esc(a.name)+'</b></td>'+
+      '<td>'+actTeacherPicker(a)+'</td>'+
+      '<td class="num"><b>'+n+'</b></td>'+
+      '<td class="num">'+(num(a.cap,0)||"—")+'</td>'+
+      '<td>'+(a.on===false?'<span class="tag bad">موقوف</span>':
+              (n?'<span class="tag ok">شغال</span>':'<span class="tag">فاضي</span>'))+'</td>'+
+      (isDep?'<td class="noprint" style="white-space:nowrap">'+
+        '<button class="btn ghost sm" data-act="actEdit" data-id="'+a.id+'">تعديل</button>'+
+        '<button class="btn ghost sm" data-act="actToggle" data-id="'+a.id+'" style="margin-right:4px">'+
+        (a.on===false?"تفعيل":"إيقاف")+'</button></td>':'')+
+      '</tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+
+  /* كشف طلاب مجموعة مفتوحة */
+  if(UI.actOpen){
+    var a2 = actById(UI.actOpen);
+    if(a2){
+      var studs = studentsOfAct(a2.id, a2.kind);
+      h += '<div class="card"><div class="hd"><h3>طلاب «'+esc(a2.name)+'» ('+studs.length+')</h3>'+
+        '<small style="color:var(--muted)">'+esc(a2.teacherId?teacherName(a2.teacherId):"بدون معلم")+'</small>'+
+        '<span style="flex:1"></span>'+
+        '<button class="btn ghost sm noprint" data-act="actClose">إغلاق</button></div>'+
+        '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+        '<th>م</th><th>الاسم</th><th>الفصل</th><th>الصف</th></tr></thead><tbody>';
+      if(!studs.length) h += '<tr><td colspan="4"><div class="empty"><b>مفيش طلاب في المجموعة دي</b></div></td></tr>';
+      studs.forEach(function(s,i){
+        var c = classById(s.classId);
+        h += '<tr><td class="rownum">'+(i+1)+'</td>'+
+          '<td><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
+          '<td>'+esc(c?c.name:"—")+'</td>'+
+          '<td><small>'+esc(studentLevelOf(s)?levelName(studentLevelOf(s)):"—")+'</small></td></tr>';
+      });
+      h += '</tbody></table></div></div></div>';
+    }
+  }
+
+  h += '<div class="note noprint">كل مجموعة نشاط فيها طلاب = <b>حصة أسبوعية</b> على معلمها، '+
+    'وبتتحسب من نصابه. طلاب الفصل الواحد بيتفرّقوا على أنشطة مختلفة، علشان كده النشاط '+
+    'بيتحط في نفس الحصة لكل فصول الصف.</div>';
+  return h;
+}
+/* اختيار معلم للنشاط — المرشّحون حسب تخصصهم */
+function actTeacherPicker(a){
+  var cands = DB.teachers.filter(function(t){ return t.status!=="left"; })
+    .map(function(t){ return { t:t, fit:teacherFitsSubject(t, a.name) }; })
+    .sort(function(x,y){ return y.fit - x.fit || sortAr(x.t.name,y.t.name); });
+  var h = '<select data-act="actSetTeacher" data-id="'+a.id+'" '+
+    'style="width:100%;padding:5px 7px;border:1px solid var(--line-2);border-radius:7px;font:inherit;font-size:12.5px">'+
+    '<option value="">— بدون معلم —</option>';
+  cands.forEach(function(x){
+    h += '<option value="'+x.t.id+'"'+(a.teacherId===x.t.id?" selected":"")+'>'+
+      esc(x.t.name)+' — '+esc(x.t.subject||"—")+(x.fit>=SUBJ_MATCH_MIN?' ✓':'')+'</option>';
+  });
+  return h+'</select>';
+}
+function modalActivity(id){
+  var a = id ? actById(id) : null;
+  var kind = a ? a.kind : (UI.actKind==="voc" ? "voc" : "activity");
+  openModal(mHead(a?"تعديل النشاط":"إضافة نشاط")+
+    '<div class="mb">'+
+    '<label class="f"><span>اسم النشاط *</span><input type="text" id="ac_name" value="'+esc(a?a.name:"")+'"></label>'+
+    '<div class="grid2">'+
+      '<label class="f"><span>النوع</span><select id="ac_kind">'+
+        '<option value="activity"'+(kind==="activity"?" selected":"")+'>نشاط تربوي (١٠ درجات)</option>'+
+        '<option value="voc"'+(kind==="voc"?" selected":"")+'>تربية مهنية (٢٠ درجة)</option>'+
+        '</select></label>'+
+      '<label class="f"><span>الحد الأقصى للطلاب</span>'+
+        '<input type="number" id="ac_cap" min="0" value="'+esc(a?num(a.cap,0):0)+'" placeholder="٠ = مفتوح"></label>'+
+    '</div>'+
+    '<div class="note">الحد الأقصى بيمنع التوزيع التلقائي من تكديس النشاط. سيبه صفر لو مفيش حد.</div>'+
+    (a?'<button class="btn ghost block" data-act="actDel" data-id="'+a.id+'" style="color:var(--danger)">حذف النشاط</button>':'')+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="actSave" data-id="'+(a?a.id:"")+'">حفظ</button></div>');
+}
 function viewSubjHours(){
   var g = gate("classes","subjects");
   if(g) return g;
@@ -12028,6 +12311,12 @@ document.addEventListener("input", function(e){
 document.addEventListener("change", function(e){
   var el = e.target;
   if(!el || !el.dataset) return;
+  if(el.dataset.act==="actSetTeacher"){
+    var a = actById(el.dataset.id);
+    if(a){ a.teacherId = el.value; saveNow(); render();
+           toast(el.value? "اتسند لـ"+teacherName(el.value) : "اتشال المعلم"); }
+    return;
+  }
   if(el.dataset.act==="setAssign"){
     var cid = el.dataset.cid, sid = el.dataset.sid, tid = el.value;
     DB.assign = DB.assign.filter(function(a){ return !(a.classId===cid && a.subjectId===sid); });
