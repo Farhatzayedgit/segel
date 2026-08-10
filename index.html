@@ -634,6 +634,7 @@ function load(){
     migrateSectors();
     migrateLevels();
     curriculumInit();
+    migrateSubjectHours();
   }catch(e){ DB = seed(); }
 }
 /* ترحيل: الصف بقى بيان مستقل في الطالب نفسه — مش مستنتج من الفصل.
@@ -665,6 +666,25 @@ function migrateWishNotes(){
     }
     if(!s.fromWish) s.fromWish = "legacy";
     s.notes = "";   /* الملاحظات ترجع لغرضها الأصلي */
+  });
+}
+/* المواد القديمة اتعملت من غير حصص أسبوعية — بنملاها من الهيكل الدراسي،
+   ولو مالقيناهاش بنقترح رقم معقول من اسم المادة. من غير كده المولّد مش هيشتغل. */
+function migrateSubjectHours(){
+  DB.subjects.forEach(function(su){
+    if(num(su.hours,0) > 0) return;
+    var c = classById(su.classId);
+    var n = 0;
+    if(c){
+      var plan = curSubjects(curKey(c.level, c.system, c.track));
+      for(var i=0;i<plan.length;i++){
+        if(normAr(plan[i].name)===normAr(su.name)){ n = num(plan[i].periods,0); break; }
+      }
+    }
+    if(!n) n = num(su.periods,0);
+    if(!n) n = suggestHours(su);
+    su.hours = n;
+    if(!su.periods) su.periods = n;
   });
 }
 /* أدوار قديمة اتلغت: الإشراف بقى مهمة تتوزّع مش حساب مستقل */
@@ -3087,7 +3107,10 @@ function viewSchedule(){
     var noT = rows.filter(function(r){ return !r.teacher; }).length;
     var noH = rows.filter(function(r){ return r.hrs===0; }).length;
     h += '<div class="card"><div class="hd"><h3>تغطية مواد الفصل</h3>'+
-      '<span class="tag '+((noT||noH)?"bad":"ok")+'">'+((noT||noH)? noT+' بدون معلم · '+noH+' بدون حصص' : 'مكتملة')+'</span></div>'+
+      '<span class="tag '+((noT||noH)?"bad":"ok")+'">'+((noT||noH)? noT+' بدون معلم · '+noH+' بدون حصص' : 'مكتملة')+'</span>'+
+      (noT?'<button class="btn seal sm noprint" data-act="autoAssign">⚖ توزيع المعلمين تلقائيًا</button>':'')+
+      (noH?'<button class="btn ghost sm noprint" data-act="fixHours" style="margin-right:5px">ضبط الحصص من الهيكل</button>':'')+
+      '</div>'+
       '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
       '<th>المادة</th><th>النوع</th><th>المعلم</th><th>حصص أسبوعية</th></tr></thead><tbody>';
     if(!rows.length) h += '<tr><td colspan="4"><div class="empty"><b>مفيش مواد للفصل</b></div></td></tr>';
@@ -4478,6 +4501,14 @@ var ACTS = {
   gsearch: function(){ modalSearch(); },
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
+  fixHours: function(){
+    markUndo("ضبط حصص المواد");
+    var before = DB.subjects.filter(function(su){ return num(su.hours,0)===0; }).length;
+    DB.subjects.forEach(function(su){ if(num(su.hours,0)===0) su.hours = 0; });
+    migrateSubjectHours();
+    saveNow(); render();
+    toastUndo("اتضبطت حصص "+before+" مادة من الهيكل الدراسي");
+  },
   doAutoAssign: doAutoAssign,
   closeAsgResult: function(){ UI.asgResult=null; render(); },
   clearTeachFilters: function(){ UI.filters.tq=""; UI.filters.tsub=""; render(); },
@@ -10969,7 +11000,7 @@ function viewScheduleHub(){
     (isDep? stBtn("gen","توليد تلقائي",t) : "")+
     (isDep? stBtn("hours","حصص المواد",t) : "")+
     stBtn("load","الأنصبة",t)+'</div>';
-  if(t==="classes") return viewSchedule() + h;
+  if(t==="classes") return h + viewSchedule();
   if(t==="day")   return h + viewDaySchedule();
   if(t==="gen")   return h + viewGenSched();
   if(t==="hours") return h + viewSubjHours();
