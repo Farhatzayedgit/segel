@@ -1392,24 +1392,126 @@ function doBulkTeachers(){
   saveNow(); closeModal(); render();
   toast("اتعدّل "+ts.length+" معلم");
 }
+/* ============================================================
+   محرك الفلاتر المتتابعة — تختار الصف فيتفلتر المسار، تختار المسار فتتفلتر المادة…
+   بيتحسب كل خيار بعدده الفعلي، والخيارات الفاضية مبتظهرش.
+   ============================================================ */
+var STU_DIMS = ["lvl","track","sub","cls","edu","status"];
+/* بيطبّق كل الفلاتر ما عدا واحد (عشان نحسب خيارات البُعد ده) */
+function stuMatch(s, f, skip){
+  if(skip!=="lvl"    && f.lvl    && String(studentLevelOf(s))!==String(f.lvl)) return false;
+  if(skip!=="track"  && f.track  && String(s.bacTrack||"")!==String(f.track)) return false;
+  if(skip!=="sub"    && f.sub    && String(s.bacSubject||"")!==String(f.sub)) return false;
+  if(skip!=="cls"    && f.cls    && String(s.classId||"")!==String(f.cls)) return false;
+  if(skip!=="edu"    && f.edu    && String(s.edu||"reg")!==String(f.edu)) return false;
+  if(skip!=="status" && f.status && String(s.status||"active")!==String(f.status)) return false;
+  if(skip!=="q" && f.q){
+    var q = String(f.q).trim();
+    if(q && String(s.name).indexOf(q)<0 && String(s.natId||"").indexOf(q)<0) return false;
+  }
+  return true;
+}
+function stuApply(list, f, skip){
+  return list.filter(function(s){ return stuMatch(s, f, skip); });
+}
+/* بيبني خيارات <option> بالعدد لكل قيمة */
+function dimOptions(list, f, dim, allLabel, valueOf, labelOf){
+  var pool = stuApply(list, f, dim);
+  var counts = {}, order = [];
+  pool.forEach(function(s){
+    var v = valueOf(s);
+    if(v===null || v===undefined || v==="") return;
+    if(counts[v]===undefined){ counts[v]=0; order.push(v); }
+    counts[v]++;
+  });
+  var cur = f[dim] || "";
+  /* القيمة المختارة تفضل ظاهرة حتى لو عددها صفر بعد باقي الفلاتر */
+  if(cur && counts[cur]===undefined){ counts[cur]=0; order.push(cur); }
+  order.sort(function(a,b){ return sortAr(labelOf(a), labelOf(b)); });
+  var h = '<option value="">'+esc(allLabel)+' ('+pool.length+')</option>';
+  order.forEach(function(v){
+    h += '<option value="'+esc(v)+'"'+(String(cur)===String(v)?" selected":"")+'>'+
+      esc(labelOf(v))+' ('+counts[v]+')</option>';
+  });
+  return h;
+}
+/* شريط الفلاتر المتتابع — dims: أي مجموعة من lvl/track/sub/cls/edu/status */
+function stuFilterBar(list, f, dims, ids){
+  ids = ids || {};
+  var q = ids.q || "fq";
+  var h = '<div class="card noprint"><div class="bd">';
+  h += '<div class="grid3">';
+  h += '<label class="f"><span>بحث بالاسم أو الرقم القومي</span>'+
+    '<input type="text" id="'+q+'" value="'+esc(f.q||"")+'" placeholder="اكتب للبحث…"></label>';
+
+  if(dims.indexOf("lvl")>=0){
+    h += '<label class="f"><span>الصف</span><select id="'+(ids.lvl||"flvl")+'" data-dim="lvl">'+
+      dimOptions(list, f, "lvl", "كل الصفوف",
+        function(s){ return studentLevelOf(s)||""; },
+        function(v){ return levelName(v); })+'</select></label>';
+  }
+  if(dims.indexOf("track")>=0){
+    h += '<label class="f"><span>المسار</span><select id="'+(ids.track||"ftrack")+'" data-dim="track">'+
+      dimOptions(list, f, "track", "كل المسارات",
+        function(s){ return s.bacTrack||""; },
+        function(v){ return trackName("bac", v); })+'</select></label>';
+  }
+  if(dims.indexOf("sub")>=0){
+    h += '<label class="f"><span>مادة التخصص</span><select id="'+(ids.sub||"fsub")+'" data-dim="sub">'+
+      dimOptions(list, f, "sub", "كل المواد",
+        function(s){ return s.bacSubject||""; },
+        function(v){ return v; })+'</select></label>';
+  }
+  if(dims.indexOf("cls")>=0){
+    h += '<label class="f"><span>الفصل</span><select id="'+(ids.cls||"fcls")+'" data-dim="cls">'+
+      dimOptions(list, f, "cls", "كل الفصول",
+        function(s){ return s.classId||""; },
+        function(v){ var c=classById(v); return c?c.name:"—"; })+'</select></label>';
+  }
+  if(dims.indexOf("edu")>=0){
+    h += '<label class="f"><span>نوعية التعليم</span><select id="'+(ids.edu||"fedu")+'" data-dim="edu">'+
+      dimOptions(list, f, "edu", "كل النوعيات",
+        function(s){ return s.edu||"reg"; },
+        function(v){ return eduName(v); })+'</select></label>';
+  }
+  h += '</div>';
+
+  /* ملخص الفلاتر النشطة + مسح */
+  var chips = [];
+  if(f.lvl)   chips.push("الصف: "+levelName(f.lvl));
+  if(f.track) chips.push("المسار: "+trackName("bac", f.track));
+  if(f.sub)   chips.push("المادة: "+f.sub);
+  if(f.cls)   chips.push("الفصل: "+(classById(f.cls)?classById(f.cls).name:"—"));
+  if(f.edu)   chips.push("النوعية: "+eduName(f.edu));
+  if(f.q)     chips.push("بحث: "+f.q);
+  if(chips.length){
+    h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">'+
+      chips.map(function(c){ return '<span class="tag info">'+esc(c)+'</span>'; }).join("")+
+      '<span style="flex:1"></span>'+
+      '<button class="btn ghost sm" data-act="clearStuFilters">✕ مسح الفلاتر</button></div>';
+  }
+  h += '</div></div>';
+  return h;
+}
+/* لما تغيّر بُعد، الأبعاد اللي تحته بتترجّع لـ«الكل» عشان ميحصلش تعارض */
+function cascadeReset(f, dim){
+  var order = ["lvl","track","sub","cls"];
+  var i = order.indexOf(dim);
+  if(i<0) return;
+  for(var j=i+1;j<order.length;j++) f[order[j]] = "";
+}
 function viewStudents(){
   var f = UI.filters;
   var mine = myClassIds();
-  var list = DB.students.filter(function(s){
+  /* الوعاء الكامل لطلاب القسم الحالي — الفلاتر بتتحسب منه */
+  var pool = DB.students.filter(function(s){
     if(s.status==="left") return false;
     if(isHomeStudent(s)) return false;              /* المنازل ليهم تبويب لوحدهم */
     var c = classById(s.classId);
-    var isUn = !c;                                  /* غير مسكّن على فصل */
-    if(isUn && studentSector(s)!==curSector()) return false;
-    if(!isUn && !mine[s.classId]) return false;     /* المسكّن لازم يكون في القسم الحالي */
-    if(f.cls && s.classId!==f.cls) return false;    /* فلتر الفصل بيستبعد غير المسكّنين تلقائيًا */
-    if(f.lvl && String(studentLevelOf(s))!==String(f.lvl)) return false;
-    if(f.q){
-      var q=f.q.trim();
-      if(q && String(s.name).indexOf(q)<0 && String(s.natId||"").indexOf(q)<0) return false;
-    }
-    return true;
-  }).sort(function(a,b){ return sortAr(a.name,b.name); });
+    if(!c) return studentSector(s)===curSector();   /* غير مسكّن: حسب قسمه */
+    return !!mine[s.classId];                       /* مسكّن: لازم يكون في القسم الحالي */
+  });
+  var list = stuApply(pool, f).sort(function(a,b){ return sortAr(a.name,b.name); });
 
   var can = UI.user.role!=="student";
   var g0 = gate("classes");
@@ -1433,13 +1535,7 @@ function viewStudents(){
       '</div>';
   }
 
-  h += '<div class="card noprint"><div class="bd">'+
-    '<div class="grid3">'+
-      '<label class="f"><span>بحث بالاسم أو الرقم القومي</span>'+
-        '<input type="text" id="fq" value="'+esc(f.q||"")+'" placeholder="اكتب للبحث…"></label>'+
-      '<label class="f"><span>الصف</span><select id="flvl">'+optLevels(f.lvl)+'</select></label>'+
-      '<label class="f"><span>الفصل</span><select id="fcls">'+optClasses(f.cls, f.lvl)+'</select></label>'+
-    '</div></div></div>';
+  h += stuFilterBar(pool, f, ["lvl","track","sub","cls","edu"]);
 
   h += printHd("كشف بأسماء الطلاب");
   var canBulk = UI.user.role==="deputy";
@@ -1894,14 +1990,7 @@ function viewHome(){
   var byLvl = {};
   all.forEach(function(s){ var L=num(studentLevelOf(s),0); byLvl[L]=(byLvl[L]||0)+1; });
 
-  var list = all.filter(function(s){
-    if(f.hLvl && String(num(studentLevelOf(s),0))!==String(f.hLvl)) return false;
-    if(f.hq){
-      var q = f.hq.trim();
-      if(q && String(s.name).indexOf(q)<0 && String(s.natId||"").indexOf(q)<0) return false;
-    }
-    return true;
-  });
+  var list = stuApply(all, f);
 
   var isDep = UI.user.role==="deputy" || UI.user.role==="manager";
   var h = pageHd("المنازل", all.length+" طالب منازل في قسم "+sectorName(curSector())+" — انتساب، امتحانات فقط",
@@ -1917,11 +2006,7 @@ function viewHome(){
       return stat(l.name, byLvl[l.id]||0, "طالب", (byLvl[l.id]?"acc-g":""));
     }).join("")+'</div>';
 
-  h += '<div class="card noprint"><div class="bd"><div class="grid2">'+
-    '<label class="f" style="margin:0"><span>بحث بالاسم أو الرقم القومي</span>'+
-      '<input type="text" id="hq" value="'+esc(f.hq||"")+'" placeholder="اكتب للبحث…"></label>'+
-    '<label class="f" style="margin:0"><span>الصف</span><select id="hlvl">'+optLevels(f.hLvl)+'</select></label>'+
-    '</div></div></div>';
+  h += stuFilterBar(all, f, ["lvl","track","sub"]);
 
   h += printHd("كشف طلاب المنازل — انتساب");
   h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' طالب</h3>'+
@@ -3639,6 +3724,10 @@ var ACTS = {
   addStudent: function(el){ modalStudent(null, el.dataset.cid); },
   editStudent: function(el){ modalStudent(el.dataset.id); },
   saveStudent: saveStudent,
+  clearStuFilters: function(){
+    ["q","lvl","track","sub","cls","edu","status"].forEach(function(k){ UI.filters[k] = ""; });
+    render();
+  },
 
   /* ---------- الهيكل الدراسي ---------- */
   curLevel: function(el){ UI.curv = { level:num(el.dataset.l,1), system:(UI.curv&&UI.curv.system)||"bac", track:"" }; render(); },
@@ -3970,16 +4059,6 @@ function hookInputs(root){
         if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(err){} }
       }, 280);
     }
-    if(el.id==="hq"){
-      UI.filters.hq = el.value;
-      clearTimeout(hookInputs._th);
-      hookInputs._th = setTimeout(function(){
-        var pos = el.selectionStart;
-        render();
-        var n = document.getElementById("hq");
-        if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(err){} }
-      }, 280);
-    }
     if(act==="s2Set"){
       var ms = getMark(el.dataset.sid, el.dataset.suid, Number(el.dataset.term));
       var sv = el.value.trim();
@@ -3999,22 +4078,25 @@ function hookInputs(root){
   });
   root.addEventListener("change", function(e){
     var id = e.target.id;
-    if(id==="fq" || id==="flvl" || id==="fcls"){
-      UI.filters.q = val("fq"); UI.filters.lvl = val("flvl"); UI.filters.cls = val("fcls");
-      if(id==="flvl") UI.filters.cls = "";
+    /* الفلاتر المتتابعة: أي تغيير بيرجّع الأبعاد اللي تحته للكل */
+    var dim = e.target.dataset && e.target.dataset.dim;
+    if(dim){
+      UI.filters[dim] = e.target.value;
+      cascadeReset(UI.filters, dim);
       render();
-      var f = document.getElementById(id==="fq"?"fq":id);
-      if(f && id==="fq"){ f.focus(); f.setSelectionRange(f.value.length,f.value.length); }
+      return;
+    }
+    if(id==="fq"){
+      UI.filters.q = val("fq");
+      render();
+      var fq = document.getElementById("fq");
+      if(fq){ fq.focus(); fq.setSelectionRange(fq.value.length,fq.value.length); }
     }
     if(id==="selAllStu"){
       var on = e.target.checked;
       Array.prototype.slice.call(document.querySelectorAll(".stuck")).forEach(function(cb){ cb.checked = on; });
     }
     if(id==="trkLvl"){ DB.trackLevel = num(e.target.value,2); saveNow(); render(); toast("استمارة المسار بقت لطلاب "+levelName(DB.trackLevel)); }
-    if(id==="hq" || id==="hlvl"){
-      UI.filters.hq = val("hq"); UI.filters.hLvl = val("hlvl");
-      render();
-    }
     if(id==="attDate"){ UI.sub.date = e.target.value; render(); }
     if(id==="ctLvl" || id==="ctCls" || id==="ctScope"){
       UI.filters.ctLvl = val("ctLvl");
