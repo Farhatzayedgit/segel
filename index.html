@@ -2460,6 +2460,13 @@ function healthChecks(){
     desc: dups.length? "فيه طلاب مسجّلين أكتر من مرة — بيخرب الأعداد والدرجات."
                      : "كل طالب مسجّل مرة واحدة.",
     act:"findDups", btn:"فحص ودمج" });
+  /* ١أ حسابات إدارية مكررة */
+  var accs = accountMatches();
+  out.push({ id:"accdup", ok:!accs.length, level:"bad",
+    title:"حسابات إدارية ظاهرة مرتين", n:accs.length,
+    desc: accs.length? "المدير أو الوكيل ليه حساب وسجل معلم منفصلين — بيتحسب مرتين في الأنصبة والعدد."
+                     : "كل حساب إداري مربوط بسجله.",
+    act:"linkAccounts", btn:"ربط" });
   /* ١ب تكرار مشتبه فيه (أسماء متشابهة أو رقم فيه غلطة كتابة) */
   var sus = suspectDuplicates();
   out.push({ id:"suspect", ok:!sus.length, level:"bad",
@@ -2508,8 +2515,8 @@ function healthChecks(){
     desc: noT? "الجدول مش هيتولّد من غيرها." : "كل مادة عليها معلم.",
     act:"autoAssign", btn:"توزيع تلقائي" });
   /* ٧ معلمون تجاوزوا نصابهم */
-  var over = DB.teachers.filter(function(t){
-    return t.status!=="left" && plannedHours(t.id,{}) > nisabOf(t.id); });
+  var over = teachingStaff().filter(function(t){
+    return plannedHours(t.id,{}) > nisabOf(t.id); });
   out.push({ id:"overload", ok:!over.length, level:"warn",
     title:"معلمون تجاوزوا نصابهم", n:over.length,
     desc: over.length? over.slice(0,4).map(function(t){ return t.name; }).join("، ")+(over.length>4?" …":"")
@@ -3811,15 +3818,17 @@ function viewTeachers(){
     isDep?'<button class="btn" data-act="addTeacher">+ إضافة معلم</button>'+
       '<button class="btn ghost" data-act="bulkEditTeachers" style="margin-right:6px">✎ تعديل المحددين</button>'+
       '<button class="btn ghost sm" data-act="xfManage" data-s="teacher" style="margin-right:6px">+ بيان إضافي</button>'+
+      (accountMatches().length?'<button class="btn seal sm" data-act="linkAccounts" style="margin-right:6px">⚠ ربط '+accountMatches().length+' حساب مكرر</button>':'')+
       impBtn("teachers",{},"استيراد من إكسيل"):'');
   if(!DB.teachers.length){
     return h+'<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("teachers",34)+'</div><b>مفيش معلمين مسجّلين</b>'+
       '<p>لما تضيف معلم، بيتعمل له حساب دخول تلقائي، ويشوف الفصول اللي تسندها له بس.</p>'+
       (isDep?'<button class="btn" data-act="addTeacher">+ إضافة أول معلم</button>'+impBtn("teachers",{},"استيراد من إكسيل"):'')+'</div></div></div>';
   }
-  /* فلاتر المعلمين — نفس أسلوب الطلاب */
+  /* فلاتر المعلمين — نفس أسلوب الطلاب.
+     الإداريون (مدير/وكيل) بيظهروا هنا بصفتهم، بس مش داخلين التوزيع. */
   var f = UI.filters;
-  var pool = DB.teachers.slice();
+  var pool = DB.teachers.filter(function(t){ return t.status!=="left"; });
   var subjCount = {};
   pool.forEach(function(t){ var k=(t.subject||"").trim(); if(k) subjCount[k]=(subjCount[k]||0)+1; });
   var list = pool.filter(function(t){
@@ -3918,7 +3927,8 @@ function viewTeachers(){
       h += '<tr>'+
         (isDep?'<td class="noprint"><input type="checkbox" class="tchck" data-id="'+t.id+'" style="width:17px;height:17px"></td>':'')+
         '<td class="rownum">'+(i+1)+'</td>'+
-        '<td><b style="font-weight:600;cursor:pointer" data-act="openTeacher" data-id="'+t.id+'">'+esc(t.name)+'</b></td>'+
+        '<td><b style="font-weight:600;cursor:pointer" data-act="openTeacher" data-id="'+t.id+'">'+esc(t.name)+'</b>'+
+        (isNonTeaching(t)?' <span class="tag">'+esc(adminRoleOfTeacher(t.id)||"إداري")+'</span>':'')+'</td>'+
         '<td class="num" style="direction:ltr;text-align:right">'+esc(t.natId||"—")+'</td>'+
         '<td><b>'+esc(t.subject||"—")+'</b></td>'+
         '<td class="num">'+n+'</td>'+
@@ -5318,6 +5328,110 @@ function saveSubject(){
 }
 
 /* ---------- نافذة المعلم ---------- */
+/* ============================================================
+   الشخص الواحد = سجل واحد
+   المدير والوكلاء ليهم سجل معلم (لأنهم على كادر المعلمين) وحساب دخول.
+   الحساب بيتربط بالسجل، والسجل بيتعلّم عليه إنه «إداري لا يدرّس».
+   ============================================================ */
+function teacherOfUser(uid){
+  var u = byId(DB.users, uid);
+  return (u && u.teacherId) ? teacherById(u.teacherId) : null;
+}
+/* الوظيفة الإدارية للمعلم من حسابه (مدير / وكيل) */
+function adminRoleOfTeacher(tid){
+  if(!tid) return "";
+  var u = DB.users.filter(function(x){ return x.teacherId===tid; })[0];
+  if(!u) return "";
+  if(u.role==="manager" || u.role==="deputy" || u.role==="admin") return (ROLES[u.role]||{}).name || "";
+  return "";
+}
+/* هل ده إداري مش بيدرّس؟ */
+function isNonTeaching(t){ return !!(t && t.noTeach); }
+/* المعلمون اللي فعلًا بيدرّسوا — الأساس لكل توزيع وجدول وعجز */
+function teachingStaff(){
+  return DB.teachers.filter(function(t){ return t.status!=="left" && !isNonTeaching(t); });
+}
+/* ربط حساب بسجل معلم */
+function linkUserToTeacher(uid, tid, noTeach){
+  var u = byId(DB.users, uid), t = teacherById(tid);
+  if(!u || !t) return false;
+  /* لو المعلم عنده حساب تلقائي تاني، نشيله عشان ما يتكررش */
+  DB.users = DB.users.filter(function(x){
+    return !(x.teacherId===tid && x.id!==uid && x.role==="teacher");
+  });
+  u.teacherId = tid;
+  u.name = t.name;
+  if(noTeach){
+    t.noTeach = true;
+    t.jobNow = adminRoleOfTeacher(tid) || t.jobNow;
+  }
+  return true;
+}
+/* حسابات إدارية مش مربوطة بسجل معلم، وليها مطابق بالاسم أو الرقم القومي */
+/* هل الاسم القصير جزء من الاسم الكامل؟ («تهامي كرم» جوه «تهامى كرم عبد الجليل السيد»)
+   الشرط: كل كلمات القصير موجودة في الكامل، وأول كلمة واحدة. */
+function nameContains(full, short){
+  var A = normAr(full||"").split(/\s+/).filter(Boolean);
+  var B = normAr(short||"").split(/\s+/).filter(Boolean);
+  if(A.length<2 || B.length<2) return false;
+  if(A[0]!==B[0]) return false;                 /* الاسم الأول لازم يتطابق */
+  for(var i=0;i<B.length;i++) if(A.indexOf(B[i])<0) return false;
+  return true;
+}
+function accountMatches(){
+  var out = [];
+  DB.users.forEach(function(u){
+    if(u.role!=="manager" && u.role!=="deputy" && u.role!=="admin") return;
+    if(u.teacherId) return;
+    var un = normAr(u.name||"");
+    if(!un) return;
+    var best = null, why = "";
+    DB.teachers.forEach(function(t){
+      if(best) return;
+      if(u.natId && t.natId && u.natId===t.natId){ best = t; why = "نفس الرقم القومي"; return; }
+      var tn = normAr(t.name||"");
+      if(tn===un){ best = t; why = "نفس الاسم بالحرف"; return; }
+      if(nameContains(t.name, u.name)){ best = t; why = "اسم الحساب مختصر من الاسم الكامل"; return; }
+      if(similar(t.name, u.name) >= 0.6){ best = t; why = "اسم متطابق في أغلبه"; }
+    });
+    if(best) out.push({ user:u, teacher:best, why:why });
+  });
+  return out;
+}
+function modalLinkAccounts(){
+  var list = accountMatches();
+  if(!list.length){
+    openModal(mHead("ربط الحسابات الإدارية")+
+      '<div class="mb"><div class="empty"><div class="big">'+icon("attend",34)+'</div>'+
+      '<b>مفيش حسابات مكررة</b><p>كل حساب إداري مربوط بسجله، أو مالوش سجل في كشف العاملين.</p></div></div>'+
+      mFoot("تمام","close"));
+    return;
+  }
+  var body = list.map(function(o){
+    return '<div style="border:1px solid #f0dcb8;background:#fdf9f2;border-radius:11px;padding:10px;margin-bottom:9px">'+
+      '<div style="font-size:12px;color:#7d4d0d;font-weight:700;margin-bottom:7px">⚠ '+esc(o.why)+'</div>'+
+      '<div class="list-item" style="background:#fff;border-radius:9px;margin-bottom:5px">'+
+        '<span class="tx"><b>'+esc(o.user.name)+'</b><small>حساب دخول — '+
+        esc((ROLES[o.user.role]||{}).name||"")+' · كلمة السر: '+esc(o.user.pin||"—")+'</small></span></div>'+
+      '<div class="list-item" style="background:#fff;border-radius:9px;margin-bottom:7px">'+
+        '<span class="tx"><b>'+esc(o.teacher.name)+'</b><small>سجل في كشف العاملين'+
+        (o.teacher.code?' — كود '+esc(o.teacher.code):'')+
+        (o.teacher.natId?' · '+esc(o.teacher.natId):'')+
+        (o.teacher.cadreJob?' · '+esc(o.teacher.cadreJob):'')+'</small></span></div>'+
+      '<button class="btn block" data-act="doLinkAcc" data-u="'+o.user.id+'" data-t="'+o.teacher.id+'">'+
+        'اربطهم — شخص واحد</button>'+
+      '</div>';
+  }).join("");
+  openModal(mHead("ربط الحسابات الإدارية")+
+    '<div class="mb">'+
+    '<div class="note warn"><b>'+list.length+' حساب إداري ظاهر مرتين.</b> '+
+    'الحساب اتعمل يدوي، وبعدين رفعت كشف العاملين فاتعمل سجل تاني لنفس الشخص. '+
+    'الربط بيوحّدهم: <b>كلمة السر والصلاحيات</b> من الحساب، و<b>الكود والرقم القومي والمؤهل</b> من الكشف.</div>'+
+    '<div class="note">بعد الربط هيتعلّم عليه <b>«إداري لا يدرّس»</b> — يعني مش هياخد حصص في التوزيع التلقائي '+
+    'ومش هيتحسب في العجز.</div>'+
+    '<div style="max-height:46vh;overflow:auto">'+body+'</div>'+
+    '</div>'+mFoot("تمام","close"));
+}
 /* حساب الدخول المرتبط بالمعلم */
 function userOfTeacher(tid){
   if(!tid) return null;
@@ -5465,7 +5579,7 @@ function saveTeacher(){
 
 /* ---------- نافذة التكليف ---------- */
 function modalAssign(preTeacher, preClass, preSubj){
-  var tOpts = DB.teachers.slice().sort(function(a,b){return sortAr(a.name,b.name);})
+  var tOpts = teachingStaff().sort(function(a,b){return sortAr(a.name,b.name);})
     .map(function(t){ return '<option value="'+t.id+'"'+(preTeacher===t.id?" selected":"")+'>'+esc(t.name)+(t.subject?' — '+esc(t.subject):'')+'</option>'; }).join("");
   var cOpts = DB.classes.slice().sort(function(a,b){return a.level-b.level||sortAr(a.name,b.name);})
     .map(function(c){ return '<option value="'+c.id+'"'+(preClass===c.id?" selected":"")+'>'+esc(c.name)+'</option>'; }).join("");
@@ -5570,7 +5684,7 @@ function fillSchedTeacher(sel){
     return;
   }
 
-  var pool = DB.teachers.filter(function(t){ return t.status!=="left"; });
+  var pool = teachingStaff();
   var same = [], near = [], other = [];
   pool.forEach(function(t){
     var f = teacherFitsSubject(t, su.name);
@@ -5960,6 +6074,14 @@ var ACTS = {
     if(!txt){ toast("اكتب سؤالك"); return; }
     askParentQ(el.dataset.id, txt);
     saveNow(); render(); toast("اتبعت سؤالك — هيتردّ عليه من المدرسة");
+  },
+  linkAccounts: function(){ modalLinkAccounts(); },
+  doLinkAcc: function(el){
+    markUndo("ربط حساب إداري");
+    if(linkUserToTeacher(el.dataset.u, el.dataset.t, true)){
+      saveNow(); render(); modalLinkAccounts();
+      toastUndo("اتربطوا — بقوا شخص واحد");
+    }else toast("مقدرتش أربطهم");
   },
   findSuspects: function(){ modalSuspects(); },
   delOneSuspect: function(el){
@@ -7724,13 +7846,35 @@ function impTeachers(recs){
     enrichTeacher(t);
 
     var u = userOfTeacher(t.id);
-    if(!u){ u = {id:uid("u"), role:"teacher", teacherId:t.id}; DB.users.push(u); }
+    if(!u){
+      /* لو فيه حساب إداري بنفس الاسم أو الرقم القومي، نربطه بدل ما نعمل حساب تاني */
+      var adminU = DB.users.filter(function(x){
+        if(x.teacherId) return false;
+        if(x.role!=="manager" && x.role!=="deputy" && x.role!=="admin") return false;
+        if(nat && x.natId && x.natId===nat) return true;
+        if(normAr(x.name||"")===normAr(name)) return true;
+        return nameContains(name, x.name);
+      })[0];
+      if(adminU){
+        adminU.teacherId = t.id;
+        t.noTeach = true;
+        t.jobNow = (ROLES[adminU.role]||{}).name || t.jobNow;
+        r.linked = (r.linked||0) + 1;
+        u = adminU;
+      }else{
+        u = {id:uid("u"), role:"teacher", teacherId:t.id};
+        DB.users.push(u);
+      }
+    }
     u.name = name;
     var wanted = o.pin ? normPin(o.pin) : "";
     if(wanted && !pinCheck(wanted, u.id)) u.pin = wanted;
     else if(!u.pin || pinCheck(u.pin, u.id)) u.pin = genPin();
   });
-  if(r.dup) r.note = "<b>"+r.dup+"</b> صف اتخطّى لأن رقمه القومى متكرر جوه نفس الملف.";
+  var notes = [];
+  if(r.dup) notes.push("<b>"+r.dup+"</b> صف اتخطّى لأن رقمه القومى متكرر جوه نفس الملف.");
+  if(r.linked) notes.push("<b>"+r.linked+"</b> اتربط بحساب إداري موجود (مدير/وكيل) — اتعلّم عليه «لا يدرّس».");
+  if(notes.length) r.note = notes.join("<br>");
   return r;
 }
 function impClasses(recs){
@@ -8636,7 +8780,8 @@ function staffAll(){
     var ex = DB.staff.filter(function(x){ return x.teacherId===t.id; })[0] || {};
     return { id:"T"+t.id, kind:"teacher", teacherId:t.id, name:t.name,
              code:   t.code || "",
-             job:    t.cadreJob || t.jobNow || ex.job || "معلم",
+             job:    adminRoleOfTeacher(t.id) || t.cadreJob || t.jobNow || ex.job || "معلم",
+             noTeach: !!t.noTeach,
              subject:t.subject || "",
              phone:  t.phone || ex.phone || "",
              natId:  t.natId || ex.natId || "",
@@ -8713,7 +8858,7 @@ function daysBetween(a,b){
 function teacherPeriods(tid){ return DB.schedule.filter(function(s){ return s.teacherId===tid; }); }
 function periodsOn(tid, day){ return DB.schedule.filter(function(s){ return s.teacherId===tid && s.day===day; }); }
 function freeTeachersAt(day, period, absentIds){
-  return DB.teachers.filter(function(t){
+  return teachingStaff().filter(function(t){
     if(absentIds && absentIds.indexOf("T"+t.id)>=0) return false;
     return !teacherBusy(t.id, day, period, null);
   }).sort(function(a,b){ return teacherPeriods(a.id).length - teacherPeriods(b.id).length; });
@@ -8752,7 +8897,7 @@ function viewStaff(){
     '<p>المعلمون بيظهروا هنا تلقائي أول ما تضيفهم. ضيف باقي العاملين من زرار الإضافة.</p></div></td></tr>';
   shown.forEach(function(s,i){
     var st = staffAttStats(s.id);
-    var nis = s.kind==="teacher" ? nisabOf(s.teacherId) : null;
+    var nis = (s.kind==="teacher" && !s.noTeach) ? nisabOf(s.teacherId) : null;
     var load = s.kind==="teacher" ? plannedHours(s.teacherId, {}) : null;
     h += '<tr data-act="openStaff" data-id="'+s.id+'" style="cursor:pointer">'+
       '<td class="rownum">'+(i+1)+'</td>'+
@@ -11104,8 +11249,9 @@ function teacherInSector(tid, sec){
 }
 function sectorTeachers(){
   var sec = curSector();
-  var list = DB.teachers.filter(function(t){ return teacherInSector(t.id, sec); });
-  return list.length ? list : DB.teachers;
+  var pool = teachingStaff();
+  var list = pool.filter(function(t){ return teacherInSector(t.id, sec); });
+  return list.length ? list : pool;
 }
 
 /* ---------- النصاب: على النظامي بس ---------- */
@@ -12892,6 +13038,7 @@ var NISAB_SUPERVISOR_CUT = 2;
 
 function nisabOf(tid){
   var th = teacherById(tid);
+  if(isNonTeaching(th)) return 0;          /* إداري لا يدرّس */
   /* المعلم بالأجر نصابه = الحصص المتعاقد عليها */
   if(th && th.hourly) return Math.max(1, num(th.hourQuota, 10));
   var s = staffById("T"+tid);
@@ -13153,7 +13300,7 @@ function genOneClassSchedule(cid){
     if(!tid){
       /* مفيش إسناد — ندوّر على معلم بتخصص المادة وعنده متاح */
       var best = null, bestFree = -1;
-      DB.teachers.filter(function(t){ return t.status!=="left"; }).forEach(function(t){
+      teachingStaff().forEach(function(t){
         if(teacherFitsSubject(t, su.name) < SUBJ_MATCH_MIN) return;
         var n = nisabOf(t.id), used = plannedHours(t.id, {});
         if(used + hrs > n) return;
@@ -13224,7 +13371,7 @@ function shortageReport(levels){
     });
   });
   /* المتاح: مجموع أنصبة المعلمين اللي المادة دي تخصصهم */
-  var pool = DB.teachers.filter(function(t){ return t.status!=="left"; });
+  var pool = teachingStaff();
   var rows = [];
   for(var k in need){
     var o = need[k];
@@ -13571,7 +13718,7 @@ function viewActivities(){
 }
 /* اختيار معلم للنشاط — المرشّحون حسب تخصصهم */
 function actTeacherPicker(a){
-  var cands = DB.teachers.filter(function(t){ return t.status!=="left"; })
+  var cands = teachingStaff()
     .map(function(t){ return { t:t, fit:teacherFitsSubject(t, a.name) }; })
     .sort(function(x,y){ return y.fit - x.fit || sortAr(x.t.name,y.t.name); });
   var h = '<select data-act="actSetTeacher" data-id="'+a.id+'" '+
@@ -13668,7 +13815,7 @@ function viewSubjHours(){
 }
 /* قائمة اختيار المعلم لمادة معيّنة — المطابقين للتخصص فوق ومعلّم عليهم */
 function teacherPicker(c, su, a){
-  var cands = DB.teachers.filter(function(t){ return t.status!=="left"; })
+  var cands = teachingStaff()
     .map(function(t){ return { t:t, fit:teacherFitsSubject(t, su.name), load:plannedHours(t.id,{}) }; })
     .sort(function(x,y){ return y.fit - x.fit || x.load - y.load || sortAr(x.t.name,y.t.name); });
   var h = '<select data-act="setAssign" data-cid="'+c.id+'" data-sid="'+su.id+'" '+
@@ -13690,7 +13837,7 @@ function teacherPicker(c, su, a){
 }
 /* بطاقة: كل معلم وتخصصه وحِمله — للمراجعة السريعة */
 function subjectTeachersCard(){
-  var list = DB.teachers.filter(function(t){ return t.status!=="left"; })
+  var list = teachingStaff()
     .sort(function(a,b){ return sortAr(a.subject||"يي", b.subject||"يي") || sortAr(a.name,b.name); });
   var h = '<div class="card"><div class="hd"><div style="flex:1">'+
     '<span class="eyebrow">٣</span><h3>المعلمون وتخصصاتهم</h3></div>'+
@@ -13719,7 +13866,7 @@ function subjectTeachersCard(){
 function viewLoads(){
   var g = gate("teachers");
   if(g) return g;
-  var list = DB.teachers.slice().sort(function(a,b){ return loadNow(b.id)-loadNow(a.id); });
+  var list = teachingStaff().sort(function(a,b){ return loadNow(b.id)-loadNow(a.id); });
   var over = list.filter(function(t){ return loadNow(t.id) > nisabOf(t.id); }).length;
   var under = list.filter(function(t){ return loadNow(t.id) < nisabOf(t.id); }).length;
 
@@ -13869,7 +14016,7 @@ function autoAssignTeachers(levels, opt){
 
   /* الحِمل المبدئي = تكليفات الفصول اللي برّه النطاق (مش هنلمسها) */
   var load = {};
-  var pool = DB.teachers.filter(function(t){ return t.status!=="left"; });
+  var pool = teachingStaff();
   pool.forEach(function(t){ load[t.id] = plannedHours(t.id, scope); });
 
   /* نمسح تكليفات الفصول اللي في النطاق بس */
