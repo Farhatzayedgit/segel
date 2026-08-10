@@ -764,11 +764,11 @@ var NAV = {
     ["times","أوقات اليوم","◷"],
     ["dash","المؤشرات","▤"],["subs","الاحتياطي","⇄"],["events","الأحداث","☰"],
     ["absence","غياب الطلاب","!"],["staff","العاملون","✎"],["classes","الفصول","▦"],
-    ["students","الطلاب","👤"],["wishes","رغبات الطلاب","★"],["papers","الورقيات","▤"],["schedule","الجداول","☷"],
+    ["students","الطلاب","👤"],["home","المنازل","⌂"],["wishes","رغبات الطلاب","★"],["papers","الورقيات","▤"],["schedule","الجداول","☷"],
     ["dailyRep","التقرير اليومي","⎙"],["settings","الإعدادات","⚙"]
   ],
   deputy:[
-    ["today","لوحة اليوم","◉"],["students","الطلاب","👤"],["wishes","رغبات الطلاب","★"],["papers","الورقيات","▤"],["classes","الفصول","▦"],
+    ["today","لوحة اليوم","◉"],["students","الطلاب","👤"],["home","المنازل","⌂"],["wishes","رغبات الطلاب","★"],["papers","الورقيات","▤"],["classes","الفصول","▦"],
     ["absence","الغياب والإنذارات","!"],["events","الأحداث","☰"],["assign","التكليفات","⇄"],
     ["schedule","الجداول","☷"],["teachers","المعلمون","✎"],
     ["reports","الكشوف","⎙"],["settings","الإعدادات","⚙"]
@@ -894,6 +894,7 @@ function render(){
     case "subs":       h = viewSubs(); break;
     case "leaves":     h = viewLeaves(); break;
     case "staffStats": h = viewStaffStats(); break;
+    case "home":       h = viewHome(); break;
     case "students":   h = UI.sub&&UI.sub.student ? viewStudent(UI.sub.student) : viewStudents(); break;
     case "classes":    h = UI.sub&&UI.sub.cls ? viewClass(UI.sub.cls) : viewClasses(); break;
     case "teachers":   h = UI.sub&&UI.sub.teacher ? viewTeacher(UI.sub.teacher) : viewTeachers(); break;
@@ -1172,8 +1173,10 @@ function viewStudents(){
   var mine = myClassIds();
   var list = DB.students.filter(function(s){
     if(s.status==="left") return false;
+    if(isHomeStudent(s)) return false;              /* المنازل ليهم تبويب لوحدهم */
     var c = classById(s.classId);
     var isUn = !c;                                  /* غير مسكّن على فصل */
+    if(isUn && studentSector(s)!==curSector()) return false;
     if(!isUn && !mine[s.classId]) return false;     /* المسكّن لازم يكون في القسم الحالي */
     if(f.cls && s.classId!==f.cls) return false;    /* فلتر الفصل بيستبعد غير المسكّنين تلقائيًا */
     if(f.lvl && (!c || String(c.level)!==String(f.lvl))) return false;
@@ -1465,7 +1468,256 @@ function classAttendRate(cid){
   return tot? Math.round(pres/tot*1000)/10 : 100;
 }
 
-/* ---------- ترحيل جماعي: نقل طلاب الصف إلى فصل معيّن ---------- */
+/* ============================================================
+   المنـازل — طلاب الانتساب (امتحانات فقط: مفيش فصول ولا أعمال سنة)
+   ============================================================ */
+function viewHome(){
+  var f = UI.filters;
+  var all = homeStudents();
+  var byLvl = {};
+  all.forEach(function(s){ var L=num(s.homeLevel,0); byLvl[L]=(byLvl[L]||0)+1; });
+
+  var list = all.filter(function(s){
+    if(f.hLvl && String(num(s.homeLevel,0))!==String(f.hLvl)) return false;
+    if(f.hq){
+      var q = f.hq.trim();
+      if(q && String(s.name).indexOf(q)<0 && String(s.natId||"").indexOf(q)<0) return false;
+    }
+    return true;
+  });
+
+  var isDep = UI.user.role==="deputy" || UI.user.role==="manager";
+  var h = pageHd("المنازل", all.length+" طالب منازل في قسم "+sectorName(curSector())+" — انتساب، امتحانات فقط",
+    (isDep?'<button class="btn" data-act="addHome">+ إضافة طالب منازل</button>'+
+      '<button class="btn ghost" data-act="homeFromForm" style="margin-right:6px">⇪ ترحيل من استمارة</button>'+
+      impBtn("home",{},"استيراد ملف"):''));
+
+  h += '<div class="note noprint" style="margin-bottom:10px">طلاب المنازل مالهمش فصول ولا أعمال سنة ولا غياب — الشاشة دي لعرض بياناتهم وتصديرها بس.</div>';
+
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("إجمالي المنازل", all.length, "في "+sectorName(curSector()), "acc")+
+    LEVELS.map(function(l){
+      return stat(l.name, byLvl[l.id]||0, "طالب", (byLvl[l.id]?"acc-g":""));
+    }).join("")+'</div>';
+
+  h += '<div class="card noprint"><div class="bd"><div class="grid2">'+
+    '<label class="f" style="margin:0"><span>بحث بالاسم أو الرقم القومي</span>'+
+      '<input type="text" id="hq" value="'+esc(f.hq||"")+'" placeholder="اكتب للبحث…"></label>'+
+    '<label class="f" style="margin:0"><span>الصف</span><select id="hlvl">'+optLevels(f.hLvl)+'</select></label>'+
+    '</div></div></div>';
+
+  h += printHd("كشف طلاب المنازل — انتساب");
+  h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' طالب</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة / تصدير</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الصف</th><th>تاريخ الميلاد</th>'+
+    '<th>النوع</th><th>المحافظة</th><th>ولي الأمر</th><th>الهاتف</th>'+
+    (isDep?'<th class="noprint"></th>':'')+'</tr></thead><tbody>';
+  if(!list.length){
+    h += '<tr><td colspan="'+(isDep?10:9)+'"><div class="empty"><div class="big">👤</div><b>مفيش طلاب منازل</b>'+
+      '<p>'+(all.length?'جرّب تغيّر الفلاتر.':'ضيف طالب، أو ارفع ملف إكسيل/PDF، أو رحّل من استمارة سجّلها الطلاب.')+'</p></div></td></tr>';
+  }
+  list.forEach(function(s,i){
+    var info = parseNationalId(s.natId);
+    h += '<tr>'+
+      '<td class="rownum">'+(i+1)+'</td>'+
+      '<td><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
+      '<td class="num" style="direction:ltr;text-align:right">'+esc(s.natId||"—")+'</td>'+
+      '<td>'+esc(num(s.homeLevel,0)?levelName(s.homeLevel):"—")+'</td>'+
+      '<td class="num">'+esc(s.birth?fmtDate(s.birth):"—")+'</td>'+
+      '<td>'+esc(s.gender||(info?info.gender:"—"))+'</td>'+
+      '<td>'+esc(s.birthGov||(info?info.govName:"—"))+'</td>'+
+      '<td>'+esc(s.guardian||"—")+'</td>'+
+      '<td class="num" style="direction:ltr;text-align:right">'+esc(s.phone||"—")+'</td>'+
+      (isDep?'<td class="noprint"><button class="btn ghost sm" data-act="editHome" data-id="'+s.id+'">تعديل</button>'+
+        '<button class="btn ghost sm" data-act="delHome" data-id="'+s.id+'" style="color:var(--danger);margin-right:4px">حذف</button></td>':'')+
+      '</tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+function modalHome(id){
+  var s = id ? studentById(id) : null;
+  openModal(mHead(s?"تعديل طالب منازل":"إضافة طالب منازل")+
+    '<div class="mb">'+
+    '<label class="f"><span>الاسم رباعي *</span><input type="text" id="h_name" value="'+esc(s?s.name:"")+'" placeholder="الاسم الرباعي"></label>'+
+    '<label class="f"><span>الرقم القومي (١٤ رقم) *</span><input type="text" id="h_nat" inputmode="numeric" value="'+esc(s?s.natId||"":"")+'" placeholder="بيستخرج المواليد والنوع والمحافظة تلقائيًا"></label>'+
+    '<div id="h_derived" class="note" style="margin:0 0 9px">اكتب الرقم القومي وهتظهر البيانات المستخرجة هنا.</div>'+
+    '<div class="grid2">'+
+      '<label class="f"><span>الصف *</span><select id="h_lvl">'+
+        '<option value="">— اختر الصف —</option>'+
+        LEVELS.map(function(l){ return '<option value="'+l.id+'"'+(s&&String(s.homeLevel)===String(l.id)?" selected":"")+'>'+esc(l.name)+'</option>'; }).join("")+
+        '</select></label>'+
+      '<label class="f"><span>هاتف ولي الأمر</span><input type="text" id="h_phone" inputmode="tel" value="'+esc(s?s.phone||"":"")+'"></label>'+
+    '</div>'+
+    '<label class="f"><span>ولي الأمر</span><input type="text" id="h_guard" value="'+esc(s?s.guardian||"":"")+'" placeholder="بيتملّي تلقائيًا من الاسم"></label>'+
+    '<label class="f"><span>ملاحظات</span><input type="text" id="h_notes" value="'+esc(s?s.notes||"":"")+'"></label>'+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="saveHome" data-id="'+(s?s.id:"")+'">حفظ</button></div>');
+  var upd = function(){ updateHomeDerived(); };
+  ["h_nat","h_name"].forEach(function(k){
+    var el = document.getElementById(k); if(el) el.addEventListener("input", upd);
+  });
+  updateHomeDerived();
+}
+function updateHomeDerived(){
+  var box = document.getElementById("h_derived"); if(!box) return;
+  var info = parseNationalId(val("h_nat"));
+  if(!info){ box.className="note"; box.innerHTML = "اكتب الرقم القومي صح (١٤ رقم) وهتظهر البيانات المستخرجة هنا."; return; }
+  box.className = "note ok";
+  box.innerHTML = '<b>المستخرج:</b> مواليد '+esc(fmtDate(info.birth))+' · '+esc(info.gender)+' · '+esc(info.govName);
+}
+function saveHome(el){
+  var id = el && el.dataset ? el.dataset.id : "";
+  var name = cleanName(val("h_name"));
+  if(!name || name.split(/\s+/).length<2){ toast("اكتب الاسم رباعي"); return; }
+  var nat = toEnDigits(val("h_nat")).replace(/\D/g,"");
+  if(nat.length!==14 || !parseNationalId(nat)){ toast("الرقم القومي لازم ١٤ رقم صحيحة"); return; }
+  var lvl = num(val("h_lvl"),0);
+  if(!lvl){ toast("اختار الصف"); return; }
+  var dup = DB.students.filter(function(x){ return x.natId===nat && x.id!==id; })[0];
+  if(dup){ toast("الرقم القومي ده مسجّل بالفعل للطالب: "+dup.name); return; }
+
+  var s = id ? studentById(id) : null;
+  if(!s){ s = { id:uid("s"), status:"active", joined:today() }; DB.students.push(s); }
+  s.name = name; s.natId = nat; s.homeLevel = lvl;
+  s.edu = "home"; s.classId = ""; s.sector = curSector();
+  s.phone = toEnDigits(val("h_phone")).replace(/[^\d+]/g,"");
+  s.guardian = cleanName(val("h_guard")) || s.guardian || "";
+  s.notes = val("h_notes");
+  enrichStudent(s);
+  saveNow(); closeModal(); render();
+  toast(id?"اتحفظ":"اتضاف طالب منازل");
+}
+/* ---------- ترحيل من أي استمارة إلى المنازل ---------- */
+function homeFormSources(){
+  formsInit();
+  var out = [{ id:"track", title:"استمارة تحديد المسار", count:(DB.wishes||[]).length }];
+  (DB.forms||[]).forEach(function(f){
+    out.push({ id:f.id, title:f.title, count:formSubsOf(f.id).length });
+  });
+  return out.filter(function(o){ return o.count>0; });
+}
+/* بيرجّع صفوف موحّدة {name, natId, level, phone} من أي مصدر */
+function homeSourceRows(sid){
+  if(sid==="track"){
+    wishesInit();
+    return (DB.wishes||[]).map(function(w){
+      return { name:w.name, natId:w.natId, level:2, edu:wishEdu(w), tag:eduName(wishEdu(w))+" · "+wishTrackName(w.track) };
+    });
+  }
+  var f = formById(sid); if(!f) return [];
+  return formSubsOf(sid).map(function(sub){
+    var vals = sub.vals||{};
+    var lvl = 0, phone = "";
+    (f.fields||[]).forEach(function(fd){
+      var v = vals[fd.id];
+      if(!v) return;
+      var lb = normAr(fd.label||"");
+      if(!lvl && /صف|مستوى|سنه|سنة/.test(lb)) lvl = parseLevel(v)||0;
+      if(!phone && /هاتف|تليفون|موبايل|رقم ولي/.test(lb)) phone = toEnDigits(String(v)).replace(/[^\d+]/g,"");
+    });
+    return { name:sub.name, natId:sub.natId, level:lvl, phone:phone, tag:fmtDate(sub.date) };
+  });
+}
+function modalHomeFromForm(){
+  var srcs = homeFormSources();
+  if(!srcs.length){
+    openModal(mHead("ترحيل من استمارة")+
+      '<div class="mb"><div class="empty"><b>مفيش استمارات فيها تسجيلات</b>'+
+      '<p>لما الطلاب يملوا أي استمارة من صفحة الدخول، هتقدر ترحّل منها لطلاب المنازل على طول.</p></div></div>'+
+      mFoot("تمام","close"));
+    return;
+  }
+  var sid = UI.homeSrc || srcs[0].id;
+  if(!srcs.some(function(o){ return o.id===sid; })) sid = srcs[0].id;
+  UI.homeSrc = sid;
+  var rows = homeSourceRows(sid);
+  var have = {}; DB.students.forEach(function(s){ if(s.natId) have[s.natId]=s; });
+
+  var body = rows.map(function(r, i){
+    var dup = r.natId && have[r.natId];
+    return '<label class="list-item hmrow" data-name="'+esc(r.name||"")+'" data-nat="'+esc(r.natId||"")+'" style="cursor:'+(dup?"default":"pointer")+';opacity:'+(dup?"0.55":"1")+'">'+
+      (dup?'<span style="width:18px;flex:0 0 18px;text-align:center">✓</span>'
+          :'<input type="checkbox" class="hmck" data-i="'+i+'" style="width:18px;height:18px;flex:0 0 18px">')+
+      '<span class="tx"><b>'+esc(r.name||"—")+'</b><small>'+
+        (r.natId?'<span style="direction:ltr">'+esc(r.natId)+'</span>':'بدون رقم قومي')+
+        (r.tag?' · '+esc(r.tag):'')+
+        (dup?' · <span style="color:var(--danger)">مسجّل بالفعل</span>':'')+
+      '</small></span></label>';
+  }).join("");
+
+  openModal(mHead("ترحيل من استمارة إلى المنازل")+
+    '<div class="mb">'+
+    '<label class="f"><span>الاستمارة المصدر</span><select id="hmsrc">'+
+      srcs.map(function(o){ return '<option value="'+esc(o.id)+'"'+(o.id===sid?" selected":"")+'>'+esc(o.title)+' ('+o.count+')</option>'; }).join("")+
+      '</select></label>'+
+    '<label class="f"><span>الصف اللي هيتسجّلوا فيه</span><select id="hmlvl">'+
+      LEVELS.map(function(l){ return '<option value="'+l.id+'"'+(l.id===2?" selected":"")+'>'+esc(l.name)+'</option>'; }).join("")+
+      '</select>'+
+      '<small style="color:var(--muted);font-size:11.5px">لو الاستمارة فيها خانة صف، بتتقرا منها وده بيبقى البديل بس.</small></label>'+
+    '<input type="text" id="hmq" placeholder="بحث بالاسم أو الرقم القومي…" autocomplete="off" style="width:100%;padding:9px;border:1px solid var(--line-2);border-radius:8px;margin-bottom:8px">'+
+    '<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">'+
+      '<button class="btn ghost sm" data-act="hmAll">تحديد الكل</button>'+
+      '<button class="btn ghost sm" data-act="hmNone">إلغاء الكل</button>'+
+      '<span style="flex:1"></span><span id="hmcount" style="font-size:12px;color:var(--muted)"></span></div>'+
+    '<div id="hmlist" style="max-height:42vh;overflow:auto">'+(body||'<div class="empty"><b>الاستمارة فاضية</b></div>')+'</div>'+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="doHomeFromForm">ترحيل المحددين</button></div>');
+
+  var sel = document.getElementById("hmsrc");
+  if(sel) sel.addEventListener("change", function(){ UI.homeSrc = this.value; modalHomeFromForm(); });
+  var q = document.getElementById("hmq");
+  if(q) q.addEventListener("input", function(){
+    var v = toEnDigits(this.value.trim());
+    Array.prototype.slice.call(document.querySelectorAll("#hmlist .hmrow")).forEach(function(row){
+      var nm=row.getAttribute("data-name")||"", nt=row.getAttribute("data-nat")||"";
+      row.style.display = (!v || nm.indexOf(v)>=0 || nt.indexOf(v)>=0) ? "" : "none";
+    });
+  });
+  var lst = document.getElementById("hmlist");
+  if(lst) lst.addEventListener("change", function(e){ if(e.target && e.target.classList.contains("hmck")) updateHmCount(); });
+  updateHmCount();
+}
+function hmSet(on){
+  Array.prototype.slice.call(document.querySelectorAll("#hmlist .hmrow")).forEach(function(row){
+    if(row.style.display==="none") return;
+    var cb = row.querySelector(".hmck"); if(cb) cb.checked = on;
+  });
+  updateHmCount();
+}
+function updateHmCount(){
+  var el = document.getElementById("hmcount"); if(!el) return;
+  var n = document.querySelectorAll("#hmlist .hmck:checked").length;
+  var t = document.querySelectorAll("#hmlist .hmck").length;
+  el.textContent = n ? (n+" محدّد") : (t+" متاح للترحيل");
+}
+function doHomeFromForm(){
+  var rows = homeSourceRows(UI.homeSrc);
+  var defLvl = num(val("hmlvl"), 2);
+  var picked = Array.prototype.slice.call(document.querySelectorAll("#hmlist .hmck:checked"))
+    .map(function(cb){ return rows[num(cb.dataset.i,-1)]; }).filter(Boolean);
+  if(!picked.length){ toast("مختارتش أي طالب"); return; }
+  var have = {}; DB.students.forEach(function(s){ if(s.natId) have[s.natId]=1; });
+  var add=0, skip=0;
+  picked.forEach(function(r){
+    var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
+    if(!nat || have[nat]){ skip++; return; }
+    var s = {
+      id: uid("s"), status:"active", joined: today(),
+      name: cleanName(r.name), natId: nat, classId:"",
+      edu:"home", sector: curSector(),
+      homeLevel: num(r.level,0) || defLvl,
+      phone: r.phone||""
+    };
+    enrichStudent(s);
+    DB.students.push(s); have[nat]=1; add++;
+  });
+  saveNow(); closeModal(); render();
+  toast("اترحّل "+add+" طالب للمنازل"+(skip?" · "+skip+" اتخطّى (مكرر أو بدون رقم قومي)":""));
+}
 function studentLevelOf(s){
   var c = classById(s.classId);
   if(c) return Number(c.level);
@@ -1476,7 +1728,8 @@ function transferCandidates(cls){
   var L = Number(cls.level);
   return DB.students.filter(function(s){
     if(s.status==="left") return false;
-    if(s.classId===cls.id) return false;   /* موجود بالفعل في نفس الفصل */
+    if(isHomeStudent(s)) return false;        /* المنازل مالهمش فصول */
+    if(s.classId===cls.id) return false;      /* موجود بالفعل في نفس الفصل */
     var sl = studentLevelOf(s);
     return sl===null || sl===L;
   }).sort(function(a,b){ return sortAr(a.name,b.name); });
@@ -2909,6 +3162,19 @@ var ACTS = {
   addStudent: function(el){ modalStudent(null, el.dataset.cid); },
   editStudent: function(el){ modalStudent(el.dataset.id); },
   saveStudent: saveStudent,
+  addHome: function(){ modalHome(null); },
+  editHome: function(el){ modalHome(el.dataset.id); },
+  saveHome: saveHome,
+  delHome: function(el){
+    var s = studentById(el.dataset.id); if(!s) return;
+    if(!confirm("متأكد من حذف الطالب «"+s.name+"» من كشف المنازل؟")) return;
+    DB.students = DB.students.filter(function(x){ return x.id!==s.id; });
+    saveNow(); render(); toast("اتحذف");
+  },
+  homeFromForm: function(){ modalHomeFromForm(); },
+  doHomeFromForm: doHomeFromForm,
+  hmAll:  function(){ hmSet(true); },
+  hmNone: function(){ hmSet(false); },
   classTransfer: function(el){ modalClassTransfer(el.dataset.id); },
   doClassTransfer: doClassTransfer,
   trfAll:  function(){ trfSet(true); },
@@ -3146,6 +3412,16 @@ function hookInputs(root){
         if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(err){} }
       }, 280);
     }
+    if(el.id==="hq"){
+      UI.filters.hq = el.value;
+      clearTimeout(hookInputs._th);
+      hookInputs._th = setTimeout(function(){
+        var pos = el.selectionStart;
+        render();
+        var n = document.getElementById("hq");
+        if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(err){} }
+      }, 280);
+    }
     if(act==="s2Set"){
       var ms = getMark(el.dataset.sid, el.dataset.suid, Number(el.dataset.term));
       var sv = el.value.trim();
@@ -3171,6 +3447,10 @@ function hookInputs(root){
       render();
       var f = document.getElementById(id==="fq"?"fq":id);
       if(f && id==="fq"){ f.focus(); f.setSelectionRange(f.value.length,f.value.length); }
+    }
+    if(id==="hq" || id==="hlvl"){
+      UI.filters.hq = val("hq"); UI.filters.hLvl = val("hlvl");
+      render();
     }
     if(id==="attDate"){ UI.sub.date = e.target.value; render(); }
     if(id==="ctLvl" || id==="ctCls" || id==="ctScope"){
@@ -3241,6 +3521,116 @@ else setTimeout(boot, 0);
    بيتعرّف على العناوين بنفسه، وبيسيب لك تصحيح الربط قبل الإضافة.
    ============================================================ */
 
+var PDFJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+var PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+var pdfLoading = null;
+function loadPDFJS(){
+  var lib = window.pdfjsLib || (window.pdfjsDistBuildPdf);
+  if(lib) return Promise.resolve(lib);
+  if(pdfLoading) return pdfLoading;
+  pdfLoading = new Promise(function(res, rej){
+    var s = document.createElement("script");
+    s.src = PDFJS_URL;
+    s.onload = function(){
+      var L = window.pdfjsLib;
+      if(!L){ rej(new Error("no pdfjs")); return; }
+      try{ L.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; }catch(e){}
+      res(L);
+    };
+    s.onerror = function(){ rej(new Error("تعذّر تحميل قارئ PDF")); };
+    document.head.appendChild(s);
+  });
+  return pdfLoading;
+}
+/* بيحوّل صفحات الـPDF لصفوف/أعمدة: بيجمّع الكلام حسب السطر (y)، وبيحسب عتبة الفصل
+   بين الأعمدة تلقائيًا من توزيع المسافات نفسه (فجوة الكلمات صغيرة، فجوة العمود كبيرة). */
+function pdfLineParts(tc){
+  var lines = {};
+  tc.items.forEach(function(it){
+    var t = String(it.str||"").trim();
+    if(!t) return;
+    var x = it.transform[4], y = Math.round(it.transform[5]);
+    var key = null;
+    for(var k in lines){ if(Math.abs(Number(k)-y)<=3){ key = k; break; } }  /* تسامح رأسي */
+    if(key===null){ key = String(y); lines[key] = []; }
+    lines[key].push({ x:x, w:Number(it.width)||0, t:t });
+  });
+  return Object.keys(lines).sort(function(a,b){ return Number(b)-Number(a); })
+    .map(function(k){ return lines[k].sort(function(a,b){ return b.x-a.x; }); });  /* عربي: يمين ← شمال */
+}
+function pdfGapOf(prev, cur){ return prev.x - (cur.x + cur.w); }
+/* مراسي الأعمدة: خانات العمود الواحد بتبدأ عند نفس الحافة تقريبًا في كل السطور.
+   بنجمّع قيم x المتقاربة، ونقبل بس اللي متكرر في عدد كبير من السطور. */
+function pdfColAnchors(allLines){
+  var TOL = 3;                     /* أعمدة الجدول الحقيقية بتتطابق بدقة */
+  var groups = [];
+  allLines.forEach(function(parts, li){
+    parts.forEach(function(p){
+      var g = null;
+      for(var i=0;i<groups.length;i++){ if(Math.abs(groups[i].x - p.x) <= TOL){ g = groups[i]; break; } }
+      if(!g){ g = {x:p.x, n:0, lines:{}}; groups.push(g); }
+      g.lines[li] = 1;
+      g.n = Object.keys(g.lines).length;
+    });
+  });
+  /* العمود الحقيقي بيظهر في أغلب السطور — التطابق العارض بين أجزاء الأسماء بيسقط هنا */
+  var need = Math.max(2, Math.ceil(allLines.length*0.7));
+  return groups.filter(function(g){ return g.n >= need; })
+    .map(function(g){ return g.x; })
+    .sort(function(a,b){ return b-a; });   /* يمين ← شمال */
+}
+/* أكبر قفزة في المسافات المرتّبة = الحد الفاصل بين فجوة الكلمة وفجوة العمود (بديل احتياطي) */
+function pdfColThreshold(allLines){
+  var gaps = [];
+  allLines.forEach(function(parts){
+    for(var i=1;i<parts.length;i++) gaps.push(pdfGapOf(parts[i-1], parts[i]));
+  });
+  gaps = gaps.filter(function(g){ return g>0; }).sort(function(a,b){ return a-b; });
+  if(!gaps.length) return 14;
+  var bestJump = 0, thr = 0;
+  for(var i=0;i<gaps.length-1;i++){
+    var jump = gaps[i+1]-gaps[i];
+    if(gaps[i+1] >= 10 && jump > bestJump){ bestJump = jump; thr = (gaps[i]+gaps[i+1])/2; }
+  }
+  if(!thr || bestJump < 6) return Math.max(14, gaps[Math.floor(gaps.length*0.75)] || 14);
+  return thr;
+}
+function pdfSplitLine(parts, anchors, thr){
+  var cells = [], cur = parts[0].t;
+  for(var i=1;i<parts.length;i++){
+    var isNew;
+    if(anchors && anchors.length>=2){
+      isNew = anchors.some(function(a){ return Math.abs(parts[i].x - a) <= 4; });
+    }else{
+      isNew = pdfGapOf(parts[i-1], parts[i]) > thr;
+    }
+    if(isNew){ cells.push(cur); cur = parts[i].t; }
+    else cur += " "+parts[i].t;   /* نفس الخانة: أجزاء الاسم بتتلم مع بعض */
+  }
+  cells.push(cur);
+  return cells;
+}
+function pdfToGrid(buf){
+  return loadPDFJS().then(function(L){
+    return L.getDocument({data:buf}).promise;
+  }).then(function(doc){
+    var jobs = [];
+    for(var p=1; p<=doc.numPages; p++) jobs.push(doc.getPage(p).then(function(pg){ return pg.getTextContent(); }));
+    return Promise.all(jobs);
+  }).then(function(pages){
+    var allLines = [];
+    pages.forEach(function(tc){ allLines = allLines.concat(pdfLineParts(tc)); });
+    if(!allLines.length) return [];
+    var anchors = pdfColAnchors(allLines);
+    var thr = pdfColThreshold(allLines);
+    var rows = [];
+    allLines.forEach(function(parts){
+      var cells = pdfSplitLine(parts, anchors, thr);
+      if(cells.join("").trim()) rows.push(cells);
+    });
+    return rows;
+  });
+}
 var XLSX_URL = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
 var xlsxLoading = null;
 function loadXLSX(){
@@ -3388,6 +3778,18 @@ function parseAttV(v){
 
 /* ---------- مخططات الاستيراد ---------- */
 var IMPORT_SCHEMAS = {
+  home:{
+    title:"استيراد طلاب المنازل",
+    hint:"محتاج عمود الاسم وعمود الرقم القومي. الصف بيتفهم من الكتابة العادية (أولى/تانية/تالتة ثانوي)، وتاريخ الميلاد والنوع والمحافظة بيتستخرجوا من الرقم القومي تلقائيًا.",
+    fields:[
+      {k:"name", label:"اسم الطالب", req:true, multi:true, al:["اسم الطالب","الاسم","اسم","الطالب","اسم رباعي","الاسم رباعي","student","name"]},
+      {k:"natId", label:"الرقم القومي", req:true, al:["الرقم القومي","قومي","رقم قومي","national","الرقم القومى"]},
+      {k:"level", label:"الصف", al:["الصف","السنه","السنة","grade","level","المرحله","المرحلة"]},
+      {k:"guardian", label:"ولي الأمر", al:["ولي الامر","ولي الأمر","اسم ولي الامر","guardian","parent"]},
+      {k:"phone", label:"هاتف ولي الأمر", al:["الهاتف","تليفون","موبايل","المحمول","رقم الهاتف","phone","mobile"]},
+      {k:"notes", label:"ملاحظات", al:["ملاحظات","ملاحظه","بيان","notes","remark"]}
+    ]
+  },
   students:{
     title:"استيراد الطلاب",
     hint:"الملف المتوقّع فيه عمود لاسم الطالب على الأقل. أي أعمدة تانية (رقم الجلوس، الرقم القومي، ولي الأمر، الهاتف، الفصل) هتتعرّف لوحدها.",
@@ -3576,7 +3978,7 @@ function openImport(target, ctx){
   openModal(mHead(sc.title)+
     '<div class="mb">'+
     '<div class="note">'+esc(sc.hint)+'</div>'+
-    '<button class="btn block" data-act="impFile" style="margin-bottom:9px">اختيار ملف إكسيل أو CSV</button>'+
+    '<button class="btn block" data-act="impFile" style="margin-bottom:9px">اختيار ملف إكسيل أو PDF أو CSV</button>'+
     '<div style="text-align:center;font-size:12px;color:var(--muted);margin-bottom:9px">— أو —</div>'+
     '<label class="f"><span>الصق الجدول هنا (انسخه من إكسيل مباشرة)</span>'+
     '<textarea id="impPaste" style="min-height:130px" placeholder="الصق الصفوف…"></textarea></label>'+
@@ -3588,7 +3990,7 @@ function openImport(target, ctx){
 function impFile(){
   var inp = document.createElement("input");
   inp.type = "file";
-  inp.accept = ".xlsx,.xls,.xlsm,.csv,.tsv,.txt";
+  inp.accept = ".xlsx,.xls,.xlsm,.csv,.tsv,.txt,.pdf";
   inp.style.cssText = "position:fixed;left:-9999px";
   document.body.appendChild(inp);
   inp.addEventListener("change", function(){
@@ -3596,7 +3998,25 @@ function impFile(){
     if(!f){ inp.remove(); return; }
     var name = (f.name||"").toLowerCase();
     var isX = /\.(xlsx|xls|xlsm)$/.test(name);
+    var isPdf = /\.pdf$/.test(name) || f.type==="application/pdf";
     toast("بقرأ الملف…");
+    if(isPdf){
+      var rp = new FileReader();
+      rp.onload = function(){
+        pdfToGrid(new Uint8Array(rp.result)).then(function(rows){
+          if(!rows.length){ toast("مفيش نص مقروء في الـPDF — لو صور ممسوحة، حوّله إكسيل الأول"); inp.remove(); return; }
+          impLoaded(rows);
+          toast("اتقرا الـPDF — راجع ربط الأعمدة كويس");
+          inp.remove();
+        }).catch(function(){
+          toast("محتاج إنترنت لقراءة PDF أول مرة — أو استخدم إكسيل/CSV");
+          inp.remove();
+        });
+      };
+      rp.onerror = function(){ toast("مقدرتش أقرأ الملف"); inp.remove(); };
+      rp.readAsArrayBuffer(f);
+      return;
+    }
     if(isX){
       loadXLSX().then(function(X){
         var r = new FileReader();
@@ -3729,6 +4149,7 @@ function impRun(){
   var res;
   try{
     switch(t){
+      case "home":       res = impHome(recs); break;
       case "students":   res = impStudents(recs); break;
       case "teachers":   res = impTeachers(recs); break;
       case "classes":    res = impClasses(recs); break;
@@ -3803,6 +4224,32 @@ function findStudent(rec, classId){
   return null;
 }
 
+/* استيراد طلاب المنازل — الرقم القومي مفتاح منع التكرار */
+function impHome(recs){
+  var r = {add:0, upd:0, skip:0, err:[]};
+  var byNat = {};
+  DB.students.forEach(function(s){ if(s.natId) byNat[s.natId] = s; });
+  recs.forEach(function(o, i){
+    var name = cleanName(o.name||"");
+    if(!name || normAr(name).length<2){ r.err.push("سطر "+(i+1)+": مفيش اسم"); return; }
+    var nat = toEnDigits(String(o.natId||"")).replace(/\D/g,"");
+    if(nat.length!==14 || !parseNationalId(nat)){ r.err.push("سطر "+(i+1)+": الرقم القومي غير صحيح ("+name+")"); return; }
+    var exist = byNat[nat];
+    if(exist && UI.imp.mode==="add"){ r.skip++; return; }
+    var s = (exist && UI.imp.mode==="update") ? exist : { id:uid("s"), status:"active", joined:today() };
+    if(s===exist) r.upd++; else { DB.students.push(s); byNat[nat] = s; r.add++; }
+    s.name = name; s.natId = nat;
+    s.edu = "home"; s.classId = ""; s.sector = curSector();
+    var lvl = parseLevel(o.level) || num(o.level,0);
+    if(lvl>=1 && lvl<=3) s.homeLevel = lvl;
+    else if(!s.homeLevel) s.homeLevel = 1;
+    if(o.guardian) s.guardian = cleanName(o.guardian);
+    if(o.phone) s.phone = toEnDigits(o.phone).replace(/[^\d+]/g,"");
+    if(o.notes) s.notes = o.notes;
+    enrichStudent(s);
+  });
+  return r;
+}
 function impStudents(recs){
   var r = {add:0, upd:0, skip:0, err:[]};
   var defCls = UI.imp.ctx.classId || "";
@@ -6744,11 +7191,30 @@ function myStudents(){
   var m = myClassIds();
   return DB.students.filter(function(s){ return m[s.classId] && s.status!=="left"; });
 }
-/* طلاب اتسجّلوا/اترحّلوا بس لسه مش متسكّنين على فصل موجود — لازم يظهروا للوكيل */
+/* طلاب اتسجّلوا/اترحّلوا بس لسه مش متسكّنين على فصل موجود — لازم يظهروا للوكيل.
+   طلاب المنازل مستثنون: ليهم تبويب لوحدهم وملهومش فصول أصلًا. */
 function unassignedStudents(){
+  var sec = curSector();
   return DB.students.filter(function(s){
-    return s.status!=="left" && !classById(s.classId);
+    if(s.status==="left" || isHomeStudent(s)) return false;
+    if(classById(s.classId)) return false;
+    return studentSector(s) === sec;
   });
+}
+/* ---------- طلاب المنازل (انتساب — امتحانات فقط) ---------- */
+function isHomeStudent(s){ return !!s && s.edu==="home"; }
+/* القسم اللي الطالب بيتبعه: من فصله، وإلا من القسم المحفوظ، وإلا من نوعية التعليم */
+function studentSector(s){
+  var c = classById(s.classId);
+  if(c) return classSector(c);
+  if(s.sector==="srv" || s.sector==="reg") return s.sector;
+  return eduType(s.edu||"reg").sector;
+}
+function homeStudents(){
+  var sec = curSector();
+  return DB.students.filter(function(s){
+    return isHomeStudent(s) && s.status!=="left" && studentSector(s)===sec;
+  }).sort(function(a,b){ return (num(a.homeLevel,0)-num(b.homeLevel,0)) || sortAr(a.name,b.name); });
 }
 function mySchedule(){
   var m = myClassIds();
