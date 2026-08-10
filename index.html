@@ -2142,6 +2142,29 @@ function modalExtraFields(scope){
     '</div></div>'+
     '<div class="mf"><button class="btn" data-act="close">تمام</button></div>');
 }
+/* طلاب نوعيتهم مش مطابقة لقسم فصلهم — بيظهروا في الكشف الغلط */
+function sectorMismatch(){
+  return DB.students.filter(function(s){
+    if(s.status==="left" || isHomeStudent(s)) return false;
+    var c = classById(s.classId);
+    if(!c) return false;
+    var want = eduType(s.edu||"reg").sector;
+    return classSector(c) !== want;
+  });
+}
+/* بينقل كل واحد لفصل بنفس الاسم في قسمه الصح، ولو مفيش بيفضّي تسكينه */
+function fixSectorMismatch(){
+  var list = sectorMismatch();
+  var moved = 0, freed = 0;
+  list.forEach(function(s){
+    var c = classById(s.classId);
+    var want = eduType(s.edu||"reg").sector;
+    var target = findClassByName(c.name, want);
+    if(target && target.id!==c.id){ assignStudentToClass(s, target.id); moved++; }
+    else { s.classId = ""; s.sector = want; freed++; }
+  });
+  return { moved:moved, freed:freed, total:list.length };
+}
 function viewStudents(){
   var f = UI.filters;
   var mine = myClassIds();
@@ -2168,6 +2191,16 @@ function viewStudents(){
       '<button class="btn ghost sm noprint" data-act="enrichAll" style="margin-right:6px">⟳ استخراج البيانات للكل</button>'+
       '<button class="btn ghost sm noprint" data-act="impTpl" data-tg="students" style="margin-right:6px">نموذج جاهز</button>':''));
 
+  /* تنبيه: طلاب في القسم الغلط */
+  if(UI.user.role==="deputy"){
+    var mis = sectorMismatch();
+    if(mis.length){
+      h += '<div class="note bad noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
+        '<span style="flex:1;min-width:200px"><b>'+mis.length+' طالب في القسم الغلط</b> — نوعيتهم '+
+        'مش مطابقة لقسم فصلهم (زي طالب خدمات متسكّن في فصل نظامي)، علشان كده بيظهروا في الكشف الغلط.</span>'+
+        '<button class="btn seal sm" data-act="fixSectors">تصحيح التسكين</button></div>';
+    }
+  }
   /* تنبيه التكرار — أخطر من التسكين لأنه بيخرب الإحصائيات والدرجات */
   if(UI.user.role==="deputy"){
     var dupN = findDuplicates().length;
@@ -4912,6 +4945,16 @@ var ACTS = {
   gsearch: function(){ modalSearch(); },
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
+  fixSectors: function(){
+    var list = sectorMismatch();
+    if(!list.length){ toast("مفيش طلاب في القسم الغلط"); return; }
+    if(!confirm("تصحيح تسكين "+list.length+" طالب؟\nكل واحد هينتقل لفصل بنفس الاسم في قسمه الصح، "+
+      "ولو مفيش فصل مطابق هيتشال تسكينه عشان تسكّنه بنفسك.")) return;
+    markUndo("تصحيح الأقسام");
+    var r = fixSectorMismatch();
+    saveNow(); render();
+    toastUndo("اتنقل "+r.moved+" طالب"+(r.freed? " · "+r.freed+" اتشال تسكينه (مفيش فصل مطابق)":""));
+  },
   xfManage: function(el){ modalExtraFields(el.dataset.s); },
   xfAdd: function(el){
     var scope = el.dataset.s;
@@ -6338,11 +6381,18 @@ function impResult(r){
   MODAL.innerHTML = mHead("نتيجة الاستيراد") + h;
 }
 
-function findClassByName(name){
+/* البحث عن فصل بالاسم — لازم يراعي القسم، لأن «٢/٤ نظامي» غير «٢/٤ خدمات».
+   من غير كده طالب الخدمات بيتحط في فصل نظامي ويظهر في الكشف الغلط. */
+function findClassByName(name, sector){
   if(!name) return null;
   var n = normAr(name);
-  for(var i=0;i<DB.classes.length;i++) if(normAr(DB.classes[i].name)===n) return DB.classes[i];
-  for(var j=0;j<DB.classes.length;j++) if(similar(DB.classes[j].name, name)>=0.75) return DB.classes[j];
+  var pool = DB.classes;
+  if(sector==="reg" || sector==="srv"){
+    var inSec = DB.classes.filter(function(c){ return classSector(c)===sector; });
+    pool = inSec;
+  }
+  for(var i=0;i<pool.length;i++) if(normAr(pool[i].name)===n) return pool[i];
+  for(var j=0;j<pool.length;j++) if(similar(pool[j].name, name)>=0.75) return pool[j];
   return null;
 }
 function findTeacherByName(name){
@@ -6508,11 +6558,12 @@ function impStudents(recs){
     if(!isHome){
       cid = defCls;
       if(o.cls){
-        var c = findClassByName(o.cls);
+        var wantSec = edu==="srv" ? "srv" : (edu==="reg" ? "reg" : curSector());
+        var c = findClassByName(o.cls, wantSec);
         if(!c){
           var lvl = parseLevel(o.level) || parseLevel(o.cls) || 1;
           c = {id:uid("c"), name:cleanName(o.cls), level:lvl, system:"gen", track:"none", room:"",
-               sector: edu==="srv" ? "srv" : curSector()};
+               sector: wantSec};
           if(c.level>1) c.track = parseTrack(o.cls) || "sci";
           DB.classes.push(c); newCls++;
         }
@@ -8806,6 +8857,14 @@ function pendingTasks(){
       title: noSub.length+" فصل من غير مواد مقررة",
       desc:"ولّد مواد كل فصل من الهيكل الدراسي بضغطة.",
       act:"goClasses", btn:"افتح الفصول" });
+  }
+  /* طلاب في القسم الغلط */
+  var mism = sectorMismatch().length;
+  if(mism){
+    t.push({ icon:"absence", tone:"warn",
+      title: mism+" طالب في القسم الغلط",
+      desc:"نوعيتهم مش مطابقة لقسم فصلهم — بيظهروا في الكشف الغلط.",
+      act:"fixSectors", btn:"تصحيح" });
   }
   /* أرقام قومية متكررة */
   var dups = findDuplicates().length;
