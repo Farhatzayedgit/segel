@@ -1104,7 +1104,8 @@ var NAV = {
     ["staffStats","الإحصائيات","stats"],["papers","الورقيات","papers"]
   ],
   teacher:[
-    ["myclasses","فصولي","classes"],["myschedule","جدولي","schedule"],["mystudents","طلابي","students"]
+    ["mydata","بياناتي","teachers"],["myclasses","فصولي","classes"],
+    ["myschedule","جدولي","schedule"],["mystudents","طلابي","students"]
   ],
   student:[
     ["mygrades","درجاتي","grades"],["myattend","حضوري","attend"],["mysched","جدولي","schedule"]
@@ -1199,9 +1200,11 @@ function globalSearch(q){
   });
   /* معلمين */
   DB.teachers.forEach(function(t){
-    if(normAr(t.name).indexOf(qn)<0 && normAr(t.subject||"").indexOf(qn)<0) return;
+    var hit = normAr(t.name).indexOf(qn)>=0 || normAr(t.subject||"").indexOf(qn)>=0 ||
+              (qd.length>=3 && (String(t.code||"").indexOf(qd)>=0 || String(t.natId||"").indexOf(qd)>=0));
+    if(!hit) return;
     push({ key:"t"+t.id, kind:"teacher", id:t.id, icon:"teachers", title:t.name,
-      sub:(t.subject||"—")+(t.phone?" · "+t.phone:"") });
+      sub:(t.code?"كود "+t.code+" · ":"")+(t.subject||"—")+(t.natId?" · "+t.natId:"") });
   });
   /* فصول */
   DB.classes.forEach(function(c){
@@ -1362,6 +1365,7 @@ function render(){
     case "absence":    h = viewAbsence(); break;
     case "reports":    h = viewReports(); break;
     case "settings":   h = viewSettings(); break;
+    case "mydata":     h = viewMyData(); break;
     case "myclasses":  h = UI.sub&&UI.sub.a ? viewTeachClass(UI.sub.a) : viewMyClasses(); break;
     case "myschedule": h = viewMySchedule(); break;
     case "mystudents": h = viewMyStudents(); break;
@@ -2791,14 +2795,17 @@ function viewTeachers(){
     if(f.tsub && String(t.subject||"").trim()!==f.tsub) return false;
     if(f.tq){
       var q = normAr(f.tq.trim());
+      var qd = toEnDigits(f.tq.trim());
       if(q && normAr(t.name).indexOf(q)<0 && normAr(t.subject||"").indexOf(q)<0 &&
-         String(t.phone||"").indexOf(toEnDigits(f.tq.trim()))<0) return false;
+         normAr(t.jobNow||"").indexOf(q)<0 && normAr(t.qual||"").indexOf(q)<0 &&
+         String(t.phone||"").indexOf(qd)<0 && String(t.code||"").indexOf(qd)<0 &&
+         String(t.natId||"").indexOf(qd)<0) return false;
     }
     return true;
   }).sort(function(a,b){ return sortAr(a.name,b.name); });
 
   h += '<div class="card noprint"><div class="bd"><div class="grid2">'+
-    '<label class="f" style="margin:0"><span>بحث بالاسم أو التخصص أو الهاتف</span>'+
+    '<label class="f" style="margin:0"><span>بحث بالاسم أو الكود أو الرقم القومى أو التخصص</span>'+
       '<input type="text" id="tq" value="'+esc(f.tq||"")+'" placeholder="اكتب للبحث…"></label>'+
     '<label class="f" style="margin:0"><span>التخصص</span><select id="tsub">'+
       '<option value="">كل التخصصات ('+pool.length+')</option>'+
@@ -2812,6 +2819,34 @@ function viewTeachers(){
       '<span style="flex:1"></span><button class="btn ghost sm" data-act="clearTeachFilters">✕ مسح الفلاتر</button></div>':'')+
     '</div></div>';
 
+  /* كشف كامل للطباعة والتصدير — بنفس أعمدة كشوف مراجعة بيانات العاملين */
+  h += printHd("كشف بيانات العاملين");
+  h += '<div class="card"><div class="hd"><h3>كشف البيانات الكامل</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة / تصدير</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>م</th><th>كود المعلم</th><th>الرقم القومى</th><th>الاسم رباعى</th><th>مادة التدريس</th>'+
+    '<th>تاريخ التعيين</th><th>الدرجة المالية</th><th>الوظيفة الحالية</th>'+
+    '<th>المؤهل</th><th>نوع المؤهل</th><th>الوظيفة على الكادر</th><th>الهاتف</th>'+
+    '</tr></thead><tbody>';
+  if(!list.length) h += '<tr><td colspan="12"><div class="empty"><b>مفيش معلمين مطابقين</b></div></td></tr>';
+  list.forEach(function(t,i){
+    h += '<tr>'+
+      '<td class="rownum">'+(i+1)+'</td>'+
+      '<td class="num" style="direction:ltr;text-align:right">'+esc(t.code||"—")+'</td>'+
+      '<td class="num" style="direction:ltr;text-align:right">'+esc(t.natId||"—")+'</td>'+
+      '<td><b style="font-weight:600">'+esc(t.name)+'</b></td>'+
+      '<td>'+esc(t.subject||"—")+'</td>'+
+      '<td class="num">'+esc(t.hireDate?fmtDate(t.hireDate):"—")+'</td>'+
+      '<td>'+esc(t.finGrade||"—")+'</td>'+
+      '<td>'+esc(t.jobNow||"—")+'</td>'+
+      '<td><small>'+esc(t.qual||"—")+'</small></td>'+
+      '<td>'+esc(t.qualType||"—")+'</td>'+
+      '<td>'+esc(t.cadreJob||"—")+'</td>'+
+      '<td class="num" style="direction:ltr;text-align:right">'+esc(t.phone||"—")+'</td>'+
+      '</tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+
   h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' معلم</h3>'+
     (isDep?'<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer">'+
       '<input type="checkbox" id="selAllTch" style="width:17px;height:17px"> تحديد الكل</label>':'')+
@@ -2824,13 +2859,51 @@ function viewTeachers(){
       (isDep?'<input type="checkbox" class="tchck" data-id="'+t.id+'" style="width:17px;height:17px;flex:0 0 17px">':'')+
       '<button data-act="openTeacher" data-id="'+t.id+'" style="display:flex;align-items:center;gap:10px;flex:1;background:none;border:0;padding:0;cursor:pointer;text-align:right;font:inherit;color:inherit">'+
       '<span class="av">'+esc(initials(t.name))+'</span>'+
-      '<span class="tx"><b>'+esc(t.name)+'</b><small>'+esc(t.subject||"—")+' · '+Object.keys(cls).length+' فصل · '+a.length+' تكليف'+
-      (t.phone?' · '+esc(t.phone):'')+'</small></span><span class="chev">‹</span></button></div>';
+      '<span class="tx"><b>'+esc(t.name)+'</b><small>'+
+      (t.code?'كود '+esc(t.code)+' · ':'')+esc(t.subject||"—")+
+      (t.cadreJob?' · '+esc(t.cadreJob):'')+' · '+Object.keys(cls).length+' فصل · '+a.length+' تكليف'+
+      '</small></span><span class="chev">‹</span></button></div>';
   });
   h += '</div></div>';
   return h;
 }
 
+/* بطاقة بيانات المعلم الكاملة — بتتعرض للوكيل وللمعلم نفسه */
+function teacherDataCards(t){
+  var info = parseNationalId(t.natId);
+  var srv = serviceYears(t.hireDate);
+  var h = '';
+  h += '<div class="card"><div class="hd"><h3>البيانات الأساسية</h3></div><div class="bd"><div class="grid2">'+
+    kv("كود المعلم", t.code||"—")+
+    kv("الرقم القومى", t.natId||"—")+
+    kv("الاسم رباعى", t.name||"—")+
+    kv("مادة التدريس", t.subject||"—")+
+    '</div></div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>بيانات الوظيفة</h3></div><div class="bd"><div class="grid2">'+
+    kv("تاريخ التعيين", t.hireDate?fmtDate(t.hireDate):"—")+
+    kv("مدة الخدمة", srv!==null?(srv+" سنة"):"—")+
+    kv("الدرجة المالية", t.finGrade||"—")+
+    kv("تاريخ الدرجة المالية", t.finDate?fmtDate(t.finDate):"—")+
+    kv("الوظيفة الحالية", t.jobNow||"—")+
+    kv("المجموعة النوعية", t.qualGroup||"—")+
+    kv("الوظيفة على الكادر", t.cadreJob||"—")+
+    kv("تاريخ الوظيفة على الكادر", t.cadreDate?fmtDate(t.cadreDate):"—")+
+    '</div></div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>المؤهل والبيانات الشخصية</h3></div><div class="bd"><div class="grid2">'+
+    kv("المؤهل", t.qual||"—")+
+    kv("نوع المؤهل", t.qualType||"—")+
+    kv("تاريخ الميلاد", info?fmtDate(info.birth):(t.birth?fmtDate(t.birth):"—"))+
+    kv("النوع", t.gender||(info?info.gender:"—"))+
+    kv("محافظة الميلاد", t.birthGov||(info?info.govName:"—"))+
+    kv("السن", (t.age||ageFrom(t.birth))?((t.age||ageFrom(t.birth))+" سنة"):"—")+
+    kv("الهاتف", t.phone||"—")+
+    '</div>'+
+    (t.dataErr?'<div class="note warn" style="margin-top:10px"><b>أخطاء البيانات:</b> '+esc(t.dataErr)+'</div>':'')+
+    '</div></div>';
+  return h;
+}
 function viewTeacher(id){
   var t = teacherById(id);
   if(!t) return '<div class="empty"><b>المعلم مش موجود</b></div>';
@@ -2842,7 +2915,8 @@ function viewTeacher(id){
   h += '<div class="card"><div class="hd">'+
     '<span class="av" style="width:44px;height:44px;flex:0 0 44px;border-radius:12px;display:grid;place-items:center;background:var(--ink);color:#fff;font-weight:700;font-family:Cairo,sans-serif">'+esc(initials(t.name))+'</span>'+
     '<div style="flex:1;min-width:110px"><h3 style="font-size:17px">'+esc(t.name)+'</h3>'+
-    '<small style="color:var(--muted)">'+esc(t.subject||"بدون تخصص")+(t.phone?' · '+esc(t.phone):'')+'</small></div>'+
+    '<small style="color:var(--muted)">'+(t.code?'كود '+esc(t.code)+' · ':'')+esc(t.subject||"بدون تخصص")+
+    (t.jobNow?' · '+esc(t.jobNow):'')+'</small></div>'+
     (isDep?'<button class="btn ghost sm" data-act="editTeacher" data-id="'+t.id+'">تعديل</button>':'')+'</div>';
   if(u){
     var canSee = UI.user.role==="manager" || UI.user.role==="admin" || UI.user.role==="deputy";
@@ -2851,6 +2925,8 @@ function viewTeacher(id){
       (canSee? ' كلمة السر: <b style="letter-spacing:.12em;direction:ltr;display:inline-block">'+esc(u.pin)+'</b>' : '')+'</div></div>';
   }
   h += '</div>';
+
+  h += teacherDataCards(t);
 
   h += '<div class="card"><div class="hd"><h3>الفصول والمواد المُسندة ('+a.length+')</h3>'+
     (isDep?'<button class="btn ghost sm" data-act="assignTo" data-id="'+t.id+'">+ إسناد فصل</button>':'')+'</div><div class="bd flush">';
@@ -3202,6 +3278,33 @@ function fldn(label,id,val){ return '<label class="f"><span>'+esc(label)+'</span
    ============================================================ */
 function myTeacherId(){ return UI.user.teacherId || null; }
 
+/* شاشة «بياناتي» — المعلم بيشوف بياناته كاملة زي ما هي في كشوف الإدارة */
+function viewMyData(){
+  var t = UI.user.teacherId ? teacherById(UI.user.teacherId) : null;
+  if(!t) return pageHd("بياناتي","")+
+    '<div class="card"><div class="bd"><div class="empty"><b>مفيش بيانات مرتبطة بحسابك</b>'+
+    '<p>كلّم وكيل شئون العاملين عشان يربط حسابك ببياناتك.</p></div></div></div>';
+
+  var a = assignsOfTeacher(t.id);
+  var h = pageHd("بياناتي", t.name + (t.code? " · كود "+t.code : ""),
+    '<button class="btn ghost noprint" data-act="print">⎙ طباعة / تصدير</button>');
+
+  h += '<div class="note noprint">دي بياناتك المسجّلة في المدرسة. لو فيه بيان غلط، بلّغ وكيل شئون العاملين — '+
+    'التعديل بيتم من عنده مش من هنا.</div>';
+
+  h += printHd("بيانات العامل");
+  h += teacherDataCards(t);
+
+  h += '<div class="card"><div class="hd"><h3>الفصول والمواد المُسندة لك ('+a.length+')</h3></div><div class="bd flush">';
+  if(!a.length) h += '<div class="empty"><b>مفيش تكليفات لسه</b></div>';
+  a.forEach(function(x){
+    var c = classById(x.classId);
+    h += '<div class="list-item"><span class="tx"><b>'+esc(className(x.classId))+' — '+esc(subjName(x.subjectId))+'</b>'+
+      '<small>'+(c?esc(levelName(c.level))+' · '+esc(trackName(c.system,c.track))+' · '+studentsOf(c.id).length+' طالب':'')+'</small></span></div>';
+  });
+  h += '</div></div>';
+  return h;
+}
 function viewMyClasses(){
   var tid = myTeacherId();
   var _m = myClassIds();
@@ -3807,28 +3910,126 @@ function saveSubject(){
 }
 
 /* ---------- نافذة المعلم ---------- */
+/* حساب الدخول المرتبط بالمعلم */
+function userOfTeacher(tid){
+  if(!tid) return null;
+  return DB.users.filter(function(u){ return u.teacherId===tid; })[0] || null;
+}
+/* حقول بيانات المعلم — بنفس ترتيب كشوف مراجعة بيانات العاملين */
+var TEACHER_FIELDS = [
+  {k:"code",      label:"كود المعلم"},
+  {k:"natId",     label:"الرقم القومى"},
+  {k:"name",      label:"الاسم رباعى"},
+  {k:"subject",   label:"مادة التدريس"},
+  {k:"hireDate",  label:"تاريخ التعيين"},
+  {k:"finGrade",  label:"الدرجة المالية"},
+  {k:"finDate",   label:"تاريخ الدرجة المالية"},
+  {k:"qualGroup", label:"المجموعة النوعية"},
+  {k:"jobNow",    label:"الوظيفة الحالية"},
+  {k:"qual",      label:"المؤهل"},
+  {k:"qualType",  label:"نوع المؤهل"},
+  {k:"cadreJob",  label:"الوظيفة على الكادر"},
+  {k:"cadreDate", label:"تاريخ الوظيفة على الكادر"},
+  {k:"dataErr",   label:"أخطاء البيانات"},
+  {k:"phone",     label:"الهاتف"}
+];
+/* بيستخرج المواليد والنوع والمحافظة والسن من الرقم القومي — زي الطلاب بالظبط */
+function enrichTeacher(t){
+  if(!t) return t;
+  var info = parseNationalId(t.natId);
+  if(info){
+    t.birth = info.birth; t.birthYear = info.birthYear;
+    t.gender = info.gender; t.birthGov = info.govName;
+    t.age = ageFrom(info.birth);
+  }
+  return t;
+}
+/* سنوات الخدمة من تاريخ التعيين */
+function serviceYears(d){
+  if(!d) return null;
+  var y = ageFrom(d);
+  return (y!==null && y>=0) ? y : null;
+}
 function modalTeacher(id){
   var t = id? teacherById(id) : null;
-  openModal(mHead(t?"تعديل المعلم":"إضافة معلم")+
+  function fv(k){ return esc(t?(t[k]||""):""); }
+  openModal(mHead(t?"تعديل بيانات المعلم":"إضافة معلم")+
     '<div class="mb">'+
-    '<label class="f"><span>اسم المعلم</span><input type="text" id="t_name" value="'+esc(t?t.name:"")+'"></label>'+
+    /* ---- الأساس: الكود ثم الرقم القومي ثم الاسم ---- */
     '<div class="grid2">'+
-    '<label class="f"><span>التخصص</span><input type="text" id="t_sub" value="'+esc(t?(t.subject||""):"")+'" placeholder="مثال: لغة عربية"></label>'+
-    '<label class="f"><span>الهاتف</span><input type="tel" id="t_ph" value="'+esc(t?(t.phone||""):"")+'"></label>'+
+      '<label class="f"><span>كود المعلم</span><input type="text" id="t_code" inputmode="numeric" value="'+fv("code")+'" placeholder="مثال: 316960"></label>'+
+      '<label class="f"><span>الرقم القومى (١٤ رقم)</span><input type="text" id="t_nat" inputmode="numeric" value="'+fv("natId")+'"></label>'+
     '</div>'+
+    '<label class="f"><span>الاسم رباعى *</span><input type="text" id="t_name" value="'+fv("name")+'"></label>'+
+    '<div id="t_derived" class="note" style="margin:0 0 10px">اكتب الرقم القومى وهتظهر المواليد والنوع والمحافظة هنا.</div>'+
+    /* ---- بيانات الوظيفة ---- */
+    '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:4px 0 6px;font-size:13px">بيانات الوظيفة</div>'+
+    '<div class="grid2">'+
+      '<label class="f"><span>مادة التدريس</span><input type="text" id="t_sub" value="'+fv("subject")+'" placeholder="مثال: لغة عربية ودين"></label>'+
+      '<label class="f"><span>تاريخ التعيين</span><input type="date" id="t_hire" value="'+fv("hireDate")+'"></label>'+
+    '</div>'+
+    '<div class="grid2">'+
+      '<label class="f"><span>الدرجة المالية</span><input type="text" id="t_fin" value="'+fv("finGrade")+'" placeholder="مثال: كبير معلمين"></label>'+
+      '<label class="f"><span>تاريخ الدرجة المالية</span><input type="date" id="t_findate" value="'+fv("finDate")+'"></label>'+
+    '</div>'+
+    '<label class="f"><span>المجموعة النوعية</span><input type="text" id="t_qgrp" value="'+fv("qualGroup")+'" placeholder="المجموعة النوعية لوظائف أعضاء هيئة التعليم"></label>'+
+    '<label class="f"><span>الوظيفة الحالية</span><input type="text" id="t_job" value="'+fv("jobNow")+'"></label>'+
+    '<div class="grid2">'+
+      '<label class="f"><span>الوظيفة على الكادر</span><input type="text" id="t_cadre" value="'+fv("cadreJob")+'"></label>'+
+      '<label class="f"><span>تاريخ الوظيفة على الكادر</span><input type="date" id="t_cadredate" value="'+fv("cadreDate")+'"></label>'+
+    '</div>'+
+    /* ---- المؤهل ---- */
+    '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:8px 0 6px;font-size:13px">المؤهل</div>'+
+    '<label class="f"><span>المؤهل</span><input type="text" id="t_qual" value="'+fv("qual")+'" placeholder="مثال: ليسانس اداب وتربية"></label>'+
+    '<div class="grid2">'+
+      '<label class="f"><span>نوع المؤهل</span><input type="text" id="t_qtype" value="'+fv("qualType")+'" placeholder="عليا / متوسطة / دراسات عليا"></label>'+
+      '<label class="f"><span>الهاتف</span><input type="tel" id="t_ph" value="'+fv("phone")+'"></label>'+
+    '</div>'+
+    '<label class="f"><span>أخطاء البيانات / ملاحظات</span><input type="text" id="t_err" value="'+fv("dataErr")+'"></label>'+
     '<label class="f"><span>الرقم السري لحساب الدخول</span><input type="text" id="t_pin" inputmode="numeric" value="'+esc(t?(userOfTeacher(t.id)||{}).pin||"":"1234")+'"></label>'+
     (t?'<button class="btn ghost block" data-act="delTeacher" data-id="'+t.id+'" style="color:var(--danger)">حذف المعلم</button>':'')+
     '</div>'+mFoot("حفظ","saveTeacher"));
   MODAL.dataset.tid = t? t.id : "";
+  var nat = document.getElementById("t_nat");
+  if(nat) nat.addEventListener("input", updateTeacherDerived);
+  updateTeacherDerived();
 }
-function userOfTeacher(tid){ return DB.users.filter(function(u){ return u.teacherId===tid; })[0]; }
+function updateTeacherDerived(){
+  var box = document.getElementById("t_derived"); if(!box) return;
+  var info = parseNationalId(val("t_nat"));
+  if(!info){ box.className="note"; box.innerHTML="اكتب الرقم القومى صح (١٤ رقم) وهتظهر المواليد والنوع والمحافظة هنا."; return; }
+  box.className="note ok";
+  box.innerHTML = '<b>المستخرج:</b> مواليد '+esc(fmtDate(info.birth))+' · '+esc(info.gender)+' · '+esc(info.govName)+
+    ' · السن '+esc(String(ageFrom(info.birth)))+' سنة';
+}
 function saveTeacher(){
   var id = MODAL.dataset.tid;
   var name = val("t_name").trim();
   if(!name){ toast("اكتب اسم المعلم"); return; }
   var t = id? teacherById(id) : null;
   if(!t){ t = {id:uid("t")}; DB.teachers.push(t); }
-  t.name = name; t.subject = val("t_sub").trim(); t.phone = val("t_ph").trim();
+  var nat = toEnDigits(val("t_nat")).replace(/\D/g,"");
+  if(nat && nat.length!==14){ toast("الرقم القومى لازم ١٤ رقم"); return; }
+  if(nat){
+    var dupT = DB.teachers.filter(function(x){ return x.natId===nat && x.id!==t.id; })[0];
+    if(dupT){ toast("الرقم القومى مسجّل بالفعل للمعلم: "+dupT.name); return; }
+  }
+  t.name = name;
+  t.code = toEnDigits(val("t_code")).replace(/\D/g,"");
+  t.natId = nat;
+  t.subject = val("t_sub").trim();
+  t.hireDate = val("t_hire");
+  t.finGrade = val("t_fin").trim();
+  t.finDate = val("t_findate");
+  t.qualGroup = val("t_qgrp").trim();
+  t.jobNow = val("t_job").trim();
+  t.qual = val("t_qual").trim();
+  t.qualType = val("t_qtype").trim();
+  t.cadreJob = val("t_cadre").trim();
+  t.cadreDate = val("t_cadredate");
+  t.dataErr = val("t_err").trim();
+  t.phone = toEnDigits(val("t_ph")).replace(/[^\d+]/g,"");
+  enrichTeacher(t);
   var u = userOfTeacher(t.id);
   if(!u){ u = {id:uid("u"), role:"teacher", teacherId:t.id}; DB.users.push(u); }
   u.name = name; u.pin = normPin(val("t_pin")) || genPin();
@@ -5053,11 +5254,23 @@ var IMPORT_SCHEMAS = {
     ]
   },
   teachers:{
-    title:"استيراد المعلمين",
-    hint:"عمود الاسم إجباري. التخصص والهاتف اختياريين، وبيتعمل حساب دخول لكل معلم تلقائي.",
+    title:"استيراد المعلمين والعاملين",
+    hint:"عمود الاسم إجباري. لو الملف كشف «مراجعة بيانات العاملين» الرسمي، كل الأعمدة هتتعرّف لوحدها (الكود، الرقم القومي، مادة التدريس، الدرجة المالية، المؤهل، الكادر…). الرقم القومي هو اللي بيمنع التكرار.",
     fields:[
-      {k:"name", label:"اسم المعلم", req:true, multi:true, al:["اسم المعلم","الاسم","اسم","المعلم","المدرس","teacher","name"]},
-      {k:"subject", label:"التخصص", al:["التخصص","الماده","المادة","تخصص","subject","specialty"]},
+      {k:"code", label:"كود المعلم", al:["كود المعلم","الكود","كود","code","الرقم الوظيفى","الرقم الوظيفي"]},
+      {k:"natId", label:"الرقم القومى", al:["الرقم القومى","الرقم القومي","قومي","رقم قومي","national"]},
+      {k:"name", label:"الاسم رباعى", req:true, multi:true, al:["الاسم رباعى","الاسم رباعي","اسم المعلم","الاسم","اسم","المعلم","المدرس","teacher","name"]},
+      {k:"subject", label:"مادة التدريس", al:["ماده التدريس","مادة التدريس","التخصص","الماده","المادة","تخصص","subject","specialty"]},
+      {k:"hireDate", label:"تاريخ التعيين", al:["تاريخ التعيين","التعيين","تعيين","hire"]},
+      {k:"finGrade", label:"الدرجة المالية", al:["الدرجه الماليه","الدرجة المالية","الدرجه","الدرجة","grade"]},
+      {k:"finDate", label:"تاريخ الدرجة المالية", al:["تاريخ الدرجه الماليه","تاريخ الدرجة المالية","تاريخ الدرجه","تاريخ الدرجة"]},
+      {k:"qualGroup", label:"المجموعة النوعية", al:["المجموعه النوعيه","المجموعة النوعية","المجموعه","المجموعة"]},
+      {k:"jobNow", label:"الوظيفة الحالية", al:["الوظيفه الحاليه","الوظيفة الحالية","الوظيفه","الوظيفة","job"]},
+      {k:"qual", label:"المؤهل", al:["المؤهل","المؤهل الدراسى","مؤهل","qualification"]},
+      {k:"qualType", label:"نوع المؤهل", al:["نوع المؤهل","نوع المؤهل الدراسى","نوع مؤهل"]},
+      {k:"cadreJob", label:"الوظيفة على الكادر", al:["الوظيفه على الكادر","الوظيفة على الكادر","الكادر","على الكادر"]},
+      {k:"cadreDate", label:"تاريخ الوظيفة على الكادر", al:["تاريخ الوظيفه على الكادر","تاريخ الوظيفة على الكادر","تاريخ الكادر"]},
+      {k:"dataErr", label:"أخطاء البيانات", al:["اخطاء البيانات","أخطاء البيانات","ملاحظات","اخطاء"]},
       {k:"phone", label:"الهاتف", al:["الهاتف","تليفون","موبايل","المحمول","phone","mobile"]},
       {k:"pin", label:"كلمة السر", al:["كلمه السر","كلمة السر","الرقم السري","الباسورد","pin","password"]}
     ]
@@ -5619,18 +5832,45 @@ function impStudents(recs){
   return r;
 }
 function impTeachers(recs){
-  var r = {add:0, upd:0, skip:0, err:[]};
+  var r = {add:0, upd:0, skip:0, dup:0, err:[]};
+  /* الرقم القومي هو المفتاح، والكود بديل، والاسم آخر حل */
+  var byNat = {}, byCode = {};
+  DB.teachers.forEach(function(t){
+    if(t.natId) byNat[t.natId] = t;
+    if(t.code)  byCode[t.code] = t;
+  });
+  var seen = {};
   recs.forEach(function(o,i){
     var name = cleanName(o.name||"");
-    if(!name || name.length<2){ r.err.push("سطر "+(i+1)+": مفيش اسم معلم"); return; }
-    var ex = findTeacherByName(name);
-    if(ex && normAr(ex.name)!==normAr(name)) ex = null;
+    if(!name || normAr(name).length<2){ r.err.push("سطر "+(i+1)+": مفيش اسم"); return; }
+    var nat = toEnDigits(String(o.natId==null?"":o.natId)).replace(/\D/g,"");
+    if(nat && nat.length!==14){ r.err.push("سطر "+(i+1)+": الرقم القومى مش ١٤ رقم ("+name+")"); nat = ""; }
+    if(nat && seen[nat]){ r.dup++; return; }        /* مكرر جوه نفس الملف */
+    if(nat) seen[nat] = 1;
+    var code = toEnDigits(String(o.code==null?"":o.code)).replace(/\D/g,"");
+
+    var ex = (nat && byNat[nat]) || (code && byCode[code]) || null;
+    if(!ex && !nat && !code){
+      var byName = findTeacherByName(name);
+      if(byName && normAr(byName.name)===normAr(name)) ex = byName;
+    }
     if(ex && UI.imp.mode==="add"){ r.skip++; return; }
     var t = (ex && UI.imp.mode==="update") ? ex : {id:uid("t")};
     if(t===ex) r.upd++; else { DB.teachers.push(t); r.add++; }
+
     t.name = name;
-    if(o.subject) t.subject = cleanName(o.subject);
+    if(nat){ t.natId = nat; byNat[nat] = t; }
+    if(code){ t.code = code; byCode[code] = t; }
+    /* الفاضي مبيمسحش المليان */
+    [["subject","subject"],["hireDate","hireDate"],["finGrade","finGrade"],["finDate","finDate"],
+     ["qualGroup","qualGroup"],["jobNow","jobNow"],["qual","qual"],["qualType","qualType"],
+     ["cadreJob","cadreJob"],["cadreDate","cadreDate"],["dataErr","dataErr"]].forEach(function(pair){
+      var v = o[pair[0]];
+      if(v!==undefined && v!==null && String(v).trim()!=="") t[pair[1]] = String(v).trim();
+    });
     if(o.phone) t.phone = toEnDigits(o.phone).replace(/[^\d+]/g,"");
+    enrichTeacher(t);
+
     var u = userOfTeacher(t.id);
     if(!u){ u = {id:uid("u"), role:"teacher", teacherId:t.id}; DB.users.push(u); }
     u.name = name;
@@ -5638,6 +5878,7 @@ function impTeachers(recs){
     if(wanted && !pinCheck(wanted, u.id)) u.pin = wanted;
     else if(!u.pin || pinCheck(u.pin, u.id)) u.pin = genPin();
   });
+  if(r.dup) r.note = "<b>"+r.dup+"</b> صف اتخطّى لأن رقمه القومى متكرر جوه نفس الملف.";
   return r;
 }
 function impClasses(recs){
@@ -9675,25 +9916,47 @@ function migrateRowToStudent(r, opt){
   var name = cleanName(r.name||"");
   if(!name) return {ok:false, reason:"بدون اسم"};
   if(!nat || nat.length!==14 || !parseNationalId(nat)) return {ok:false, reason:"رقم قومي غير صحيح"};
+
   var exists = DB.students.filter(function(s){ return s.natId===nat; })[0];
   if(exists){
-    /* موجود بالفعل: بنكمّل بياناته الناقصة بدل ما نعمل نسخة تانية */
+    /* الطالب موجود بالفعل — بنحدّث بياناته من الاستمارة، من غير ما نلمس
+       الاسم ولا الرقم القومي، ومن غير ما نمسح بيان قديم ببيان فاضي. */
     if(opt.updateExisting){
-      if(!studentLevelOf(exists) && (opt.level||r.level)) setStudentLevel(exists, opt.level||r.level);
-      if(!exists.phone && r.phone) exists.phone = r.phone;
-      if(!exists.bacTrack && r.bacTrack) exists.bacTrack = r.bacTrack;
-      if(!exists.bacSubject && r.bacSubject) exists.bacSubject = r.bacSubject;
+      var ch = 0;
+      function put(k, v){
+        if(v===undefined || v===null || v==="") return;      /* الفاضي مبيمسحش */
+        if(String(exists[k]||"") === String(v)) return;       /* اتغيّرش */
+        exists[k] = v; ch++;
+      }
+      var lvl = num(opt.level,0) || num(r.level,0);
+      if(lvl && studentLevelOf(exists)!==lvl){ setStudentLevel(exists, lvl); ch++; }
+      put("bacTrack",   r.bacTrack);
+      put("bacSubject", r.bacSubject);
+      put("prevClass",  r.prevClass);
+      put("phone",      r.phone);
+      put("guardian",   r.guardian);
+      if(opt.asHome===true && exists.edu!=="home"){ exists.edu="home"; exists.classId=""; ch++; }
+      else if(opt.asHome===false && r.edu && r.edu!=="home"){ put("edu", r.edu); }
+      else put("edu", r.edu);
+      if(opt.sector && exists.sector!==opt.sector && !classById(exists.classId)){ exists.sector = opt.sector; ch++; }
+      /* تسكين تلقائي لو لسه من غير فصل */
+      if(opt.autoPlace && !isHomeStudent(exists) && !classById(exists.classId)){
+        var c0 = autoClassFor(exists);
+        if(c0){ assignStudentToClass(exists, c0.id); ch++; }
+      }
       enrichStudent(exists);
+      return {ok:false, upd:true, changed:ch, sid:exists.id, s:exists};
     }
     return {ok:false, dup:true, sid:exists.id, reason:"مسجّل بالفعل"};
   }
+
   var isHome = (opt.asHome!==undefined) ? opt.asHome : (r.edu==="home");
   var s = {
     id: uid("s"), status:"active", joined: today(),
     name: name, natId: nat, classId: "",
     edu: isHome ? "home" : (r.edu||"reg"),
     sector: opt.sector || r.sector || curSector(),
-    phone: r.phone || "",
+    phone: r.phone || "", guardian: r.guardian || "",
     prevClass: r.prevClass || "", bacTrack: r.bacTrack || "", bacSubject: r.bacSubject || "",
     fromForm: opt.formId || ""
   };
@@ -9705,21 +9968,22 @@ function migrateRowToStudent(r, opt){
 /* ترحيل جماعي من استمارة: بيسكّن أوتوماتيك لو لقى فصل مناسب لنفس الصف */
 function migrateFormRows(f, rows, opt){
   opt = opt || {};
-  var res = { add:0, dup:0, bad:0, placed:0 };
+  var res = { add:0, upd:0, same:0, bad:0, placed:0 };
   rows.forEach(function(r){
     var out = migrateRowToStudent(r, {
       level: opt.level || formTargetLevel(f) || r.level,
       sector: opt.sector, asHome: opt.asHome, formId: f?f.id:"",
+      autoPlace: opt.autoPlace,
       updateExisting: true
     });
     if(out.ok){
       res.add++;
-      if(opt.autoPlace && !out.s.edu.match(/home/)){
+      if(opt.autoPlace && !isHomeStudent(out.s)){
         var c = autoClassFor(out.s);
         if(c){ assignStudentToClass(out.s, c.id); res.placed++; }
       }
     }
-    else if(out.dup) res.dup++;
+    else if(out.upd){ if(out.changed) res.upd++; else res.same++; }
     else res.bad++;
   });
   return res;
@@ -9744,29 +10008,54 @@ function modalFormMigrate(fid){
   formsInit();
   var f = (fid==="track") ? {id:"track", title:"استمارة تحديد المسار", level:num(DB.trackLevel,2)} : formById(fid);
   if(!f){ toast("الاستمارة مش موجودة"); return; }
-  var rows = formRows(f);
-  var pending = rows.filter(function(r){
+  var rows = formRows(f).filter(function(r){
     var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
-    return nat && !DB.students.some(function(s){ return s.natId===nat; });
+    return nat && nat.length===14;
   });
-  if(!pending.length){
+  if(!rows.length){
     openModal(mHead("ترحيل من: "+f.title)+
-      '<div class="mb"><div class="empty"><div class="big">'+icon("attend",34)+'</div><b>كل المسجّلين اتّرحّلوا</b>'+
-      '<p>مفيش تسجيلات جديدة محتاجة ترحيل في الاستمارة دي.</p></div></div>'+mFoot("تمام","close"));
+      '<div class="mb"><div class="empty"><b>مفيش تسجيلات صالحة</b>'+
+      '<p>لازم يكون فيه اسم ورقم قومي صحيح (١٤ رقم) في التسجيل.</p></div></div>'+mFoot("تمام","close"));
     return;
   }
-  UI.migRows = pending;
+  /* مين جديد ومين موجود بالفعل */
+  rows.forEach(function(r){
+    var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
+    r._nat = nat;
+    r._old = DB.students.filter(function(s){ return s.natId===nat; })[0] || null;
+  });
+  UI.migRows = rows;
+  var isNew = rows.filter(function(r){ return !r._old; }).length;
+  var isOld = rows.length - isNew;
   var L = formTargetLevel(f);
-  var body = pending.map(function(r,i){
-    return '<label class="list-item mgrow" data-name="'+esc(r.name||"")+'" data-nat="'+esc(r.natId||"")+'" style="cursor:pointer">'+
-      '<input type="checkbox" class="mgck" data-i="'+i+'" checked style="width:18px;height:18px;flex:0 0 18px">'+
-      '<span class="tx"><b>'+esc(r.name||"—")+'</b><small><span style="direction:ltr">'+esc(r.natId||"")+'</span>'+
-      (r.tag?' · '+esc(r.tag):'')+'</small></span></label>';
+
+  var body = rows.map(function(r,i){
+    var o = r._old;
+    var badge = o
+      ? '<span class="tag warn">موجود — هيتحدّث</span>'
+      : '<span class="tag ok">جديد</span>';
+    var where = "";
+    if(o){
+      var c = classById(o.classId);
+      where = " · " + (c ? c.name : (isHomeStudent(o) ? "منازل" : "غير مسكّن"));
+    }
+    return '<label class="list-item mgrow" data-new="'+(o?0:1)+'" data-name="'+esc(r.name||"")+'" '+
+      'data-nat="'+esc(r._nat)+'" style="cursor:pointer">'+
+      '<input type="checkbox" class="mgck" data-i="'+i+'"'+(o?"":" checked")+' style="width:18px;height:18px;flex:0 0 18px">'+
+      '<span class="tx"><b>'+esc(r.name||"—")+'</b><small><span style="direction:ltr">'+esc(r._nat)+'</span>'+
+      (r.tag?' · '+esc(r.tag):'')+esc(where)+'</small></span>'+badge+'</label>';
   }).join("");
 
   openModal(mHead("ترحيل من: "+f.title)+
     '<div class="mb">'+
-    '<div class="note">هيترحّلوا لكشف الطلاب بصفهم على طول — <b>حتى لو مفيش فصول لسه</b>. تقدر تسكّنهم على الفصول بعدين من زر «⇄ ترحيل» جوه الفصل.</div>'+
+    '<div class="note"><b>'+isNew+' جديد</b> · <b>'+isOld+' موجود بالفعل</b>. '+
+      'الموجود <u>مش هيتكرر</u> — هتتحدّث بياناته من الاستمارة (المسار، المادة، الفصل السابق، الهاتف، الصف) '+
+      'ما عدا <b>الاسم والرقم القومي</b> فمش بيتغيّروا.</div>'+
+    '<div style="display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap">'+
+      '<button class="btn ghost sm" data-act="mgAll">الكل ('+rows.length+')</button>'+
+      '<button class="btn ghost sm" data-act="mgNew">الجديد فقط ('+isNew+')</button>'+
+      '<button class="btn ghost sm" data-act="mgOld">الموجود فقط ('+isOld+')</button>'+
+      '<button class="btn ghost sm" data-act="mgNone">إلغاء التحديد</button></div>'+
     '<div class="grid2">'+
       '<label class="f"><span>الصف اللي هيترحّلوا ليه</span><select id="mg_lvl">'+
         LEVELS.map(function(l){ return '<option value="'+l.id+'"'+(l.id===(L||2)?" selected":"")+'>'+esc(l.name)+'</option>'; }).join("")+
@@ -9781,13 +10070,11 @@ function modalFormMigrate(fid){
       '<span>تسكين تلقائي على فصل مطابق للصف والمسار لو موجود</span></label>'+
     '<input type="text" id="mgq" placeholder="بحث بالاسم أو الرقم القومي…" autocomplete="off" style="width:100%;padding:9px;border:1px solid var(--line-2);border-radius:8px;margin-bottom:8px">'+
     '<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">'+
-      '<button class="btn ghost sm" data-act="mgAll">تحديد الكل</button>'+
-      '<button class="btn ghost sm" data-act="mgNone">إلغاء الكل</button>'+
       '<span style="flex:1"></span><span id="mgcount" style="font-size:12px;color:var(--muted)"></span></div>'+
-    '<div id="mglist" style="max-height:38vh;overflow:auto">'+body+'</div>'+
+    '<div id="mglist" style="max-height:36vh;overflow:auto">'+body+'</div>'+
     '</div>'+
     '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
-    '<button class="btn" data-act="doFormMigrate" data-id="'+esc(f.id)+'">ترحيل المحددين</button></div>');
+    '<button class="btn" data-act="doFormMigrate" data-id="'+esc(f.id)+'">تنفيذ الترحيل</button></div>');
 
   var q = document.getElementById("mgq");
   if(q) q.addEventListener("input", function(){
@@ -9801,10 +10088,15 @@ function modalFormMigrate(fid){
   if(lst) lst.addEventListener("change", function(e){ if(e.target && e.target.classList.contains("mgck")) updateMgCount(); });
   updateMgCount();
 }
-function mgSet(on){
+/* which: true=الكل، false=مفيش، "new"=الجديد بس، "old"=الموجود بس */
+function mgPick(which){
   Array.prototype.slice.call(document.querySelectorAll("#mglist .mgrow")).forEach(function(row){
-    if(row.style.display==="none") return;
-    var cb = row.querySelector(".mgck"); if(cb) cb.checked = on;
+    if(row.style.display==="none") return;          /* بس اللي ظاهر في البحث */
+    var cb = row.querySelector(".mgck"); if(!cb) return;
+    var isNew = row.getAttribute("data-new")==="1";
+    if(which==="new")      cb.checked = isNew;
+    else if(which==="old") cb.checked = !isNew;
+    else                   cb.checked = !!which;
   });
   updateMgCount();
 }
@@ -9827,10 +10119,13 @@ function doFormMigrate(el){
   var r = migrateFormRows(f, picked, { level:lvl, asHome:asHome, autoPlace:place && !asHome, sector:curSector() });
   UI.migRows = null;
   saveNow(); closeModal(); render();
-  toastUndo("اترحّل "+r.add+" لـ"+levelName(lvl)+
-    (r.placed? " · اتسكّن "+r.placed+" على فصول":"")+
-    (r.dup? " · "+r.dup+" مسجّل قبل كده":"")+
-    (r.bad? " · "+r.bad+" بيانات ناقصة":""));
+  var parts = [];
+  if(r.add)  parts.push("اتضاف "+r.add+" جديد");
+  if(r.upd)  parts.push("اتحدّث "+r.upd);
+  if(r.same) parts.push(r.same+" من غير تغيير");
+  if(r.placed) parts.push("اتسكّن "+r.placed+" على فصول");
+  if(r.bad)  parts.push(r.bad+" بيانات ناقصة");
+  toastUndo(parts.length ? parts.join(" · ") : "مفيش تغيير");
 }
 /* ---------- تسجيلات استمارة مخصصة ---------- */
 function viewFormSubs(f){
@@ -9843,14 +10138,19 @@ function viewFormSubs(f){
     (can?'<button class="btn seal" data-act="formMigrate" data-id="'+f.id+'">⇪ ترحيل لطلاب '+esc(formLevelLabel(f))+'</button>':'')+
     '<button class="btn" data-act="formExcel" data-id="'+f.id+'" style="margin-right:6px">⬇ تنزيل إكسيل</button>');
   if(can){
-    var notMig = formRows(f).filter(function(r){
+    var rowsAll = formRows(f).filter(function(r){
       var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
-      return nat && !DB.students.some(function(s){ return s.natId===nat; });
+      return nat && nat.length===14;
+    });
+    var notMig = rowsAll.filter(function(r){
+      var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
+      return !DB.students.some(function(s){ return s.natId===nat; });
     }).length;
     h += '<div class="note noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
       '<span class="tag info">الصف المستهدف: '+esc(formLevelLabel(f))+'</span>'+
       '<span style="flex:1;min-width:160px">'+
-        (notMig? '<b>'+notMig+'</b> مسجّل لسه مترحّلش لكشف الطلاب.' : 'كل المسجّلين اتّرحّلوا لكشف الطلاب ✓')+
+        (notMig? '<b>'+notMig+'</b> جديد لسه مترحّلش'+(rowsAll.length-notMig? ' · <b>'+(rowsAll.length-notMig)+'</b> موجود ينفع تحدّث بياناته':'')+'.'
+               : (rowsAll.length? 'كل المسجّلين ('+rowsAll.length+') موجودين في كشف الطلاب — تقدر تحدّث بياناتهم من الاستمارة.' : ''))+
       '</span>'+
       (f.id!=="track"?'<button class="btn ghost sm" data-act="formEdit" data-id="'+f.id+'">تغيير الصف المستهدف</button>':'')+
       '</div>';
@@ -10268,8 +10568,10 @@ Object.assign(ACTS, {
   formsManage: function(){ UI.sub = { forms:true }; render(); },
   formMigrate: function(el){ modalFormMigrate(el.dataset.id); },
   doFormMigrate: doFormMigrate,
-  mgAll:  function(){ mgSet(true); },
-  mgNone: function(){ mgSet(false); },
+  mgAll:  function(){ mgPick(true); },
+  mgNew:  function(){ mgPick("new"); },
+  mgOld:  function(){ mgPick("old"); },
+  mgNone: function(){ mgPick(false); },
   formOpenSubs: function(el){ UI.sub = { form: el.dataset.id }; UI.filters.fsq = ""; render(); },
   formNew: function(){ modalFormBuilder(null); },
   formEdit: function(el){ modalFormBuilder(el.dataset.id); },
