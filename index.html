@@ -2052,6 +2052,46 @@ function findDuplicates(){
   for(var k in byNat) if(byNat[k].length>1) dups.push({ natId:k, list:byNat[k] });
   return dups;
 }
+/* ============================================================
+   تكرار مشتبه فيه: نفس الاسم، أو رقم قومي فيه غلطة كتابة حرف واحد
+   دي الحالة اللي الفحص بالرقم القومي بيفوّتها.
+   ============================================================ */
+/* عدد الحروف المختلفة بين رقمين بنفس الطول */
+function digitDiff(a,b){
+  a = String(a||""); b = String(b||"");
+  if(a.length!==b.length) return 99;
+  var n = 0;
+  for(var i=0;i<a.length;i++) if(a[i]!==b[i]) n++;
+  return n;
+}
+function suspectDuplicates(){
+  var act = DB.students.filter(function(s){ return s.status!=="left"; });
+  var groups = [], used = {};
+  for(var i=0;i<act.length;i++){
+    if(used[act[i].id]) continue;
+    var g = [act[i]], reasons = {};
+    for(var j=i+1;j<act.length;j++){
+      if(used[act[j].id]) continue;
+      var a = act[i], b = act[j];
+      if(a.natId && b.natId && a.natId===b.natId) continue;   /* دي بيمسكها الفحص التاني */
+      var nameSim = similar(a.name, b.name);
+      var natClose = a.natId && b.natId && digitDiff(a.natId,b.natId)<=2;
+      var sameName = normAr(a.name)===normAr(b.name);
+      var hit = "";
+      if(sameName && natClose) hit = "نفس الاسم ورقم قومي فيه غلطة كتابة";
+      else if(sameName)        hit = "نفس الاسم بالحرف";
+      else if(natClose && nameSim>=0.5) hit = "رقم قومي فيه غلطة كتابة واسم متقارب";
+      else if(nameSim>=0.85)   hit = "اسم شبه بعضه جدًا";
+      if(!hit) continue;
+      g.push(b); used[b.id] = 1; reasons[hit] = 1;
+    }
+    if(g.length>1){
+      used[act[i].id] = 1;
+      groups.push({ list:g, why: Object.keys(reasons).join(" · ") });
+    }
+  }
+  return groups;
+}
 /* الأصل = اللي عليه بيانات أكتر (درجات/غياب)، والباقي بيندمج فيه */
 function mergeDuplicate(group){
   var best = group[0], bestScore = -1;
@@ -2085,6 +2125,46 @@ function mergeDuplicate(group){
   });
   enrichStudent(best);
   return best;
+}
+/* شاشة المراجعة: بتعرض كل مجموعة مشتبه فيها وتقارن بياناتهم عشان تحذف الغلط */
+function modalSuspects(){
+  var groups = suspectDuplicates();
+  if(!groups.length){
+    openModal(mHead("تكرار مشتبه فيه")+
+      '<div class="mb"><div class="empty"><div class="big">'+icon("attend",34)+'</div>'+
+      '<b>مفيش تكرار مشتبه فيه</b><p>مفيش أسماء متشابهة ولا أرقام قومية فيها غلطة كتابة.</p></div></div>'+
+      mFoot("تمام","close"));
+    return;
+  }
+  var extra = groups.reduce(function(a,g){ return a + g.list.length - 1; }, 0);
+  var body = groups.slice(0,40).map(function(g){
+    return '<div style="border:1px solid #f0dcb8;background:#fdf9f2;border-radius:11px;padding:9px;margin-bottom:9px">'+
+      '<div style="font-size:12px;color:#7d4d0d;font-weight:700;margin-bottom:6px">⚠ '+esc(g.why)+'</div>'+
+      g.list.map(function(st){
+        var c = classById(st.classId);
+        var im = studentImpact(st.id);
+        var w = (im.marks?im.marks+" درجة · ":"")+(im.days?im.days+" يوم · ":"");
+        return '<div class="list-item" style="background:#fff;border-radius:9px;margin-bottom:5px">'+
+          '<span class="tx"><b>'+esc(st.name)+'</b><small>'+
+          '<span style="direction:ltr">'+esc(st.natId||"بدون رقم")+'</span> · '+
+          esc(eduName(st.edu||"reg"))+' · '+esc(c?c.name:"غير مسكّن")+
+          (w? ' · '+w.replace(/ · $/,"") : ' · مفيش بيانات عليه')+
+          '</small></span>'+
+          '<button class="btn ghost sm" data-act="editStudent" data-id="'+st.id+'">تعديل</button>'+
+          '<button class="btn ghost sm" data-act="delOneSuspect" data-id="'+st.id+'" '+
+            'style="color:var(--danger);margin-right:4px">حذف ده</button>'+
+          '</div>';
+      }).join("")+
+      '</div>';
+  }).join("");
+  openModal(mHead("تكرار مشتبه فيه — راجع واحذف")+
+    '<div class="mb">'+
+    '<div class="note warn"><b>'+groups.length+' حالة مشتبه فيها</b> — يعني حوالي '+extra+' سجل زيادة. '+
+    'دول <u>مش</u> نفس الرقم القومي، فالبرنامج مش هيدمجهم لوحده. '+
+    'قارن البيانات واحذف الغلط بنفسك — واللي عليه درجات وغياب هو الأصلي غالبًا.</div>'+
+    '<div style="max-height:52vh;overflow:auto">'+body+
+      (groups.length>40?'<div class="note">…وكمان '+(groups.length-40)+' حالة</div>':'')+'</div>'+
+    '</div>'+mFoot("تمام","close"));
 }
 function modalDuplicates(){
   var dups = findDuplicates();
@@ -2320,6 +2400,13 @@ function healthChecks(){
     desc: dups.length? "فيه طلاب مسجّلين أكتر من مرة — بيخرب الأعداد والدرجات."
                      : "كل طالب مسجّل مرة واحدة.",
     act:"findDups", btn:"فحص ودمج" });
+  /* ١ب تكرار مشتبه فيه (أسماء متشابهة أو رقم فيه غلطة كتابة) */
+  var sus = suspectDuplicates();
+  out.push({ id:"suspect", ok:!sus.length, level:"bad",
+    title:"تكرار مشتبه فيه", n:sus.length,
+    desc: sus.length? "أسماء متشابهة أو أرقام قومية فيها غلطة كتابة — محتاجة مراجعة يدوية."
+                    : "مفيش أسماء متشابهة مشبوهة.",
+    act:"findSuspects", btn:"مراجعة" });
   /* ٢ طلاب في القسم الغلط */
   var mis = sectorMismatch();
   out.push({ id:"sector", ok:!mis.length, level:"bad",
@@ -2653,6 +2740,13 @@ function viewStudents(){
         '<span style="flex:1;min-width:200px"><b>'+dupN+' رقم قومي متكرر</b> — فيه طلاب مسجّلين أكتر من مرة. '+
         'ده بيخرب الأعداد والدرجات، يفضل تدمجهم.</span>'+
         '<button class="btn seal sm" data-act="findDups">فحص ودمج</button></div>';
+    }
+    var susN = suspectDuplicates().length;
+    if(susN){
+      h += '<div class="note warn noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
+        '<span style="flex:1;min-width:200px"><b>'+susN+' حالة تكرار مشتبه فيها</b> — أسماء متشابهة '+
+        'أو أرقام قومية فيها غلطة كتابة. البرنامج مش هيدمجهم لوحده، راجعهم واحذف الغلط.</span>'+
+        '<button class="btn seal sm" data-act="findSuspects">مراجعة</button></div>';
     }
   }
   /* تنبيه بسيط بسطر واحد — الطلاب غير المسكّنين ظاهرين في الكشف نفسه بعلامة «غير مسكّن» */
@@ -5459,6 +5553,22 @@ var ACTS = {
   gsearch: function(){ modalSearch(); },
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
+  findSuspects: function(){ modalSuspects(); },
+  delOneSuspect: function(el){
+    var st = studentById(el.dataset.id);
+    if(!st) return;
+    var im = studentImpact(st.id);
+    var extra = impactLines(im);
+    if(!confirm("حذف «"+st.name+"» ("+(st.natId||"بدون رقم")+")؟"+
+      (extra.length? "\nهيتحذف كمان: "+extra.join(" · ") : "\nمفيش بيانات عليه."))) return;
+    markUndo("حذف تكرار مشتبه فيه");
+    DB.students = DB.students.filter(function(x){ return x.id!==st.id; });
+    DB.behavior = DB.behavior.filter(function(b){ return b.studentId!==st.id; });
+    for(var k in DB.marks) if(k.indexOf(st.id+"|")===0) delete DB.marks[k];
+    for(var a in DB.attend) if(DB.attend[a][st.id]) delete DB.attend[a][st.id];
+    saveNow(); render(); modalSuspects();
+    toastUndo("اتحذف «"+st.name+"»");
+  },
   fixSectors: function(){
     var list = sectorMismatch();
     if(!list.length){ toast("مفيش طلاب في القسم الغلط"); return; }
@@ -9402,6 +9512,14 @@ function pendingTasks(){
       title: mism+" طالب في القسم الغلط",
       desc:"نوعيتهم مش مطابقة لقسم فصلهم — بيظهروا في الكشف الغلط.",
       act:"fixSectors", btn:"تصحيح" });
+  }
+  /* تكرار مشتبه فيه */
+  var sus2 = suspectDuplicates().length;
+  if(sus2){
+    t.push({ icon:"absence", tone:"warn",
+      title: sus2+" حالة تكرار مشتبه فيها",
+      desc:"أسماء متشابهة أو رقم قومي فيه غلطة كتابة — راجعها واحذف الغلط.",
+      act:"findSuspects", btn:"مراجعة" });
   }
   /* أرقام قومية متكررة */
   var dups = findDuplicates().length;
