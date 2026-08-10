@@ -2217,7 +2217,8 @@ var MERGE_FIELDS = [
 ];
 function modalMergePair(key){
   var ids = String(key||"").split("|");
-  var list = ids.map(function(i){ return studentById(i); }).filter(Boolean);
+  var list = ids.map(function(i){ return studentById(i); }).filter(Boolean)
+    .sort(function(a,b){ return addedOrder(a)-addedOrder(b); });   /* الأقدم أولًا */
   if(list.length<2){ toast("السجلات مش موجودة"); return; }
   UI.mergeKey = key;
 
@@ -2254,7 +2255,8 @@ function modalMergePair(key){
     list.map(function(st,i){
       return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:3px 0">'+
         '<input type="radio" name="mf_name" class="mgf" data-f="name" value="'+esc(st.name)+'"'+
-        (i===0?" checked":"")+' style="width:16px;height:16px">'+esc(st.name)+'</label>';
+        (i===0?" checked":"")+' style="width:16px;height:16px">'+esc(st.name)+
+        ' <span class="tag '+(i===0?"info":"warn")+'" style="font-size:10px">'+(i===0?"القديم":"الجديد")+'</span></label>';
     }).join("")+'</div>';
   var natOpts = '<div style="padding:7px 0;border-bottom:1px solid var(--line-2)">'+
     '<div style="font-size:12.5px;font-weight:700;margin-bottom:4px">الرقم القومي — اختار الصح</div>'+
@@ -2262,7 +2264,8 @@ function modalMergePair(key){
       return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:3px 0">'+
         '<input type="radio" name="mf_natId" class="mgf" data-f="natId" value="'+esc(st.natId||"")+'"'+
         (i===0?" checked":"")+' style="width:16px;height:16px">'+
-        '<span style="direction:ltr">'+esc(st.natId||"بدون رقم")+'</span></label>';
+        '<span style="direction:ltr">'+esc(st.natId||"بدون رقم")+'</span>'+
+        ' <span class="tag '+(i===0?"info":"warn")+'" style="font-size:10px">'+(i===0?"القديم":"الجديد")+'</span></label>';
     }).join("")+'</div>';
 
   var rest = MERGE_FIELDS.map(function(f){ return pick(f[0], f[1], f[2]); }).join("");
@@ -2360,16 +2363,24 @@ function modalSuspects(){
   var body = groups.slice(0,40).map(function(g){
     return '<div style="border:1px solid #f0dcb8;background:#fdf9f2;border-radius:11px;padding:9px;margin-bottom:9px">'+
       '<div style="font-size:12px;color:#7d4d0d;font-weight:700;margin-bottom:6px">⚠ '+esc(g.why)+'</div>'+
-      g.list.map(function(st){
+      g.list.slice().sort(function(a,b){ return addedOrder(a)-addedOrder(b); })
+       .map(function(st, idx, arr){
         var c = classById(st.classId);
         var im = studentImpact(st.id);
         var w = (im.marks?im.marks+" درجة · ":"")+(im.days?im.days+" يوم · ":"");
-        return '<div class="list-item" style="background:#fff;border-radius:9px;margin-bottom:5px">'+
-          '<span class="tx"><b>'+esc(st.name)+'</b><small>'+
-          '<span style="direction:ltr">'+esc(st.natId||"بدون رقم")+'</span> · '+
+        /* الأقدم أولًا، والأحدث آخرًا */
+        var age = idx===0
+          ? '<span class="tag info">البيان القديم</span>'
+          : (idx===arr.length-1 ? '<span class="tag warn">البيان الجديد</span>'
+                                : '<span class="tag">بيان وسط</span>');
+        return '<div class="list-item" style="background:#fff;border-radius:9px;margin-bottom:5px;align-items:flex-start">'+
+          '<span class="tx"><b>'+age+' '+esc(st.name)+'</b>'+
+          '<small><span style="direction:ltr">'+esc(st.natId||"بدون رقم")+'</span> · '+
           esc(eduName(st.edu||"reg"))+' · '+esc(c?c.name:"غير مسكّن")+
-          (w? ' · '+w.replace(/ · $/,"") : ' · مفيش بيانات عليه')+
-          '</small></span>'+
+          (w? ' · '+w.replace(/ · $/,"") : ' · مفيش بيانات عليه')+'</small>'+
+          '<small style="color:var(--muted)">المصدر: <b>'+esc(srcName(st))+'</b>'+
+          (st.joined? ' · اتقيّد '+esc(fmtDate(st.joined)) : '')+'</small>'+
+          '</span>'+
           '<button class="btn ghost sm" data-act="editStudent" data-id="'+st.id+'">تعديل</button>'+
           '<button class="btn ghost sm" data-act="delOneSuspect" data-id="'+st.id+'" '+
             'style="color:var(--danger);margin-right:4px">حذف ده</button>'+
@@ -3268,7 +3279,7 @@ function viewStudent(id){
     kv("النوع", nidInfo?nidInfo.gender:"—")+kv("محافظة الميلاد", nidInfo?nidInfo.govName:"—")+
     kv("السن", (s.age||ageFrom(s.birth))?((s.age||ageFrom(s.birth))+" سنة"):"—")+kv("الديانة", s.religion||"—")+
     kv("ولي الأمر", guardName||"—")+kv("هاتف ولي الأمر", s.phone||"—")+
-    kv("تاريخ القيد", fmtDate(s.joined))+kv("مصدر القيد", s.fromWish?"استمارة تحديد المسار":(s.fromForm?"استمارة":"إضافة يدوية"))+
+    kv("تاريخ القيد", fmtDate(s.joined))+kv("مصدر القيد", srcName(s))+
     '</div>';
   if(s.notes) h += '<div class="note" style="margin-top:6px"><b>ملاحظات:</b> '+esc(s.notes)+'</div>';
   h += '</div></div>';
@@ -3731,7 +3742,7 @@ function saveHome(el){
   if(dup){ toast("الرقم القومي ده مسجّل بالفعل للطالب: "+dup.name); return; }
 
   var s = id ? studentById(id) : null;
-  if(!s){ s = { id:uid("s"), status:"active", joined:today() }; DB.students.push(s); }
+  if(!s){ s = stampSrc({ id:uid("s"), status:"active", joined:today() }, "manual"); DB.students.push(s); }
   s.name = name; s.natId = nat;
   s.edu = "home"; s.classId = ""; s.sector = curSector();
   setStudentLevel(s, lvl);
@@ -5415,7 +5426,7 @@ function doImport(){
     var name = (parts[0]||"").trim();
     if(!name) return;
     var seat = (parts[1]||"").trim();
-    DB.students.push({id:uid("s"), name:name, classId:cid, seat:seat, status:"active", joined:today()});
+    DB.students.push(stampSrc({id:uid("s"), name:name, classId:cid, seat:seat, status:"active", joined:today()}, "quick"));
     n++;
   });
   save(); closeModal(); render(); toast("اتضاف "+n+" طالب");
@@ -7851,7 +7862,7 @@ function impHome(recs){
     if(nat.length!==14 || !parseNationalId(nat)){ r.err.push("سطر "+(i+1)+": الرقم القومي غير صحيح ("+name+")"); return; }
     var exist = byNat[nat];
     if(exist && UI.imp.mode==="add"){ r.skip++; return; }
-    var s = (exist && UI.imp.mode==="update") ? exist : { id:uid("s"), status:"active", joined:today() };
+    var s = (exist && UI.imp.mode==="update") ? exist : stampSrc({ id:uid("s"), status:"active", joined:today() }, "import");
     if(s===exist) r.upd++; else { DB.students.push(s); byNat[nat] = s; r.add++; }
     s.name = name; s.natId = nat;
     s.edu = "home"; s.classId = ""; s.sector = curSector();
@@ -7942,7 +7953,7 @@ function impStudents(recs){
     }
 
     if(exist && UI.imp.mode==="add"){ r.skip++; return; }
-    var s = (exist && UI.imp.mode==="update") ? exist : {id:uid("s"), status:"active", joined:today()};
+    var s = (exist && UI.imp.mode==="update") ? exist : stampSrc({id:uid("s"), status:"active", joined:today()}, "import");
     if(s===exist) r.upd++; else { DB.students.push(s); r.add++; }
 
     s.name = name;
@@ -12390,6 +12401,43 @@ function eduSector(edu){
   if(edu==="reg") return "reg";
   return "";
 }
+/* ============================================================
+   مصدر القيد ووقته — عشان نعرف مين البيان القديم ومين الجديد
+   ============================================================ */
+function stampSrc(o, src){
+  if(!o) return o;
+  if(!o.addedAt) o.addedAt = Date.now();
+  if(!o.src) o.src = src || "manual";
+  return o;
+}
+var SRC_NAMES = {
+  manual: "إضافة يدوية",
+  quick:  "إضافة سريعة",
+  import: "استيراد ملف",
+  form:   "ترحيل من استمارة"
+};
+function srcName(s){
+  if(!s) return "—";
+  var v = s.src || (s.fromForm ? ("form:"+s.fromForm) : (s.fromWish ? "form:track" : ""));
+  if(!v) return "غير معروف";
+  if(v.indexOf("form:")===0){
+    var fid = v.slice(5);
+    if(fid==="track") return "ترحيل من استمارة تحديد المسار";
+    var f = formById(fid);
+    return "ترحيل من استمارة" + (f ? " «"+f.title+"»" : "");
+  }
+  return SRC_NAMES[v] || v;
+}
+/* ترتيب السجلات: الأقدم أولًا. الوقت المسجّل، وإلا تاريخ القيد، وإلا ترتيب الإدخال */
+function addedOrder(s){
+  if(s.addedAt) return s.addedAt;
+  if(s.joined){
+    var d = new Date(s.joined+"T00:00:00");
+    if(!isNaN(d)) return d.getTime();
+  }
+  var i = DB.students.indexOf(s);
+  return i>=0 ? i : 0;
+}
 function migrateRowToStudent(r, opt){
   opt = opt || {};
   var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
@@ -12443,6 +12491,7 @@ function migrateRowToStudent(r, opt){
     prevClass: r.prevClass || "", bacTrack: r.bacTrack || "", bacSubject: r.bacSubject || "",
     fromForm: opt.formId || ""
   };
+  stampSrc(s, opt.formId ? ("form:"+opt.formId) : "form");
   setStudentLevel(s, opt.level || r.level || 0);
   enrichStudent(s);
   DB.students.push(s);
