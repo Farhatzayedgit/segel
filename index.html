@@ -717,7 +717,33 @@ function migrateSubjectHours(){
     su.hours = n;
     if(!su.periods) su.periods = n;
   });
+  migrateSubjectKind();
 }
+/* نوع المادة (عادية / نشاط تربوي / تربية مهنية) بيتاخد من الهيكل الدراسي */
+function migrateSubjectKind(){
+  DB.subjects.forEach(function(su){
+    if(su.kind) return;
+    var c = classById(su.classId);
+    var k = "core";
+    if(c){
+      var plan = curSubjects(curKey(c.level, c.system, c.track));
+      for(var i=0;i<plan.length;i++){
+        if(normAr(plan[i].name)===normAr(su.name)){ k = plan[i].kind||"core"; break; }
+      }
+    }
+    su.kind = k;
+  });
+}
+/* نوع المادة مع احتياطي من الاسم */
+function subjKind(su){
+  if(!su) return "core";
+  if(su.kind) return su.kind;
+  var n = normAr(su.name||"");
+  if(/نشاط تربوي|النشاط التربوي/.test(n)) return "activity";
+  if(/تربيه مهنيه|التربيه المهنيه/.test(n)) return "voc";
+  return "core";
+}
+function isActivitySubj(su){ var k = subjKind(su); return k==="activity" || k==="voc"; }
 /* أدوار قديمة اتلغت: الإشراف بقى مهمة تتوزّع مش حساب مستقل */
 function fixRoles(){
   if(!Array.isArray(DB.users)) return;
@@ -3256,7 +3282,19 @@ function viewSchedule(){
     for(var p=1;p<=periodsCount();p++){
       var s = schedCell(cid, di, p);
       var clk = isDep? ' data-act="editSched" data-cid="'+cid+'" data-day="'+di+'" data-p="'+p+'" style="cursor:pointer"' : '';
-      if(s) h += '<td class="has"'+clk+'><b>'+esc(subjName(s.subjectId))+'</b><small>'+esc(teacherName(s.teacherId))+'</small></td>';
+      if(s){
+        var su0 = subjById(s.subjectId);
+        if(su0 && isActivitySubj(su0)){
+          var kd = subjKind(su0);
+          var gs = actsOf(kd).filter(function(a){
+            return a.on!==false && studentsOfAct(a.id,kd).some(function(st){ return st.classId===cid; }); });
+          h += '<td class="has"'+clk+' style="background:#fdf6ec">'+
+            '<b>'+esc(su0.name)+'</b><small>'+gs.length+' مجموعة · '+
+            gs.filter(function(a){ return a.teacherId; }).length+' معلم</small></td>';
+        }else{
+          h += '<td class="has"'+clk+'><b>'+esc(subjName(s.subjectId))+'</b><small>'+esc(teacherName(s.teacherId))+'</small></td>';
+        }
+      }
       else  h += '<td class="free"'+clk+'>'+(isDep?"+":"—")+'</td>';
     }
     h += '</tr>';
@@ -4136,7 +4174,7 @@ function autoSubjects(cid){
     if(exists) return;
     DB.subjects.push({id:uid("sb"), classId:cid, name:p.name, max:num(p.max,100),
                       counted:!!p.counted, pass:num(p.pass,50), elective:!!p.elective,
-                      periods:num(p.periods,4), hours:num(p.periods,4)});
+                      periods:num(p.periods,4), hours:num(p.periods,4), kind:p.kind||"core"});
     added++;
   });
   save(); render(); toast(added? "اتضاف "+added+" مادة" : "المواد موجودة بالفعل");
@@ -4348,10 +4386,19 @@ function modalSched(cid, day, period){
   if(!subs.length){ toast("ضيف مواد للفصل الأول"); return; }
   openModal(mHead(DAYS[day]+" — الحصة "+period)+
     '<div class="mb">'+
-    '<label class="f"><span>المادة</span><select id="h_s"><option value="">— حصة فاضية —</option>'+
-      subs.map(function(s){ return '<option value="'+s.id+'"'+(cur&&cur.subjectId===s.id?" selected":"")+'>'+esc(s.name)+'</option>'; }).join("")+
+    '<label class="f"><span>المادة أو النشاط</span><select id="h_s"><option value="">— حصة فاضية —</option>'+
+      (function(){
+        var core = subs.filter(function(x){ return !isActivitySubj(x); });
+        var acts = subs.filter(function(x){ return isActivitySubj(x); });
+        function opt(x){ return '<option value="'+x.id+'"'+(cur&&cur.subjectId===x.id?" selected":"")+'>'+esc(x.name)+'</option>'; }
+        var o = "";
+        if(core.length) o += '<optgroup label="المواد الدراسية">'+core.map(opt).join("")+'</optgroup>';
+        if(acts.length) o += '<optgroup label="حصص النشاط (الفصل بيتقسّم مجموعات)">'+acts.map(opt).join("")+'</optgroup>';
+        return o;
+      })()+
     '</select></label>'+
-    '<label class="f"><span>المعلم</span><select id="h_t"></select></label>'+
+    '<label class="f" id="h_twrap"><span>المعلم</span><select id="h_t"></select></label>'+
+    '<div id="h_actbox"></div>'+
     '<div id="h_warn"></div></div>'+mFoot("حفظ","saveSched"));
   MODAL.dataset.cid = cid; MODAL.dataset.day = day; MODAL.dataset.p = period;
   fillSchedTeacher(cur? cur.teacherId : "");
@@ -4367,7 +4414,39 @@ function fillSchedTeacher(sel){
   var a = DB.assign.filter(function(x){ return x.classId===cid && x.subjectId===sid; })[0];
   if(!sel && a) sel = a.teacherId;
 
+  var box = document.getElementById("h_actbox");
+  var wrap = document.getElementById("h_twrap");
+  if(box) box.innerHTML = "";
+  if(wrap) wrap.style.display = "";
+
   if(!su){ el.innerHTML = '<option value="">— اختر المادة الأول —</option>'; checkBusy(); return; }
+
+  /* حصة نشاط: الفصل بيتقسّم مجموعات، فمفيش معلم واحد */
+  if(isActivitySubj(su)){
+    var kind = subjKind(su);
+    el.innerHTML = '<option value="">— مجموعات النشاط —</option>';
+    if(wrap) wrap.style.display = "none";
+    var groups = actsOf(kind).filter(function(a){ return a.on!==false; })
+      .map(function(a){ return { a:a, n: studentsOfAct(a.id, kind).filter(function(st){ return st.classId===cid; }).length }; })
+      .filter(function(g){ return g.n>0; });
+    var noT = groups.filter(function(g){ return !g.a.teacherId; }).length;
+    var html = '<div class="note '+(noT?"warn":"ok")+'" style="margin:0 0 9px">'+
+      '<b>حصة نشاط — الفصل بيتقسّم '+groups.length+' مجموعة</b>'+
+      '<div style="margin-top:5px;font-size:12.5px">';
+    if(!groups.length){
+      html += 'مفيش طلاب مختارين نشاط في الفصل ده. روح تبويب «الأنشطة» واعمل توزيع تلقائي.';
+    }else{
+      html += groups.map(function(g){
+        return '• '+esc(g.a.name)+' — <b>'+g.n+'</b> طالب — '+
+          (g.a.teacherId? esc(teacherName(g.a.teacherId)) : '<span style="color:var(--danger)">بدون معلم</span>');
+      }).join("<br>");
+      if(noT) html += '<div style="margin-top:6px">'+noT+' مجموعة من غير معلم — حدّدهم من تبويب «الأنشطة».</div>';
+    }
+    html += '</div></div>';
+    if(box) box.innerHTML = html;
+    checkBusy();
+    return;
+  }
 
   var pool = DB.teachers.filter(function(t){ return t.status!=="left"; });
   var same = [], near = [], other = [];
@@ -4725,6 +4804,15 @@ var ACTS = {
   gsearch: function(){ modalSearch(); },
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
+  placeActs: function(){
+    if(!confirm("توزيع حصص النشاط؟\nهتتحط في نفس الخانة لكل فصول الصف الواحد عشان المجموعات تتكوّن.")) return;
+    markUndo("توزيع حصص النشاط");
+    var r = placeActivityPeriods(null);
+    if(!r.placed && !r.skipped.length){ toast("مفيش حصص نشاط في خطط الصفوف"); return; }
+    UI.actPlaceResult = r;
+    saveNow(); render();
+    toastUndo("اتحطت "+r.placed+" حصة نشاط"+(r.skipped.length? " · "+r.skipped.length+" مالقتش خانة فاضية":""));
+  },
   calTab:   function(el){ UI.calTab = el.dataset.t; render(); },
   examTerm: function(el){ UI.examTerm = el.dataset.v; render(); },
   examNew:  function(){ modalExam(null); },
@@ -11712,6 +11800,7 @@ function genOneClassSchedule(cid){
   /* الطلب: كل حصة مطلوبة ومعلمها */
   var items = [], noT = [];
   subs.forEach(function(su){
+    if(isActivitySubj(su)) return;      /* حصص النشاط بتتحط موحّدة للصف كله */
     var hrs = subjHours(su);
     if(!hrs) return;
     var a = DB.assign.filter(function(x){ return x.classId===cid && x.subjectId===su.id; })[0];
@@ -12326,11 +12415,85 @@ function viewLoads(){
 /* الحصص المخطّطة للمعلم من التكليفات الحالية (مش من الجدول) */
 function plannedHours(tid, skipClassIds){
   var skip = skipClassIds || {};
-  return DB.assign.filter(function(a){ return a.teacherId===tid && !skip[a.classId]; })
+  var n = DB.assign.filter(function(a){ return a.teacherId===tid && !skip[a.classId]; })
     .reduce(function(sum, a){
       var su = subjById(a.subjectId);
       return sum + (su ? subjHours(su) : 0);
     }, 0);
+  return n + activityHours(tid);
+}
+/* كل مجموعة نشاط عليها طلاب = حصة أسبوعية على معلمها */
+function activityHours(tid){
+  if(!tid) return 0;
+  actInit();
+  var n = 0;
+  DB.activities.forEach(function(a){
+    if(a.teacherId!==tid || a.on===false) return;
+    if(studentsOfAct(a.id, a.kind).length) n++;
+  });
+  return n;
+}
+/* ============================================================
+   حصص النشاط في الجدول
+   الفصل الواحد طلابه بيتفرّقوا على مجموعات، فحصة النشاط بتتحط في
+   نفس التوقيت لكل فصول الصف — كده المجموعات تتكوّن والمعلمين يتوزّعوا.
+   ============================================================ */
+function activitySubjectsOf(cid){
+  return DB.subjects.filter(function(su){ return su.classId===cid && isActivitySubj(su); });
+}
+/* بيحط حصص النشاط لكل صف في خانة موحّدة */
+function placeActivityPeriods(levels){
+  var res = { placed:0, levels:[], skipped:[] };
+  var days = schoolDayIdx(), P = periodsCount();
+  var byLevel = {};
+  myClasses().forEach(function(c){
+    var L = Number(c.level);
+    if(levels && levels.indexOf(L)<0) return;
+    if(!activitySubjectsOf(c.id).length) return;
+    if(!byLevel[L]) byLevel[L] = [];
+    byLevel[L].push(c);
+  });
+  Object.keys(byLevel).forEach(function(L){
+    var classes = byLevel[L];
+    /* كل نوع نشاط ليه خانة موحّدة للصف كله */
+    var kinds = {};
+    classes.forEach(function(c){
+      activitySubjectsOf(c.id).forEach(function(su){ kinds[su.name] = 1; });
+    });
+    Object.keys(kinds).forEach(function(sname){
+      /* ندوّر على خانة فاضية في كل فصول الصف */
+      var slot = null;
+      for(var pi=P; pi>=1 && !slot; pi--){          /* آخر حصص اليوم أنسب للنشاط */
+        for(var di=0; di<days.length && !slot; di++){
+          var d = days[di];
+          var free = classes.every(function(c){
+            var cell = schedCell(c.id, d, pi);
+            if(!cell) return true;
+            var su0 = subjById(cell.subjectId);
+            return su0 && normAr(su0.name)===normAr(sname);   /* موجودة بالفعل = تمام */
+          });
+          if(free) slot = { day:d, period:pi };
+        }
+      }
+      if(!slot){ res.skipped.push(levelName(L)+" — "+sname); return; }
+      classes.forEach(function(c){
+        var su = activitySubjectsOf(c.id).filter(function(x){ return normAr(x.name)===normAr(sname); })[0];
+        if(!su) return;
+        /* نشيل أي نسخة قديمة من نفس النشاط في الفصل */
+        DB.schedule = DB.schedule.filter(function(x){
+          return !(x.classId===c.id && x.subjectId===su.id);
+        });
+        DB.schedule = DB.schedule.filter(function(x){
+          return !(x.classId===c.id && x.day===slot.day && x.period===slot.period);
+        });
+        DB.schedule.push({ id:uid("h"), classId:c.id, day:slot.day, period:slot.period,
+                           subjectId:su.id, teacherId:"", actKind:subjKind(su) });
+        res.placed++;
+      });
+      res.levels.push(levelName(L)+" — "+sname+": "+DAYS[slot.day]+" الحصة "+slot.period);
+    });
+  });
+  return res;
 }
 function autoAssignTeachers(levels, opt){
   opt = opt || {};
@@ -12346,6 +12509,7 @@ function autoAssignTeachers(levels, opt){
     var subs = DB.subjects.filter(function(su){ return su.classId===c.id; });
     if(!subs.length){ noSubs.push(c); return; }
     subs.forEach(function(su){
+      if(isActivitySubj(su)) return;    /* النشاط له معلمو مجموعات مش إسناد عادي */
       var hrs = subjHours(su);          /* بتظبط الحصص لوحدها لو ناقصة */
       if(hrs>0) demand.push({ cls:c, su:su, hrs:hrs });
     });
@@ -12459,6 +12623,24 @@ function viewGenSched(){
     '<div style="font-size:13px">التكليفات الحالية: <b>'+DB.assign.length+'</b> · '+
     'المعلمون اللي لهم تكليفات: <b>'+Object.keys(ctx.perTeacher).length+'</b></div>'+
     '</div></div>';
+
+  /* الخطوة ١ب: حصص النشاط */
+  var actSubs = 0;
+  myClasses().forEach(function(c){ actSubs += activitySubjectsOf(c.id).length; });
+  if(actSubs){
+    var rr = UI.actPlaceResult;
+    h += '<div class="card"><div class="hd"><div style="flex:1">'+
+      '<span class="eyebrow">الخطوة ١ ب</span><h3>حصص النشاط</h3></div>'+
+      '<button class="btn ghost" data-act="placeActs">⇉ توزيع حصص النشاط</button></div><div class="bd">'+
+      '<div class="note">طلاب الفصل الواحد بيتفرّقوا على أنشطة مختلفة، فحصة النشاط لازم تتحط في '+
+      '<b>نفس التوقيت لكل فصول الصف</b> — كده المجموعات تتكوّن ومعلم كل نشاط ياخد مجموعته. '+
+      'البرنامج بيحطها في آخر حصص اليوم.</div>'+
+      (rr && rr.levels.length ? '<div class="note ok"><b>التوزيع الحالي:</b><br>'+
+        rr.levels.map(function(x){ return esc(x); }).join("<br>")+'</div>' : '')+
+      (rr && rr.skipped.length ? '<div class="note bad"><b>مالقتش خانة فاضية لـ:</b> '+
+        rr.skipped.map(function(x){ return esc(x); }).join("، ")+' — فرّغ حصة أو زوّد حصص اليوم.</div>' : '')+
+      '</div></div>';
+  }
 
   h += '<div class="card"><div class="hd"><div style="flex:1">'+
     '<span class="eyebrow">الخطوة ٢</span><h3>بناء الجدول</h3></div></div><div class="bd">'+
