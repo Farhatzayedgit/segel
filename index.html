@@ -76,7 +76,12 @@ nav.side{display:none}
   }
   nav.side button.on{background:var(--ink);color:#fff;font-weight:600}
   nav.side button:not(.on):hover{background:var(--line-2);color:var(--ink)}
-  nav.side .ico{font-size:15px;width:20px;text-align:center}
+  nav.side .ico{width:20px;display:flex;align-items:center;justify-content:center;flex:0 0 20px}
+  nav.side .navgrp{
+    font-size:10.5px;font-weight:700;color:var(--muted);letter-spacing:.4px;
+    padding:12px 11px 5px;text-transform:none;opacity:.75
+  }
+  nav.side .navgrp:first-child{padding-top:4px}
   nav.bottom{display:none}
 }
 nav.bottom{
@@ -88,7 +93,11 @@ nav.bottom button{
   flex:1 0 auto;min-width:62px;display:flex;flex-direction:column;align-items:center;gap:2px;
   padding:6px 4px;border-radius:9px;font-size:10.5px;color:var(--muted);font-weight:500
 }
-nav.bottom button .ico{font-size:17px;line-height:1.1}
+nav.bottom button .ico{display:flex;align-items:center;justify-content:center;height:20px}
+.navgrp{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.3px}
+/* الأيقونات: مقاس ولون موحّد في كل مكان */
+.ic{display:block;flex:0 0 auto;vertical-align:middle}
+.list-item>.ico{display:flex;align-items:center;justify-content:center;width:22px;flex:0 0 22px}
 nav.bottom button.on{color:var(--ink);background:var(--line-2);font-weight:700}
 
 /* ====== البطاقات ====== */
@@ -177,7 +186,8 @@ table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .chev{color:#b9c2b8;font-size:15px}
 
 .empty{text-align:center;padding:34px 18px;color:var(--muted)}
-.empty .big{font-size:32px;opacity:.35;margin-bottom:6px}
+.empty .big{opacity:.3;margin-bottom:8px;display:flex;justify-content:center;color:var(--ink)}
+.empty .big .ic{stroke-width:1.4}
 .empty b{display:block;color:var(--ink);font-size:14px;margin-bottom:3px}
 .empty p{margin:0 0 12px;font-size:12.5px}
 
@@ -881,31 +891,84 @@ function seed(){
    الواجهة: الدخول، التنقل، وشاشات وكيل شئون الطلاب
    ============================================================ */
 
+/* ============================================================
+   الأيقونات — مجموعة SVG موحّدة (خط واحد، حجم واحد، لون واحد)
+   بدل خلط الإيموجي بالرموز اللي كانت بتبان بأحجام وألوان مختلفة
+   ============================================================ */
+var ICONS = {
+  today:    '<path d="M3 9h18M8 3v3M16 3v3"/><rect x="3" y="5" width="18" height="16" rx="2"/>',
+  students: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 6M17.5 20a6 6 0 0 0-2-4.3"/>',
+  home:     '<path d="M3 10l9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M10 20v-6h4v6"/>',
+  plan:     '<path d="M4 5h16M4 12h16M4 19h9"/><circle cx="19" cy="19" r="2"/>',
+  forms:    '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  papers:   '<path d="M8 3h7l5 5v13H8z"/><path d="M15 3v5h5"/><path d="M11 12h6M11 16h6"/>',
+  classes:  '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/>',
+  absence:  '<path d="M12 3l9 17H3z"/><path d="M12 9v5M12 17h.01"/>',
+  events:   '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  assign:   '<path d="M7 7h10l-3-3M17 17H7l3 3"/>',
+  schedule: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M9 9v12M15 9v12"/><path d="M8 2v4M16 2v4"/>',
+  teachers: '<circle cx="12" cy="7" r="3"/><path d="M5 21a7 7 0 0 1 14 0"/>',
+  reports:  '<path d="M6 9V4h12v5"/><rect x="4" y="9" width="16" height="7" rx="2"/><path d="M7 16h10v5H7z"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>',
+  duty:     '<path d="M12 3l8 4v6c0 4-3.4 7.3-8 8-4.6-.7-8-4-8-8V7z"/><path d="M9 12l2 2 4-4"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1.5"/>',
+  times:    '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  dash:     '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  subs:     '<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
+  staff:    '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M17 9v6M14 12h6"/>',
+  leaves:   '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M9 15l2 2 4-4"/>',
+  attend:   '<path d="M4 12l5 5L20 6"/>',
+  print:    '<path d="M6 9V4h12v5"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 17h10v4H7z"/>',
+  grades:   '<path d="M12 3l2.6 5.6 6.4.8-4.7 4.3 1.2 6.3-5.5-3-5.5 3 1.2-6.3L3 9.4l6.4-.8z"/>',
+  stats:    '<path d="M4 20V12M9 20V6M14 20v-5M19 20V9"/>'
+};
+function icon(name, size){
+  var p = ICONS[name] || ICONS.events;
+  return '<svg class="ic" viewBox="0 0 24 24" width="'+(size||18)+'" height="'+(size||18)+'" '+
+    'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" '+
+    'aria-hidden="true">'+p+'</svg>';
+}
 var NAV = {
   manager:[
-    ["today","لوحة اليوم","◉"],["duty","توزيع الإشراف","⌂"],["calendar","التقويم الدراسي","▦"],
-    ["times","أوقات اليوم","◷"],
-    ["dash","المؤشرات","▤"],["subs","الاحتياطي","⇄"],["events","الأحداث","☰"],
-    ["absence","غياب الطلاب","!"],["staff","العاملون","✎"],["classes","الفصول","▦"],
-    ["students","الطلاب","👤"],["home","المنازل","⌂"],["curriculum","الهيكل الدراسي","❖"],["wishes","رغبات الطلاب","★"],["papers","الورقيات","▤"],["schedule","الجداول","☷"],
-    ["dailyRep","التقرير اليومي","⎙"],["settings","الإعدادات","⚙"]
+    ["_g","المتابعة اليومية"],
+    ["today","لوحة اليوم","today"],["dash","المؤشرات","dash"],["dailyRep","التقرير اليومي","print"],
+    ["_g","الطلاب"],
+    ["students","الطلاب","students"],["home","المنازل","home"],
+    ["wishes","رغبات الطلاب","grades"],["absence","غياب الطلاب","absence"],
+    ["_g","الشؤون الأكاديمية"],
+    ["curriculum","الهيكل الدراسي","plan"],["classes","الفصول","classes"],["schedule","الجداول","schedule"],
+    ["_g","العاملون"],
+    ["staff","العاملون","staff"],["duty","توزيع الإشراف","duty"],["subs","الاحتياطي","subs"],
+    ["_g","المدرسة"],
+    ["calendar","التقويم الدراسي","calendar"],["times","أوقات اليوم","times"],
+    ["events","الأحداث","events"],["papers","الورقيات","papers"],["settings","الإعدادات","settings"]
   ],
   deputy:[
-    ["today","لوحة اليوم","◉"],["students","الطلاب","👤"],["home","المنازل","⌂"],["curriculum","الهيكل الدراسي","❖"],["wishes","رغبات الطلاب","★"],["papers","الورقيات","▤"],["classes","الفصول","▦"],
-    ["absence","الغياب والإنذارات","!"],["events","الأحداث","☰"],["assign","التكليفات","⇄"],
-    ["schedule","الجداول","☷"],["teachers","المعلمون","✎"],
-    ["reports","الكشوف","⎙"],["settings","الإعدادات","⚙"]
+    ["_g","المتابعة اليومية"],
+    ["today","لوحة اليوم","today"],["absence","الغياب والإنذارات","absence"],
+    ["_g","الطلاب"],
+    ["students","الطلاب","students"],["home","المنازل","home"],["wishes","رغبات الطلاب","grades"],
+    ["_g","الشؤون الأكاديمية"],
+    ["curriculum","الهيكل الدراسي","plan"],["classes","الفصول","classes"],
+    ["schedule","الجداول","schedule"],["teachers","المعلمون","teachers"],["assign","التكليفات","assign"],
+    ["_g","المستندات"],
+    ["reports","الكشوف","reports"],["papers","الورقيات","papers"],
+    ["events","الأحداث","events"],["settings","الإعدادات","settings"]
   ],
   admin:[
-    ["today","لوحة اليوم","◉"],["staffAtt","حضور العاملين","✓"],["subs","الاحتياطي","⇄"],
-    ["duty","توزيع الإشراف","⌂"],["staff","العاملون","✎"],["leaves","الإجازات","☰"],["papers","الورقيات","▤"],
-    ["schedule","الجداول","☷"],["dailyRep","التقرير اليومي","⎙"],["staffStats","الإحصائيات","▤"]
+    ["_g","المتابعة اليومية"],
+    ["today","لوحة اليوم","today"],["staffAtt","حضور العاملين","attend"],["subs","الاحتياطي","subs"],
+    ["_g","شؤون العاملين"],
+    ["staff","العاملون","staff"],["duty","توزيع الإشراف","duty"],["leaves","الإجازات","leaves"],
+    ["_g","المستندات"],
+    ["schedule","الجداول","schedule"],["dailyRep","التقرير اليومي","print"],
+    ["staffStats","الإحصائيات","stats"],["papers","الورقيات","papers"]
   ],
   teacher:[
-    ["myclasses","فصولي","▦"],["myschedule","جدولي","☷"],["mystudents","طلابي","👤"]
+    ["myclasses","فصولي","classes"],["myschedule","جدولي","schedule"],["mystudents","طلابي","students"]
   ],
   student:[
-    ["mygrades","درجاتي","★"],["myattend","حضوري","✓"],["mysched","جدولي","☷"]
+    ["mygrades","درجاتي","grades"],["myattend","حضوري","attend"],["mysched","جدولي","schedule"]
   ]
 };
 
@@ -914,8 +977,8 @@ function navFor(u){
   var items = (NAV[u.role] || []).slice();
   if(u.role==="teacher" && u.teacherId){
     var d = myDutyToday();
-    if(d.any) items.splice(1, 0, ["myduty","الإشراف","⌂"]);
-    else if(myDutyWeek().length) items.push(["myduty","إشرافي","⌂"]);
+    if(d.any) items.splice(1, 0, ["myduty","الإشراف","duty"]);
+    else if(myDutyWeek().length) items.push(["myduty","إشرافي","duty"]);
   }
   return items;
 }
@@ -974,16 +1037,50 @@ function logout(){
 }
 
 /* ---------- التنقل ---------- */
+/* أهم التبويبات اللي تظهر في الشريط السفلي على الموبايل — الباقي في «المزيد» */
+var BOTTOM_MAX = 5;
 function renderNav(){
   var items = navFor(UI.user);
-  var s="", b="";
+  var s = "";
   items.forEach(function(it){
+    if(it[0]==="_g"){ s += '<div class="navgrp">'+esc(it[1])+'</div>'; return; }
     var on = UI.tab===it[0] ? " on" : "";
-    s += '<button class="'+on.trim()+'" data-act="tab" data-tab="'+it[0]+'"><span class="ico">'+it[2]+'</span>'+esc(it[1])+'</button>';
-    b += '<button class="'+on.trim()+'" data-act="tab" data-tab="'+it[0]+'"><span class="ico">'+it[2]+'</span>'+esc(it[1])+'</button>';
+    s += '<button class="'+on.trim()+'" data-act="tab" data-tab="'+it[0]+'">'+
+      '<span class="ico">'+icon(it[2])+'</span>'+esc(it[1])+'</button>';
   });
   document.getElementById("navSide").innerHTML = s;
+
+  /* الشريط السفلي: أول ٤ تبويبات + زر «المزيد» يفتح الباقي */
+  var tabs = items.filter(function(it){ return it[0]!=="_g"; });
+  var main = tabs.slice(0, BOTTOM_MAX-1), rest = tabs.slice(BOTTOM_MAX-1);
+  var b = "";
+  main.forEach(function(it){
+    var on = UI.tab===it[0] ? " on" : "";
+    b += '<button class="'+on.trim()+'" data-act="tab" data-tab="'+it[0]+'">'+
+      '<span class="ico">'+icon(it[2])+'</span>'+esc(it[1])+'</button>';
+  });
+  if(rest.length){
+    var restOn = rest.some(function(it){ return it[0]===UI.tab; }) ? " on" : "";
+    b += '<button class="'+restOn.trim()+'" data-act="navMore">'+
+      '<span class="ico">'+icon("events")+'</span>المزيد</button>';
+  }
   document.getElementById("navBottom").innerHTML = b;
+}
+/* قائمة «المزيد» للموبايل — مرتّبة بنفس المجموعات */
+function modalNavMore(){
+  var items = navFor(UI.user);
+  var tabs = items.filter(function(it){ return it[0]!=="_g"; });
+  var shown = {};
+  tabs.slice(0, BOTTOM_MAX-1).forEach(function(it){ shown[it[0]] = 1; });
+  var h = "";
+  items.forEach(function(it){
+    if(it[0]==="_g"){ h += '<div class="navgrp" style="padding:10px 4px 4px">'+esc(it[1])+'</div>'; return; }
+    if(shown[it[0]]) return;
+    h += '<button class="list-item" data-act="tab" data-tab="'+it[0]+'" style="width:100%;text-align:right">'+
+      '<span class="ico" style="color:var(--muted)">'+icon(it[2])+'</span>'+
+      '<span class="tx"><b>'+esc(it[1])+'</b></span><span class="chev">‹</span></button>';
+  });
+  openModal(mHead("كل الأقسام")+'<div class="mb" style="padding-top:4px">'+h+'</div>');
 }
 
 /* ---------- الموجّه ---------- */
@@ -1548,7 +1645,7 @@ function viewStudents(){
     '<th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الصف</th><th>الفصل</th><th>النوعية</th><th>المسار</th><th>مادة التخصص</th><th>الحالة</th>'+
     '</tr></thead><tbody>';
   if(!list.length){
-    h += '<tr><td colspan="'+(canBulk?10:9)+'"><div class="empty"><div class="big">👤</div><b>مفيش طلاب مطابقين</b>'+
+    h += '<tr><td colspan="'+(canBulk?10:9)+'"><div class="empty"><div class="big">'+icon("students",34)+'</div><b>مفيش طلاب مطابقين</b>'+
       '<p>'+(DB.students.length?'جرّب تغيّر الفلاتر.':'ابدأ بإضافة الفصول ثم الطلاب.')+'</p></div></td></tr>';
   }
   list.forEach(function(s,i){
@@ -1892,7 +1989,7 @@ function viewClasses(){
   var h = pageHd("الفصول", mc.length+" فصل في قسم "+sectorName(curSector()),
     isDep?'<button class="btn" data-act="addClass">+ إضافة فصل</button>'+impBtn("classes",{},"استيراد من إكسيل"):'');
   if(!mc.length){
-    return h + '<div class="card"><div class="bd"><div class="empty"><div class="big">▦</div>'+
+    return h + '<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("classes",34)+'</div>'+
       '<b>ابدأ بإنشاء الفصول</b><p>كل فصل بيتحدد بالصف والنظام (عام / بكالوريا) والمسار، وبعدها تسكّن عليه الطلاب وتوزّع المعلمين.</p>'+
       (isDep?'<button class="btn" data-act="addClass">+ إضافة أول فصل</button>'+impBtn("classes",{},"استيراد من إكسيل"):'')+'</div></div></div>';
   }
@@ -2016,7 +2113,7 @@ function viewHome(){
     '<th>النوع</th><th>المحافظة</th><th>ولي الأمر</th><th>الهاتف</th>'+
     (isDep?'<th class="noprint"></th>':'')+'</tr></thead><tbody>';
   if(!list.length){
-    h += '<tr><td colspan="'+(isDep?10:9)+'"><div class="empty"><div class="big">👤</div><b>مفيش طلاب منازل</b>'+
+    h += '<tr><td colspan="'+(isDep?10:9)+'"><div class="empty"><div class="big">'+icon("students",34)+'</div><b>مفيش طلاب منازل</b>'+
       '<p>'+(all.length?'جرّب تغيّر الفلاتر.':'ضيف طالب، أو ارفع ملف إكسيل/PDF، أو رحّل من استمارة سجّلها الطلاب.')+'</p></div></td></tr>';
   }
   list.forEach(function(s,i){
@@ -2338,7 +2435,7 @@ function viewTeachers(){
       '<button class="btn ghost" data-act="bulkEditTeachers" style="margin-right:6px">✎ تعديل المحددين</button>'+
       impBtn("teachers",{},"استيراد من إكسيل"):'');
   if(!DB.teachers.length){
-    return h+'<div class="card"><div class="bd"><div class="empty"><div class="big">✎</div><b>مفيش معلمين مسجّلين</b>'+
+    return h+'<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("teachers",34)+'</div><b>مفيش معلمين مسجّلين</b>'+
       '<p>لما تضيف معلم، بيتعمل له حساب دخول تلقائي، ويشوف الفصول اللي تسندها له بس.</p>'+
       (isDep?'<button class="btn" data-act="addTeacher">+ إضافة أول معلم</button>'+impBtn("teachers",{},"استيراد من إكسيل"):'')+'</div></div></div>';
   }
@@ -2397,7 +2494,7 @@ function viewAssign(){
   var h = pageHd("التكليفات", "توزيع المعلمين على الفصول والمواد",
     '<button class="btn" data-act="assignNew">+ تكليف جديد</button>'+impBtn("assign",{},"استيراد من إكسيل"));
   if(!DB.assign.length){
-    return h+'<div class="card"><div class="bd"><div class="empty"><div class="big">⇄</div><b>مفيش تكليفات لسه</b>'+
+    return h+'<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("assign",34)+'</div><b>مفيش تكليفات لسه</b>'+
       '<p>التكليف بيربط معلم بفصل ومادة. أول ما تعمله، المعلم يشوف الفصل ده في «فصولي» ويقدر يسجّل الغياب ويرصد الدرجات.</p>'+
       '<button class="btn" data-act="assignNew">+ أول تكليف</button>'+impBtn("assign",{},"استيراد من إكسيل")+'</div></div></div>';
   }
@@ -2714,7 +2811,7 @@ function viewMyClasses(){
   var a = (tid ? assignsOfTeacher(tid) : []).filter(function(x){ return _m[x.classId]; });
   var h = pageHd("فصولي", a.length? a.length+" تكليف مسند لك في قسم "+sectorName(curSector()) : "");
   if(!a.length){
-    return h+'<div class="card"><div class="bd"><div class="empty"><div class="big">▦</div><b>مفيش فصول مسندة لك</b>'+
+    return h+'<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("classes",34)+'</div><b>مفيش فصول مسندة لك</b>'+
       '<p>الفصول والمواد بتتسند من وكيل شئون الطلاب. تواصل مع <b>'+esc(contactFor("deputy"))+
       '</b> عشان يضيف تكليفاتك، وهتظهر هنا فورًا.</p></div></div></div>';
   }
@@ -3724,6 +3821,8 @@ var ACTS = {
   addStudent: function(el){ modalStudent(null, el.dataset.cid); },
   editStudent: function(el){ modalStudent(el.dataset.id); },
   saveStudent: saveStudent,
+  navMore: function(){ modalNavMore(); },
+  tab: function(el){ closeModal(); UI.tab = el.dataset.tab; UI.sub = null; render(); },
   clearStuFilters: function(){
     ["q","lvl","track","sub","cls","edu","status"].forEach(function(k){ UI.filters[k] = ""; });
     render();
@@ -5979,7 +6078,7 @@ function viewStaff(){
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
     '<th>م</th><th>الاسم</th><th>الوظيفة</th><th>المؤهل</th><th>تاريخ التعيين</th>'+
     '<th>الهاتف</th><th>النصاب</th><th>الحضور</th></tr></thead><tbody>';
-  if(!shown.length) h += '<tr><td colspan="8"><div class="empty"><div class="big">✎</div><b>مفيش عاملين</b>'+
+  if(!shown.length) h += '<tr><td colspan="8"><div class="empty"><div class="big">'+icon("teachers",34)+'</div><b>مفيش عاملين</b>'+
     '<p>المعلمون بيظهروا هنا تلقائي أول ما تضيفهم. ضيف باقي العاملين من زرار الإضافة.</p></div></td></tr>';
   shown.forEach(function(s,i){
     var st = staffAttStats(s.id);
@@ -6126,7 +6225,7 @@ function viewSubs(){
     if(gA2) return h + gA2;
   }
   if(!absentIds.length){
-    return h + '<div class="card"><div class="bd"><div class="empty"><div class="big">✓</div>'+
+    return h + '<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("attend",34)+'</div>'+
       '<b>مفيش غياب مسجّل النهارده</b><p>كل العاملين حاضرين — مفيش حصص محتاجة تغطية.</p></div></div></div>';
   }
 
@@ -6486,7 +6585,7 @@ function viewLeaves(){
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
     '<th>م</th><th>العامل</th><th>الوظيفة</th><th>النوع</th><th>من</th><th>إلى</th>'+
     '<th>الأيام</th><th>الرصيد المتبقي</th><th>ملاحظات</th><th></th></tr></thead><tbody>';
-  if(!shown.length) h += '<tr><td colspan="10"><div class="empty"><div class="big">☰</div><b>مفيش إجازات مسجّلة</b>'+
+  if(!shown.length) h += '<tr><td colspan="10"><div class="empty"><div class="big">'+icon("events",34)+'</div><b>مفيش إجازات مسجّلة</b>'+
     '<p>سجّل الإجازة من هنا أو من ملف العامل، والرصيد بيتخصم تلقائي.</p></div></td></tr>';
   shown.forEach(function(L,i){
     var s = staffById(L.staffId);
@@ -7157,7 +7256,7 @@ function viewToday(){
     });
     h += '</div></div>';
   }else{
-    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">✓</div>'+
+    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("attend",34)+'</div>'+
       '<b>اليوم ماشي تمام</b><p>الحضور مرصود، والمواقع مغطّاة، ومفيش حصص مكشوفة.</p></div></div></div>';
   }
 
@@ -7241,7 +7340,7 @@ function viewDuty(){
   /* المواقع */
   var locs = sectorLocations();
   if(!locs.length){
-    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">⌂</div>'+
+    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("home",34)+'</div>'+
       '<b>عرّف مواقع الإشراف لفترة '+esc(sectorName(curSector()))+'</b>'+
       '<p>الأدوار والأحواش والبوابات والمقصف — كل موقع محتاج مشرف. اضغط «+ موقع إشراف».</p>'+
       '<button class="btn" data-act="quickLocs">إنشاء المواقع الشائعة بضغطة</button></div></div></div>';
@@ -7299,7 +7398,7 @@ function viewEvents(){
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
     '<th>م</th><th>التاريخ</th><th>الوقت</th><th>النوع</th><th>الموقع</th>'+
     '<th>الطلاب</th><th>البيان</th><th>الإجراء</th><th>المسجِّل</th><th></th></tr></thead><tbody>';
-  if(!list.length) h += '<tr><td colspan="10"><div class="empty"><div class="big">☰</div><b>مفيش أحداث</b>'+
+  if(!list.length) h += '<tr><td colspan="10"><div class="empty"><div class="big">'+icon("events",34)+'</div><b>مفيش أحداث</b>'+
     '<p>المشرف بيسجّل هنا المخالفات والتأخر والحالات المرضية والمواقف المشرّفة. '+
     'وأي حدث مرتبط بطالب بينزل تلقائي في سجل سلوكه.</p></div></td></tr>';
   list.forEach(function(e,i){
@@ -7613,7 +7712,7 @@ function viewMyDuty(){
   var h = pageHd("الإشراف", ds.ok ? ds.name+" "+fmtDate(date) : ds.name);
 
   if(!ds.ok){
-    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">☾</div>'+
+    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("today",34)+'</div>'+
       '<b>'+esc(ds.name)+'</b><p>مفيش إشراف النهاردة.</p></div></div></div>';
   }else if(date===today() && d.any){
     h += '<div class="card" style="border-right:3px solid var(--gold)"><div class="hd">'+
@@ -7661,7 +7760,7 @@ function viewMyDuty(){
       h += '</div></div>';
     }
   }else if(date===today()){
-    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">◔</div>'+
+    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("times",34)+'</div>'+
       '<b>مفيش مناوبة عليك النهاردة</b><p>مناوباتك الأسبوعية موضحة تحت.</p></div></div></div>';
   }
 
@@ -7754,7 +7853,7 @@ function viewCalendar(){
     '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div>'+
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
     '<th>م</th><th>المناسبة</th><th>من</th><th>إلى</th><th>عدد الأيام</th><th>الحالة</th><th></th></tr></thead><tbody>';
-  if(!hs.length) h += '<tr><td colspan="7"><div class="empty"><div class="big">▦</div><b>مفيش إجازات مسجّلة</b>'+
+  if(!hs.length) h += '<tr><td colspan="7"><div class="empty"><div class="big">'+icon("classes",34)+'</div><b>مفيش إجازات مسجّلة</b>'+
     '<p>سجّل الأعياد والمناسبات الرسمية، والبرنامج هيوقف الشغل فيها تلقائي.</p></div></td></tr>';
   hs.forEach(function(x,i){
     var to = x.to || x.from;
@@ -8099,7 +8198,7 @@ function gate(){
     var mine = iAmResponsible(g.role);
     var title = g.title + " في فترة " + sectorName(curSector());
     return '<div class="card"><div class="bd"><div class="empty">'+
-      '<div class="big">⛔</div><b>'+esc(title)+'</b><p>'+esc(g.why)+'</p>'+
+      '<div class="big">'+icon("absence",34)+'</div><b>'+esc(title)+'</b><p>'+esc(g.why)+'</p>'+
       (mine
         ? '<button class="btn" data-act="tab" data-tab="'+g.tab+'">'+esc(g.act)+' الآن</button>'
         : '<div class="note warn" style="text-align:right;margin:4px auto 0;max-width:440px">'+
@@ -8785,7 +8884,7 @@ function viewPapers(){
     });
     h += '</div></div>';
   });
-  if(!visible.length) h += '<div class="card"><div class="bd"><div class="empty"><div class="big">▤</div><b>مفيش نماذج في التصنيف ده</b></div></div></div>';
+  if(!visible.length) h += '<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("papers",34)+'</div><b>مفيش نماذج في التصنيف ده</b></div></div></div>';
   return h;
 }
 function modalPaper(){
@@ -8850,7 +8949,7 @@ function viewFormsHub(){
     can?'<button class="btn" data-act="formNew">+ استمارة جديدة</button>':'');
 
   if(!DB.forms.length){
-    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">✎</div>'+
+    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("teachers",34)+'</div>'+
       '<b>مفيش استمارات إضافية</b>'+
       '<p>تقدر تضيف استمارة تطلب فيها أي بيانات من الطلاب (بيانات ولي الأمر، محل الإقامة، رغبات النشاط...). '+
       'الطالب هيلاقيها في صفحة الدخول أول ما تفتحها.</p>'+
@@ -9006,7 +9105,7 @@ function modalFormMigrate(fid){
   });
   if(!pending.length){
     openModal(mHead("ترحيل من: "+f.title)+
-      '<div class="mb"><div class="empty"><div class="big">✓</div><b>كل المسجّلين اتّرحّلوا</b>'+
+      '<div class="mb"><div class="empty"><div class="big">'+icon("attend",34)+'</div><b>كل المسجّلين اتّرحّلوا</b>'+
       '<p>مفيش تسجيلات جديدة محتاجة ترحيل في الاستمارة دي.</p></div></div>'+mFoot("تمام","close"));
     return;
   }
@@ -9118,7 +9217,7 @@ function viewFormSubs(f){
     '<th>م</th><th>الاسم</th><th>الرقم القومي</th>';
   (f.fields||[]).forEach(function(fd){ h += '<th>'+esc(fd.label)+'</th>'; });
   h += '<th>تاريخ التسجيل</th>'+(can?'<th class="noprint">حذف</th>':'')+'</tr></thead><tbody>';
-  if(!subs.length) h += '<tr><td colspan="'+(3+(f.fields||[]).length+1+(can?1:0))+'"><div class="empty"><div class="big">★</div><b>مفيش تسجيلات لسه</b><p>الطلاب بيملوا الاستمارة دي من صفحة الدخول بزر «الدخول كطالب».</p></div></td></tr>';
+  if(!subs.length) h += '<tr><td colspan="'+(3+(f.fields||[]).length+1+(can?1:0))+'"><div class="empty"><div class="big">'+icon("grades",34)+'</div><b>مفيش تسجيلات لسه</b><p>الطلاب بيملوا الاستمارة دي من صفحة الدخول بزر «الدخول كطالب».</p></div></td></tr>';
   subs.forEach(function(s,i){
     h += '<tr><td class="rownum">'+(i+1)+'</td>'+
       '<td><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
@@ -9225,7 +9324,7 @@ function viewWishes(){
   }
 
   if(!all.length){
-    return h + '<div class="card"><div class="bd"><div class="empty"><div class="big">★</div>'+
+    return h + '<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("grades",34)+'</div>'+
       '<b>مفيش تسجيلات لسه</b>'+
       '<p>الطلاب بيسجّلوا من صفحة البداية بزرار «الدخول كطالب» — من غير كلمة سر. '+
       'ابعتلهم رابط البرنامج وهما هيسجّلوا بنفسهم، والبيانات هتظهر هنا فورًا. '+
