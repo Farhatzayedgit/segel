@@ -503,7 +503,8 @@ function blankDB(){
     assign:[], schedule:[], attend:{}, marks:{}, behavior:[], notices:[],
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
-    sectors:{}, wishes:[]
+    sectors:{}, wishes:[],
+    forms:[], formSubs:{}, papers:[], trackOpen:true
   };
 }
 
@@ -518,7 +519,7 @@ function load(){
     DB.absRules = Object.assign(blankDB().absRules, d.absRules||{});
     DB.bac = Object.assign(blankDB().bac, d.bac||{});
     if(!DB.sectors || typeof DB.sectors!=="object") DB.sectors = {};
-    ["users","teachers","classes","subjects","students","assign","schedule","behavior","notices","staff","leaves","locations","dutyPlan","events","holidays","wishes"].forEach(function(k){
+    ["users","teachers","classes","subjects","students","assign","schedule","behavior","notices","staff","leaves","locations","dutyPlan","events","holidays","wishes","forms","papers"].forEach(function(k){
       if(!Array.isArray(DB[k])) DB[k]=[];
     });
     if(!DB.attend||typeof DB.attend!=="object") DB.attend={};
@@ -526,6 +527,8 @@ function load(){
     if(!DB.staffAtt||typeof DB.staffAtt!=="object") DB.staffAtt={};
     if(!DB.subs   ||typeof DB.subs   !=="object") DB.subs={};
     if(!DB.duty   ||typeof DB.duty   !=="object") DB.duty={};
+    if(!DB.formSubs||typeof DB.formSubs!=="object") DB.formSubs={};
+    if(DB.trackOpen===undefined) DB.trackOpen = true;
     fixRoles();
     migrateSectors();
   }catch(e){ DB = seed(); }
@@ -761,18 +764,18 @@ var NAV = {
     ["times","أوقات اليوم","◷"],
     ["dash","المؤشرات","▤"],["subs","الاحتياطي","⇄"],["events","الأحداث","☰"],
     ["absence","غياب الطلاب","!"],["staff","العاملون","✎"],["classes","الفصول","▦"],
-    ["students","الطلاب","👤"],["wishes","رغبات الطلاب","★"],["schedule","الجداول","☷"],
+    ["students","الطلاب","👤"],["wishes","الاستمارات","★"],["papers","الورقيات","▤"],["schedule","الجداول","☷"],
     ["dailyRep","التقرير اليومي","⎙"],["settings","الإعدادات","⚙"]
   ],
   deputy:[
-    ["today","لوحة اليوم","◉"],["students","الطلاب","👤"],["wishes","رغبات الطلاب","★"],["classes","الفصول","▦"],
+    ["today","لوحة اليوم","◉"],["students","الطلاب","👤"],["wishes","الاستمارات","★"],["papers","الورقيات","▤"],["classes","الفصول","▦"],
     ["absence","الغياب والإنذارات","!"],["events","الأحداث","☰"],["assign","التكليفات","⇄"],
     ["schedule","الجداول","☷"],["teachers","المعلمون","✎"],
     ["reports","الكشوف","⎙"],["settings","الإعدادات","⚙"]
   ],
   admin:[
     ["today","لوحة اليوم","◉"],["staffAtt","حضور العاملين","✓"],["subs","الاحتياطي","⇄"],
-    ["duty","توزيع الإشراف","⌂"],["staff","العاملون","✎"],["leaves","الإجازات","☰"],
+    ["duty","توزيع الإشراف","⌂"],["staff","العاملون","✎"],["leaves","الإجازات","☰"],["papers","الورقيات","▤"],
     ["schedule","الجداول","☷"],["dailyRep","التقرير اليومي","⎙"],["staffStats","الإحصائيات","▤"]
   ],
   teacher:[
@@ -883,7 +886,8 @@ function render(){
     case "myduty":     h = viewMyDuty(); break;
     case "calendar":   h = viewCalendar(); break;
     case "times":      h = viewTimes(); break;
-    case "wishes":     h = viewWishes(); break;
+    case "wishes":     h = viewFormsHub(); break;
+    case "papers":     h = viewPapers(); break;
     case "dash":       h = viewDash(); break;
     case "staff":      h = (UI.sub&&UI.sub.one) ? viewStaffOne(UI.sub.one) : viewStaff(); break;
     case "staffAtt":   h = viewStaffAtt(); break;
@@ -944,14 +948,20 @@ function openPrintPicker(){
       '<input type="checkbox" class="pcol" data-col="'+esc(t)+'" checked style="width:18px;height:18px;flex:0 0 18px">'+
       '<span style="font-weight:600;color:var(--ink)">'+esc(t)+'</span></label>';
   }).join("");
-  openModal(mHead("اختَر بيانات الطباعة")+
+  openModal(mHead("طباعة أو تصدير البيان")+
     '<div class="mb">'+
-    '<div class="note">شيل علامة الصح عن أي عمود مش عايز تطبعه. عمود «م» بيتطبع دايمًا.</div>'+
+    '<div class="note">شيل علامة الصح عن أي عمود مش عايزه. بعدين اختار: طباعة، أو تنزيل إكسيل منسّق، أو PDF منسّق. عمود «م» بيتحسب دايمًا.</div>'+
     '<div style="display:flex;gap:6px;margin-bottom:8px">'+
       '<button class="btn ghost sm" data-act="pcolAll">تحديد الكل</button>'+
       '<button class="btn ghost sm" data-act="pcolNone">إلغاء الكل</button></div>'+
     boxes+
-    '</div>'+mFoot("طباعة","doPrintPick"));
+    '</div>'+
+    '<div class="mf" style="flex-wrap:wrap;gap:8px">'+
+      '<button class="btn ghost" data-act="close">إلغاء</button>'+
+      '<button class="btn ghost" data-act="doPickExcel">⤓ إكسيل</button>'+
+      '<button class="btn ghost" data-act="doPickPdf">⤓ PDF</button>'+
+      '<button class="btn" data-act="doPrintPick">⎙ طباعة</button>'+
+    '</div>');
 }
 function pcolSet(on){
   Array.prototype.slice.call(document.querySelectorAll(".pcol")).forEach(function(cb){ cb.checked = on; });
@@ -988,6 +998,165 @@ function clearPrintHide(){
   Array.prototype.slice.call(document.querySelectorAll(".phide")).forEach(function(el){ el.classList.remove("phide"); });
 }
 
+/* ---------- تصدير أي بيان: إكسيل منسّق أو PDF منسّق ----------
+   بيقرا الأعمدة اللي المستخدم اختارها في نفس المنتقي، ويجمع كل الجداول الظاهرة. */
+function pickedHidden(){
+  var hidden = {};
+  Array.prototype.slice.call(document.querySelectorAll(".pcol")).forEach(function(cb){
+    if(!cb.checked) hidden[cb.dataset.col] = true;
+  });
+  return hidden;
+}
+function exportTitle(){
+  var v = document.getElementById("view");
+  var h = v && (v.querySelector(".pagehd h2") || v.querySelector(".card .hd h3") || v.querySelector("h2,h3"));
+  var t = h ? (h.textContent||"").replace(/\s+/g," ").trim() : "";
+  return t || "بيان";
+}
+/* بيجمع صفوف كل الجداول الظاهرة في صف واحد، مستبعِد الأعمدة المخفية و noprint */
+function collectExportData(hidden){
+  hidden = hidden || {};
+  var tables = printableTables();
+  var out = null;
+  tables.forEach(function(tbl){
+    var ths = Array.prototype.slice.call(tbl.querySelectorAll("thead th"));
+    var keep = [], head = [];
+    ths.forEach(function(th,i){
+      if(th.classList.contains("noprint")) return;
+      var t = (th.textContent||"").replace(/\s+/g," ").trim();
+      if(hidden[t]) return;
+      keep.push(i); head.push(t);
+    });
+    if(!keep.length) return;
+    var rows = [];
+    Array.prototype.slice.call(tbl.querySelectorAll("tbody tr")).forEach(function(tr){
+      var tds = tr.children;
+      if(tds.length !== ths.length) return;   /* تجاهل صفوف الحالة (colspan) */
+      rows.push(keep.map(function(i){ return (tds[i].textContent||"").replace(/\s+/g," ").trim(); }));
+    });
+    if(!rows.length) return;
+    /* أول جدول بيحدّد الأعمدة؛ الجداول اللي بنفس عدد الأعمدة بتتضم تحته */
+    if(!out) out = {head:head, rows:rows};
+    else if(head.length===out.head.length) out.rows = out.rows.concat(rows);
+  });
+  return out;
+}
+function doPickExcel(){
+  var hidden = pickedHidden(), title = exportTitle();
+  closeModal();
+  var d = collectExportData(hidden);
+  if(!d || !d.rows.length){ toast("مفيش بيانات للتصدير"); return; }
+  genExcel(title, d.head, d.rows);
+}
+function doPickPdf(){
+  var hidden = pickedHidden(), title = exportTitle();
+  closeModal();
+  var d = collectExportData(hidden);
+  if(!d || !d.rows.length){ toast("مفيش بيانات للتصدير"); return; }
+  genPdf(title, d.head, d.rows);
+}
+/* إكسيل منسّق عام (ترويسة المدرسة + رأس ملوّن + حدود) مع بديل CSV لو مفيش نت */
+function genExcel(title, head, rows){
+  var fname = String(title).replace(/[\\/:*?"<>|]/g,"") + "-" + today();
+  loadXLSX().then(function(X){
+    var aoa = [
+      [DB.meta.moderia||""],
+      [DB.meta.edara||""],
+      [DB.meta.school||""],
+      [title+" — العام الدراسي "+(DB.meta.year||"")+" — "+fmtDate(today())],
+      []
+    ].concat([head]).concat(rows);
+    var ws = X.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = head.map(function(hd,i){
+      var w = hd.length;
+      rows.forEach(function(r){ var L=String(r[i]||"").length; if(L>w) w=L; });
+      return { wch: Math.min(40, Math.max(6, w+2)) };
+    });
+    ws["!merges"] = [0,1,2,3].map(function(r){ return { s:{r:r,c:0}, e:{r:r,c:head.length-1} }; });
+    ws["!rows"] = [{hpt:18},{hpt:18},{hpt:22},{hpt:20},{hpt:8},{hpt:22}];
+    for(var r=0;r<5;r++){
+      var ref = X.utils.encode_cell({r:r,c:0});
+      if(ws[ref]) ws[ref].s = { font:{bold:true, sz:r===2?14:11}, alignment:{horizontal:"center"} };
+    }
+    for(var c=0;c<head.length;c++){
+      var hr = X.utils.encode_cell({r:5,c:c});
+      if(ws[hr]) ws[hr].s = {
+        font:{bold:true}, alignment:{horizontal:"center", vertical:"center"},
+        fill:{fgColor:{rgb:"EEF1EC"}},
+        border:{ top:{style:"thin"}, bottom:{style:"thin"}, left:{style:"thin"}, right:{style:"thin"} }
+      };
+    }
+    /* حدود خفيفة على كل خلايا البيانات */
+    for(var ri=0; ri<rows.length; ri++){
+      for(var ci=0; ci<head.length; ci++){
+        var cr = X.utils.encode_cell({r:6+ri,c:ci});
+        if(ws[cr]) ws[cr].s = { alignment:{horizontal:"center", vertical:"center"},
+          border:{ top:{style:"hair"}, bottom:{style:"hair"}, left:{style:"hair"}, right:{style:"hair"} } };
+      }
+    }
+    ws["!ref"] = X.utils.encode_range({s:{r:0,c:0}, e:{r:5+rows.length, c:head.length-1}});
+    var wb = X.utils.book_new();
+    wb.Workbook = { Views:[{ RTL:true }] };
+    X.utils.book_append_sheet(wb, ws, "بيان");
+    X.writeFile(wb, fname+".xlsx");
+    toast("اتنزّل ملف الإكسيل المنسّق");
+  }).catch(function(){
+    var csv = "\uFEFF" + [head].concat(rows).map(function(r){
+      return r.map(function(x){
+        var v = String(x==null?"":x);
+        return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
+      }).join(",");
+    }).join("\n");
+    downloadBlob(csv, fname+".csv", "text/csv;charset=utf-8");
+    toast("من غير نت: اتنزّل CSV — بيفتح في إكسيل عادي");
+  });
+}
+/* PDF منسّق عام: صفحة A4 بترويسة المدرسة → نافذة الطباعة → حفظ كـ PDF */
+function genPdf(title, head, rows){
+  var ths = head.map(function(hd){ return '<th>'+esc(hd)+'</th>'; }).join("");
+  var trs = rows.map(function(r){
+    return '<tr>'+r.map(function(x,i){
+      var v = esc(x);
+      var ltr = /^[\d\s\-\/:]+$/.test(String(x)) && String(x).length>=6;   /* أرقام قومية/تواريخ */
+      return '<td'+(i===1?' class="r"':'')+(ltr?' style="direction:ltr"':'')+'>'+v+'</td>';
+    }).join("")+'</tr>';
+  }).join("");
+  var html = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8">'+
+    '<title>'+esc(title)+' — '+esc(DB.meta.school||"")+'</title><style>'+
+    '@page{size:A4;margin:12mm}'+
+    'body{font-family:"Cairo","Tahoma",sans-serif;color:#0d2b3e;margin:0;font-size:12px}'+
+    '.hd{text-align:center;border-bottom:2px solid #0d2b3e;padding-bottom:8px;margin-bottom:12px}'+
+    '.hd .s{font-size:10px;color:#5d6b72}.hd .n{font-size:15px;font-weight:700}'+
+    '.hd .t{font-size:13px;font-weight:600;margin-top:2px}'+
+    'table{width:100%;border-collapse:collapse;font-size:11px}'+
+    'th{background:#eef1ec;border:1px solid #9aa89e;padding:6px 5px;font-size:10.5px}'+
+    'td{border:1px solid #c9d1c8;padding:5px;text-align:center}td.r{text-align:right}'+
+    'tr{page-break-inside:avoid}thead{display:table-header-group}'+
+    'tbody tr:nth-child(even){background:#f7faf6}'+
+    '.ft{display:flex;justify-content:space-between;font-size:11px;margin-top:20px}'+
+    '.cr{text-align:center;font-size:9.5px;color:#5d6b72;margin-top:14px;border-top:1px solid #d5dbd4;padding-top:7px}'+
+    '</style></head><body>'+
+    '<div class="hd"><div class="s">'+esc(DB.meta.moderia||"")+' — '+esc(DB.meta.edara||"")+'</div>'+
+    '<div class="n">'+esc(DB.meta.school||"")+'</div>'+
+    '<div class="t">'+esc(title)+'</div>'+
+    '<div class="s">العام الدراسي '+esc(DB.meta.year||"")+' — الفصل الدراسي '+(DB.meta.term===1?"الأول":"الثاني")+
+    ' — تاريخ الطباعة '+fmtDate(today())+' — العدد '+rows.length+'</div></div>'+
+    '<table><thead><tr>'+ths+'</tr></thead><tbody>'+trs+'</tbody></table>'+
+    '<div class="ft"><span>وكيل شئون الطلاب: ................</span>'+
+    '<span>مدير المدرسة: ................</span></div>'+
+    '<div class="cr">للتواصل : farhatzayed2018@gmail.com<br>برمجه / فرحات زايد — إهداء لمنظومه التعليم الثانوي</div>'+
+    '</body></html>';
+  var w = window.open("", "_blank");
+  if(!w){
+    downloadBlob(html, String(title).replace(/[\\/:*?"<>|]/g,"")+"-"+today()+".html", "text/html;charset=utf-8");
+    toast("المتصفح منع النافذة — اتنزّل الملف، افتحه واطبعه PDF");
+    return;
+  }
+  w.document.write(html); w.document.close();
+  setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 500);
+  toast("اختار «حفظ كـ PDF» من نافذة الطباعة");
+}
+
 function printHd(title){
   return '<div class="print-hd"><div style="font-size:11px">'+esc(DB.meta.moderia)+' — '+esc(DB.meta.edara)+'</div>'+
     '<div style="font-size:15px;font-weight:700">'+esc(DB.meta.school)+'</div>'+
@@ -1015,10 +1184,35 @@ function viewStudents(){
   var can = UI.user.role!=="student";
   var g0 = gate("classes");
   if(g0) return pageHd("الطلاب","")+g0;
-  var h = pageHd("الطلاب", myStudents().length+" طالب في قسم "+sectorName(curSector()),
+  var unassigned = (UI.user.role==="deputy") ? unassignedStudents() : [];
+  var sub = myStudents().length+" طالب في قسم "+sectorName(curSector())+
+    (unassigned.length ? " · "+unassigned.length+" غير مسكّن" : "");
+  var h = pageHd("الطلاب", sub,
     (UI.user.role==="deputy"?'<button class="btn" data-act="addStudent">+ إضافة طالب</button>'+
       impBtn("students",{},"استيراد من إكسيل")+
       '<button class="btn ghost sm noprint" data-act="impTpl" data-tg="students" style="margin-right:6px">نموذج جاهز</button>':''));
+
+  /* الطلاب غير المسكّنين — بيظهروا دايمًا مهما كانت الفلاتر عشان ما يختفوش */
+  if(unassigned.length){
+    var g2c = grade2Classes();
+    h += '<div class="card noprint" style="border-color:#f0dcb8"><div class="hd" style="background:#fdf3e3">'+
+      '<h3 style="color:#7d4d0d">⚠ '+unassigned.length+' طالب غير مسكّن على فصل</h3>'+
+      (g2c.length?'<button class="btn seal sm" data-act="assignAllUn">تسكين تلقائي حسب المسار</button>':'')+
+      '</div><div class="bd flush">';
+    unassigned.sort(function(a,b){ return sortAr(a.name,b.name); }).forEach(function(s){
+      var info = parseNationalId(s.natId);
+      h += '<div class="list-item">'+
+        '<span class="av">'+esc(initials(s.name))+'</span>'+
+        '<span class="tx"><b>'+esc(s.name)+'</b><small>'+
+          (s.bacTrack?esc(wishTrackName(s.bacTrack))+' · ':'')+
+          (s.bacSubject?esc(s.bacSubject)+' · ':'')+
+          (info?esc(info.gender):'')+(s.prevClass?' · كان في '+esc(s.prevClass):'')+
+        '</small></span>'+
+        '<button class="btn ghost sm" data-act="editStudent" data-id="'+s.id+'">تسكين</button></div>';
+    });
+    if(!g2c.length) h += '<div class="note bad" style="margin:10px">مفيش فصول للصف الثاني لسه. أنشئ فصول «صف ثاني» من شاشة الفصول، وبعدها اضغط «تسكين تلقائي».</div>';
+    h += '</div></div>';
+  }
 
   h += '<div class="card noprint"><div class="bd">'+
     '<div class="grid3">'+
@@ -1255,10 +1449,11 @@ function viewClass(id){
 
   /* الطلاب */
   h += '<div class="card"><div class="hd"><h3>طلاب الفصل ('+studs.length+')</h3>'+
-    (isDep?'<button class="btn ghost sm" data-act="addStudent" data-cid="'+c.id+'">+ طالب</button>'+
+    (isDep?'<button class="btn seal sm" data-act="classTransfer" data-id="'+c.id+'">⇄ ترحيل طلاب للفصل</button>'+
+      '<button class="btn ghost sm" data-act="addStudent" data-cid="'+c.id+'" style="margin-right:6px">+ طالب</button>'+
       impBtn("students",{classId:c.id},"استيراد إكسيل"):'')+
     '</div><div class="bd flush">';
-  if(!studs.length) h += '<div class="empty"><b>الفصل فاضي</b><p>ضيف الطلاب واحد واحد أو الصق قائمة أسماء دفعة واحدة.</p></div>';
+  if(!studs.length) h += '<div class="empty"><b>الفصل فاضي</b><p>اضغط «ترحيل طلاب للفصل» عشان تختار من طلاب الصف دفعة واحدة، أو ضيفهم واحد واحد.</p></div>';
   studs.forEach(function(s,i){
     var st = attendStats(s.id,c.id), a = absState(st.abs);
     h += '<button class="list-item" data-act="openStudent" data-id="'+s.id+'">'+
@@ -1277,6 +1472,98 @@ function classAttendRate(cid){
     for(var s in r){ tot++; if(r[s]!=="A") pres++; }
   }
   return tot? Math.round(pres/tot*1000)/10 : 100;
+}
+
+/* ---------- ترحيل جماعي: نقل طلاب الصف إلى فصل معيّن ---------- */
+function studentLevelOf(s){
+  var c = classById(s.classId);
+  if(c) return Number(c.level);
+  if(s.bacTrack || s.fromWish) return 2;   /* المرحّلين من الرغبات = صف ثاني */
+  return null;                             /* صف غير معروف — يبان كمرشّح لأي فصل */
+}
+function transferCandidates(cls){
+  var L = Number(cls.level);
+  return DB.students.filter(function(s){
+    if(s.status==="left") return false;
+    if(s.classId===cls.id) return false;   /* موجود بالفعل في نفس الفصل */
+    var sl = studentLevelOf(s);
+    return sl===null || sl===L;
+  }).sort(function(a,b){ return sortAr(a.name,b.name); });
+}
+function transferRowHTML(s){
+  var here = classById(s.classId);
+  var loc = here ? esc(here.name) : '<span style="color:var(--danger)">غير مسكّن</span>';
+  var info = parseNationalId(s.natId);
+  return '<label class="list-item trfrow" data-name="'+esc(s.name)+'" data-nat="'+esc(s.natId||"")+'" style="cursor:pointer">'+
+    '<input type="checkbox" class="trf" data-id="'+s.id+'" style="width:18px;height:18px;flex:0 0 18px">'+
+    '<span class="tx"><b>'+esc(s.name)+'</b><small>'+
+      (s.natId?'<span style="direction:ltr">'+esc(s.natId)+'</span> · ':'')+
+      'الحالي: '+loc+(info?' · '+esc(info.gender):'')+'</small></span></label>';
+}
+function modalClassTransfer(cid){
+  var c = classById(cid); if(!c) return;
+  var cand = transferCandidates(c);
+  if(!cand.length){
+    openModal(mHead("ترحيل طلاب إلى "+c.name)+
+      '<div class="mb"><div class="empty"><b>مفيش طلاب متاحين للترحيل</b>'+
+      '<p>كل طلاب '+esc(levelName(c.level))+' متسكّنين بالفعل، أو مفيش طلاب مسجّلين في الصف ده لسه.</p></div></div>'+
+      mFoot("تمام","close"));
+    return;
+  }
+  var rows = cand.map(transferRowHTML).join("");
+  openModal(mHead("ترحيل طلاب إلى "+c.name)+
+    '<div class="mb">'+
+    '<div class="note">اختار الطلاب اللي عايز تنقلهم لفصل «'+esc(c.name)+'» ('+esc(levelName(c.level))+'). كل بيانات الطالب بتتنقل معاه.</div>'+
+    '<input type="text" id="trfq" placeholder="بحث بالاسم أو الرقم القومي…" autocomplete="off" style="width:100%;padding:9px;border:1px solid var(--line-2);border-radius:8px;margin-bottom:8px">'+
+    '<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">'+
+      '<button class="btn ghost sm" data-act="trfAll">تحديد الكل</button>'+
+      '<button class="btn ghost sm" data-act="trfNone">إلغاء الكل</button>'+
+      '<span style="flex:1"></span>'+
+      '<span id="trfcount" style="font-size:12px;color:var(--muted)">'+cand.length+' متاح</span></div>'+
+    '<div id="trflist" style="max-height:46vh;overflow:auto">'+rows+'</div>'+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="doClassTransfer" data-id="'+cid+'">ترحيل المحددين</button></div>');
+  var q = document.getElementById("trfq");
+  if(q){
+    q.addEventListener("input", function(){
+      var v = toEnDigits(this.value.trim());
+      Array.prototype.slice.call(document.querySelectorAll("#trflist .trfrow")).forEach(function(row){
+        var nm = row.getAttribute("data-name")||"", nt = row.getAttribute("data-nat")||"";
+        row.style.display = (!v || nm.indexOf(v)>=0 || nt.indexOf(v)>=0) ? "" : "none";
+      });
+    });
+    setTimeout(function(){ try{ q.focus(); }catch(e){} }, 60);
+  }
+  var lst = document.getElementById("trflist");
+  if(lst) lst.addEventListener("change", function(e){ if(e.target && e.target.classList.contains("trf")) updateTrfCount(); });
+  updateTrfCount();
+}
+function trfSet(on){
+  Array.prototype.slice.call(document.querySelectorAll("#trflist .trfrow")).forEach(function(row){
+    if(row.style.display==="none") return;   /* بس الظاهر في البحث */
+    var cb = row.querySelector(".trf"); if(cb) cb.checked = on;
+  });
+  updateTrfCount();
+}
+function updateTrfCount(){
+  var n = document.querySelectorAll("#trflist .trf:checked").length;
+  var el = document.getElementById("trfcount");
+  if(el) el.textContent = n ? (n+" محدّد") : (document.querySelectorAll("#trflist .trf").length+" متاح");
+}
+function doClassTransfer(el){
+  var cid = el && el.dataset ? el.dataset.id : null;
+  var c = classById(cid); if(!c) return;
+  var ids = Array.prototype.slice.call(document.querySelectorAll("#trflist .trf:checked"))
+    .map(function(cb){ return cb.dataset.id; });
+  if(!ids.length){ toast("مختارتش أي طالب"); return; }
+  var moved = 0;
+  ids.forEach(function(id){
+    var s = byId(DB.students, id);
+    if(s){ s.classId = c.id; enrichStudent(s); moved++; }
+  });
+  saveNow(); closeModal(); render();
+  toast("اترحّل "+moved+" طالب لفصل "+c.name);
 }
 
 /* ============================================================
@@ -2624,11 +2911,29 @@ var ACTS = {
   pcolAll:  function(){ pcolSet(true); },
   pcolNone: function(){ pcolSet(false); },
   doPrintPick: doPrintPick,
+  doPickExcel: doPickExcel,
+  doPickPdf: doPickPdf,
 
   openStudent: function(el){ UI.tab = (UI.user.role==="teacher"?"mystudents":"students"); UI.sub={student:el.dataset.id}; render(); },
   addStudent: function(el){ modalStudent(null, el.dataset.cid); },
   editStudent: function(el){ modalStudent(el.dataset.id); },
   saveStudent: saveStudent,
+  classTransfer: function(el){ modalClassTransfer(el.dataset.id); },
+  doClassTransfer: doClassTransfer,
+  trfAll:  function(){ trfSet(true); },
+  trfNone: function(){ trfSet(false); },
+  assignAllUn: function(){
+    var un = unassignedStudents();
+    if(!un.length){ toast("مفيش طلاب غير مسكّنين"); return; }
+    if(!grade2Classes().length){ toast("أنشئ فصول صف ثاني الأول"); return; }
+    var done=0, left=0;
+    un.forEach(function(s){
+      var c = s.bacTrack ? classForWishTrack(s.bacTrack, eduType(s.edu||"reg").sector) : null;
+      if(c){ s.classId = c.id; done++; } else left++;
+    });
+    saveNow(); render();
+    toast("اتسكّن "+done+" طالب"+(left? " · "+left+" لسه محتاج تسكين يدوي (مفيش فصل لمساره)":""));
+  },
   delStudent: function(el){
     if(!confirm("متأكد من حذف الطالب وكل درجاته وغيابه؟")) return;
     var id = el.dataset.id;
@@ -5239,12 +5544,21 @@ function renderLogin(){
   var box = document.getElementById("loginCard");
   if(!box) return;
 
-  /* شاشة الطالب: تسجيل الرغبات من غير رقم سري */
+  /* شاشة الطالب: ملء الاستمارات من غير رقم سري */
   if(UI.wishDone){ box.innerHTML = wishDoneHTML(UI.wishDone); return; }
+  if(UI.formDone){ box.innerHTML = formDoneHTML(UI.formDone); return; }
   if(UI.stu){
-    box.innerHTML = wishFormHTML();
-    var fn = document.getElementById("w_name");
-    if(fn) fn.focus();
+    if(UI.stuForm==="track"){
+      box.innerHTML = wishFormHTML();
+      var fn = document.getElementById("w_name"); if(fn) fn.focus();
+      return;
+    }
+    if(UI.stuForm){
+      var cf = formById(UI.stuForm);
+      if(cf){ box.innerHTML = studentFormHTML(cf); var fn2 = document.getElementById("cf_name"); if(fn2) fn2.focus(); return; }
+      UI.stuForm = null;
+    }
+    box.innerHTML = studentFormsListHTML();
     return;
   }
 
@@ -5282,7 +5596,7 @@ function renderLogin(){
   /* الدخول كطالب */
   h += '<button class="who" data-lact="stu" style="margin-top:'+(picked?"12px":"7px")+';border-color:var(--gold);background:#fdfaf3">'+
     '<span class="av" style="background:var(--gold)">ط</span>'+
-    '<span class="tx"><b>الدخول كطالب</b><small>تسجيل رغبات المسار — من غير رقم سري</small></span>'+
+    '<span class="tx"><b>الدخول كطالب</b><small>ملء استمارات المدرسة — من غير رقم سري</small></span>'+
     '<span class="chev">‹</span></button>';
 
   var c = syncCfgLoad();
@@ -6439,6 +6753,12 @@ function myStudents(){
   var m = myClassIds();
   return DB.students.filter(function(s){ return m[s.classId] && s.status!=="left"; });
 }
+/* طلاب اتسجّلوا/اترحّلوا بس لسه مش متسكّنين على فصل موجود — لازم يظهروا للوكيل */
+function unassignedStudents(){
+  return DB.students.filter(function(s){
+    return s.status!=="left" && !classById(s.classId);
+  });
+}
 function mySchedule(){
   var m = myClassIds();
   return DB.schedule.filter(function(s){ return m[s.classId]; });
@@ -6886,7 +7206,7 @@ function wishFormHTML(){
   }
 
   h += '<button class="btn block" data-lact="wsave" style="margin-top:4px">تسجيل الرغبة</button>'+
-    '<button class="btn ghost block" data-lact="wback" style="margin-top:8px">رجوع</button>';
+    '<button class="btn ghost block" data-lact="stuBack" style="margin-top:8px">رجوع للاستمارات</button>';
   return h;
 }
 function wishDoneHTML(w){
@@ -6906,7 +7226,7 @@ function wishDoneHTML(w){
     '<div style="color:var(--muted);font-size:12px"><b>وقت التسجيل:</b> '+esc(fmtDate(w.date))+' '+esc(w.time||"")+'</div>'+
     '</div>'+
     '<button class="btn block" data-lact="wnew" style="margin-top:12px">تسجيل طالب آخر</button>'+
-    '<button class="btn ghost block" data-lact="wback" style="margin-top:8px">رجوع للصفحة الرئيسية</button>';
+    '<button class="btn ghost block" data-lact="stuBack" style="margin-top:8px">باقي الاستمارات</button>';
 }
 function readWishForm(){
   var o = UI.wish || {};
@@ -6956,6 +7276,131 @@ function saveWish(){
   renderLogin();
 }
 
+/* ---------- الطالب: قائمة الاستمارات المفتوحة وملؤها ---------- */
+function studentFormsListHTML(){
+  formsInit();
+  var items = [];
+  if(DB.trackOpen!==false) items.push({id:"track", title:"تحديد المسار — البكالوريا", desc:"اختَر مسارك ومادة تخصصك"});
+  DB.forms.filter(function(f){ return f.status!=="closed"; }).forEach(function(f){
+    items.push({id:f.id, title:f.title, desc:f.desc});
+  });
+  var h = '<div style="text-align:center;margin-bottom:12px">'+
+    '<div style="font-family:Cairo,sans-serif;font-weight:700;font-size:16px">استمارات المدرسة</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-top:3px">اختَر الاستمارة اللي عايز تملاها</div></div>';
+  if(!items.length){
+    h += '<div class="note">مفيش استمارات مفتوحة حاليًا. ارجع لاحقًا لما المدرسة تفتح استمارة.</div>';
+  }else{
+    items.forEach(function(it){
+      h += '<button class="who" data-lact="stuPick" data-id="'+it.id+'" style="margin-bottom:7px">'+
+        '<span class="av" style="background:var(--gold)">★</span>'+
+        '<span class="tx"><b>'+esc(it.title)+'</b><small>'+esc(it.desc||"")+'</small></span>'+
+        '<span class="chev">‹</span></button>';
+    });
+  }
+  h += '<button class="btn ghost block" data-lact="wback" style="margin-top:10px">رجوع للصفحة الرئيسية</button>';
+  return h;
+}
+function studentFormHTML(f){
+  var v = UI.stuVals || {};
+  var vals = v.values || {};
+  var h = '<div style="text-align:center;margin-bottom:12px">'+
+    '<div style="font-family:Cairo,sans-serif;font-weight:700;font-size:16px">'+esc(f.title)+'</div>'+
+    (f.desc?'<div style="font-size:12px;color:var(--muted);line-height:1.7;margin-top:3px">'+esc(f.desc)+'</div>':'')+'</div>';
+  h += '<label class="f"><span>الاسم رباعي زي ما هو في شهادة الميلاد</span>'+
+    '<input type="text" id="cf_name" value="'+esc(v.name||"")+'" placeholder="مثال: أحمد محمد علي حسن"></label>';
+  h += '<label class="f"><span>الرقم القومي (١٤ رقم)</span>'+
+    '<input type="text" id="cf_nat" inputmode="numeric" maxlength="14" style="letter-spacing:.12em;direction:ltr;text-align:center" '+
+    'value="'+esc(v.natId||"")+'" placeholder="30012345600123"></label>';
+  (f.fields||[]).forEach(function(fd){
+    var cur = vals[fd.id]!=null ? vals[fd.id] : "";
+    var star = fd.required?' <span style="color:var(--danger)">*</span>':'';
+    h += '<label class="f"><span>'+esc(fd.label)+star+'</span>';
+    if(fd.type==="textarea"){
+      h += '<textarea id="cff_'+fd.id+'">'+esc(cur)+'</textarea>';
+    }else if(fd.type==="select"){
+      h += '<select id="cff_'+fd.id+'"><option value="">— اختر —</option>'+
+        (fd.options||[]).map(function(o){ return '<option'+(cur===o?" selected":"")+'>'+esc(o)+'</option>'; }).join("")+'</select>';
+    }else{
+      var itype = fd.type==="number"?"number":fd.type==="date"?"date":fd.type==="tel"?"tel":"text";
+      h += '<input type="'+itype+'" id="cff_'+fd.id+'" value="'+esc(cur)+'">';
+    }
+    h += '</label>';
+  });
+  h += '<button class="btn block" data-lact="cfsave" data-id="'+f.id+'" style="margin-top:4px">تسجيل</button>'+
+    '<button class="btn ghost block" data-lact="stuBack" style="margin-top:8px">رجوع للاستمارات</button>';
+  return h;
+}
+function formDoneHTML(o){
+  return '<div style="text-align:center">'+
+    '<div style="width:52px;height:52px;margin:0 auto 11px;border-radius:14px;display:grid;place-items:center;background:#e2f0e9;color:#146a4e;font-size:26px">✓</div>'+
+    '<div style="font-family:Cairo,sans-serif;font-weight:700;font-size:17px">اتسجّلت بياناتك</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-top:4px">'+esc(o.formTitle)+'</div></div>'+
+    '<div style="background:#fbfcfa;border:1px solid var(--line);border-radius:11px;padding:12px;margin-top:13px;font-size:13.5px;line-height:2">'+
+    '<div><b>الاسم:</b> '+esc(o.name)+'</div>'+
+    '<div><b>الرقم القومي:</b> <span style="direction:ltr;display:inline-block">'+esc(o.natId)+'</span></div></div>'+
+    '<button class="btn block" data-lact="stuBack" style="margin-top:12px">ملء استمارة تانية</button>'+
+    '<button class="btn ghost block" data-lact="wback" style="margin-top:8px">رجوع للصفحة الرئيسية</button>';
+}
+function saveCustomForm(fid){
+  var f = formById(fid); if(!f){ toast("الاستمارة مش موجودة"); return; }
+  var nEl = document.getElementById("cf_name"), natEl = document.getElementById("cf_nat");
+  var name = cleanName(nEl?nEl.value:"");
+  var nat = toEnDigits(natEl?natEl.value:"").replace(/\D/g,"");
+  var err = nameCheck(name); if(err){ toast(err); return; }
+  err = natIdCheck(nat); if(err){ toast(err); return; }
+  var values = {}, missing = null;
+  (f.fields||[]).forEach(function(fd){
+    var e = document.getElementById("cff_"+fd.id);
+    var vv = e ? String(e.value||"").trim() : "";
+    values[fd.id] = vv;
+    if(fd.required && !vv && !missing) missing = fd.label;
+  });
+  if(missing){ toast("اكتب: "+missing); return; }
+  formsInit();
+  if(!Array.isArray(DB.formSubs[fid])) DB.formSubs[fid] = [];
+  if(subByNat(fid, nat, null)){ toast("الرقم القومي ده مسجّل قبل كده في الاستمارة دي"); return; }
+  var now = new Date();
+  DB.formSubs[fid].push({
+    id:uid("sub"), name:name, natId:nat, values:values, date:today(),
+    time:(now.getHours()<10?"0":"")+now.getHours()+":"+(now.getMinutes()<10?"0":"")+now.getMinutes()
+  });
+  saveNow();
+  UI.formDone = { formTitle:f.title, name:name, natId:nat };
+  UI.stu = false; UI.stuForm = null; UI.stuVals = null;
+  renderLogin();
+}
+/* تصدير تسجيلات استمارة مخصصة لإكسيل */
+function formExcel(fid){
+  var f = formById(fid); if(!f){ toast("الاستمارة مش موجودة"); return; }
+  var subs = formSubsOf(fid);
+  if(!subs.length){ toast("مفيش تسجيلات للتصدير"); return; }
+  var head = ["م","الاسم رباعي","الرقم القومي"].concat((f.fields||[]).map(function(fd){ return fd.label; })).concat(["تاريخ التسجيل","وقت التسجيل"]);
+  var rows = subs.map(function(s,i){
+    var base = [i+1, s.name, s.natId];
+    (f.fields||[]).forEach(function(fd){ var v=(s.values||{})[fd.id]; base.push(v==null?"":(fd.type==="date"?fmtDate(v):v)); });
+    base.push(s.date, s.time||"");
+    return base;
+  });
+  var fname = f.title.replace(/\s+/g,"-")+"-"+today();
+  loadXLSX().then(function(X){
+    var aoa = [[DB.meta.moderia||""],[DB.meta.edara||""],[DB.meta.school||""],
+      ["كشف: "+f.title+" — العام الدراسي "+(DB.meta.year||"")],[],head].concat(rows);
+    var ws = X.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [{wch:5},{wch:30},{wch:18}].concat((f.fields||[]).map(function(){ return {wch:18}; })).concat([{wch:13},{wch:10}]);
+    ws["!merges"] = [0,1,2,3].map(function(r){ return { s:{r:r,c:0}, e:{r:r,c:head.length-1} }; });
+    for(var c=0;c<head.length;c++){ var hr=X.utils.encode_cell({r:5,c:c}); if(ws[hr]) ws[hr].s={font:{bold:true},alignment:{horizontal:"center"},fill:{fgColor:{rgb:"EEF1EC"}}}; }
+    ws["!ref"] = X.utils.encode_range({s:{r:0,c:0}, e:{r:5+rows.length, c:head.length-1}});
+    var wb = X.utils.book_new(); wb.Workbook={Views:[{RTL:true}]};
+    X.utils.book_append_sheet(wb, ws, "تسجيلات");
+    X.writeFile(wb, fname+".xlsx");
+    toast("اتنزّل ملف الإكسيل");
+  }).catch(function(){
+    var csv = "\uFEFF"+[head].concat(rows).map(function(r){ return r.map(function(x){ var v=String(x==null?"":x); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(","); }).join("\n");
+    downloadBlob(csv, fname+".csv", "text/csv;charset=utf-8");
+    toast("اتنزّل CSV");
+  });
+}
+
 /* ============================================================
    ترحيل الرغبات → طلاب مسجّلين في الصف الثاني الثانوي
    الطالب اللي سجّل في الاستمارة كان في الأول، فبيترحّل للصف الثاني
@@ -6965,10 +7410,12 @@ function grade2Classes(){
   return DB.classes.filter(function(c){ return Number(c.level)===2; })
     .sort(function(a,b){ return sortAr(a.name,b.name); });
 }
-function classForWishTrack(trackId){
+function classForWishTrack(trackId, sector){
   var g2 = grade2Classes();
-  return g2.filter(function(c){ return c.system==="bac" && c.track===trackId; })[0] ||
-         g2.filter(function(c){ return c.track===trackId; })[0] || null;
+  var pool = sector ? g2.filter(function(c){ return classSector(c)===sector; }) : g2;
+  if(!pool.length) pool = g2;   /* لو مفيش فصل في نفس القسم، جرّب أي فصل صف ثاني */
+  return pool.filter(function(c){ return c.system==="bac" && c.track===trackId; })[0] ||
+         pool.filter(function(c){ return c.track===trackId; })[0] || null;
 }
 function migrateWishToStudent(w, classId){
   wishesInit();
@@ -6978,7 +7425,8 @@ function migrateWishToStudent(w, classId){
   var s = {
     id: uid("s"), status:"active", joined: today(),
     name: cleanName(w.name), natId: w.natId, classId: classId||"",
-    prevClass: w.prevClass || "", bacSubject: w.subject || "", fromWish: w.id
+    prevClass: w.prevClass || "", bacSubject: w.subject || "", bacTrack: w.track || "",
+    edu: w.edu || "reg", fromWish: w.id
   };
   enrichStudent(s);
   DB.students.push(s);
@@ -6996,7 +7444,7 @@ function modalMigrate(wid){
   var g2 = grade2Classes();
   var info = parseNationalId(w.natId);
   var guard = guardianFromName(w.name);
-  var def = classForWishTrack(w.track);
+  var def = classForWishTrack(w.track, eduType(wishEdu(w)).sector);
   var opts = g2.map(function(c){
     var sel = def && c.id===def.id ? " selected":"";
     return '<option value="'+c.id+'"'+sel+'>'+esc(c.name)+' — '+esc(levelName(c.level))+' · '+esc(trackName(c.system,c.track))+'</option>';
@@ -7025,6 +7473,339 @@ function modalMigrate(wid){
     (g2.length ? mFoot("ترحيل وتسكين","doWMigrate")
                : '<div class="mf"><button class="btn" data-act="close">تمام</button></div>'));
   MODAL.dataset.wid = w.id;
+}
+
+/* ============================================================
+   الورقيات — نماذج ومطبوعات المدرسة الجاهزة للطباعة
+   تظهر للمدير ووكيل شئون الطلاب ووكيل شئون العاملين.
+   ============================================================ */
+var PAPER_CATS = [
+  {id:"student",  name:"ورقيات الطلاب"},
+  {id:"teacher",  name:"ورقيات المعلمين والعاملين"},
+  {id:"internal", name:"ورقيات داخل المدرسة"},
+  {id:"admin",    name:"مخاطبات الإدارة التعليمية"}
+];
+function paperCatName(id){ for(var i=0;i<PAPER_CATS.length;i++) if(PAPER_CATS[i].id===id) return PAPER_CATS[i].name; return id; }
+var DOT = "………………………";
+var DOTL = "……………………………………………";
+var PAPER_TEMPLATES = [
+  /* ---- الطلاب ---- */
+  { cat:"student", title:"إفادة قيد طالب",
+    body:'<p>تشهد إدارة المدرسة بأن الطالب / '+DOTL+'</p>'+
+      '<p>المقيّد بالصف '+DOT+' — الشعبة / المسار '+DOT+' — رقم قومي '+DOT+'</p>'+
+      '<p>طالبٌ منتظمٌ بالدراسة بهذه المدرسة للعام الدراسي '+esc('')+' '+DOT+'، وقد أُعطيت له هذه الإفادة بناءً على طلبه للتقديم لـ '+DOT+' دون أدنى مسؤولية على المدرسة.</p>' },
+  { cat:"student", title:"إذن انصراف مبكّر لطالب",
+    body:'<p>يُسمح بانصراف الطالب / '+DOTL+'</p>'+
+      '<p>المقيّد بالصف '+DOT+' الشعبة '+DOT+'، في تمام الساعة '+DOT+' من يوم '+DOT+'</p>'+
+      '<p>وذلك بناءً على طلب ولي أمره / '+DOT+' وتحت مسؤوليته الكاملة.</p>'+
+      '<p>توقيع ولي الأمر: '+DOT+' &nbsp;&nbsp; صلة القرابة: '+DOT+'</p>' },
+  { cat:"student", title:"إنذار غياب لولي الأمر",
+    body:'<p>السيد ولي أمر الطالب / '+DOTL+'</p>'+
+      '<p>نحيطكم علمًا بأن نجلكم المقيّد بالصف '+DOT+' قد تغيّب عن الدراسة عدد '+DOT+' يوم دون عذر مقبول، '+
+      'وهذا إنذار '+DOT+' له.</p>'+
+      '<p>ونلفت نظركم إلى أن تجاوز '+DOT+' يومًا يعرّضه للحرمان من دخول الامتحان طبقًا للائحة. '+
+      'برجاء سرعة الحضور للمدرسة لمناقشة الأمر.</p>'+
+      '<p>توقيع ولي الأمر بالعلم: '+DOT+'</p>' },
+  { cat:"student", title:"طلب تحويل / نقل طالب",
+    body:'<p>السيد الأستاذ / مدير المدرسة</p>'+
+      '<p>برجاء التكرم بالموافقة على تحويل الطالب / '+DOTL+'</p>'+
+      '<p>المقيّد بالصف '+DOT+' — رقم قومي '+DOT+' — من مدرستنا إلى مدرسة '+DOT+'</p>'+
+      '<p>التابعة لإدارة '+DOT+' التعليمية، وذلك لـ '+DOT+'</p>'+
+      '<p>مقدمه ولي الأمر / '+DOT+' &nbsp; التوقيع: '+DOT+'</p>' },
+  { cat:"student", title:"إقرار وتعهد ولي أمر",
+    body:'<p>أقرّ أنا / '+DOTL+' ولي أمر الطالب / '+DOT+'</p>'+
+      '<p>المقيّد بالصف '+DOT+'، بأنني قد اطّلعت على لائحة الانضباط المدرسي، وأتعهد بـ '+DOT+'</p>'+
+      '<p>'+DOTL+'</p>'+
+      '<p>وهذا إقرار مني بذلك.</p>'+
+      '<p>الاسم: '+DOT+' &nbsp; الرقم القومي: '+DOT+' &nbsp; التوقيع: '+DOT+'</p>' },
+  { cat:"student", title:"استمارة بيانات طالب مستجد",
+    body:'<p>الاسم رباعيًا (كما في شهادة الميلاد): '+DOTL+'</p>'+
+      '<p>الرقم القومي: '+DOT+' &nbsp; تاريخ الميلاد: '+DOT+' &nbsp; محل الميلاد: '+DOT+'</p>'+
+      '<p>الديانة: '+DOT+' &nbsp; الجنسية: '+DOT+' &nbsp; النوع: '+DOT+'</p>'+
+      '<p>اسم ولي الأمر: '+DOT+' &nbsp; صلة القرابة: '+DOT+'</p>'+
+      '<p>الوظيفة: '+DOT+' &nbsp; رقم الهاتف: '+DOT+'</p>'+
+      '<p>محل الإقامة: '+DOTL+'</p>'+
+      '<p>المدرسة المنقول منها: '+DOT+' &nbsp; الصف المقيّد به: '+DOT+'</p>' },
+  /* ---- المعلمون والعاملون ---- */
+  { cat:"teacher", title:"طلب إجازة اعتيادية",
+    body:'<p>السيد الأستاذ / مدير المدرسة</p>'+
+      '<p>برجاء الموافقة على منحي إجازة اعتيادية عدد '+DOT+' يوم، '+
+      'اعتبارًا من '+DOT+' حتى '+DOT+'، وذلك لـ '+DOT+'</p>'+
+      '<p>مقدمه / '+DOT+' — الوظيفة: '+DOT+' — التوقيع: '+DOT+'</p>'+
+      '<p style="margin-top:26px">رأي الإدارة: '+DOTL+'</p>' },
+  { cat:"teacher", title:"طلب إجازة عارضة",
+    body:'<p>السيد الأستاذ / مدير المدرسة</p>'+
+      '<p>برجاء الموافقة على منحي إجازة عارضة يوم '+DOT+' لظرف طارئ، '+
+      'مع العلم بأن رصيدي من الإجازات العارضة '+DOT+' يوم.</p>'+
+      '<p>مقدمه / '+DOT+' — الوظيفة: '+DOT+' — التوقيع: '+DOT+'</p>' },
+  { cat:"teacher", title:"إذن تأخير / انصراف لمعلم",
+    body:'<p>يُسمح للسيد / '+DOTL+'</p>'+
+      '<p>الوظيفة: '+DOT+'، بالـ ( تأخير / انصراف ) في يوم '+DOT+' الساعة '+DOT+'</p>'+
+      '<p>وذلك لـ '+DOT+' على أن يُعوَّض ما يخصه من حصص.</p>'+
+      '<p>توقيع طالب الإذن: '+DOT+' &nbsp; اعتماد المدير: '+DOT+'</p>' },
+  { cat:"teacher", title:"إفادة عمل (إثبات عمل)",
+    body:'<p>تشهد إدارة المدرسة بأن السيد / '+DOTL+'</p>'+
+      '<p>رقم قومي '+DOT+'، يعمل بهذه المدرسة بوظيفة '+DOT+' منذ '+DOT+'</p>'+
+      '<p>وقد أُعطيت له هذه الإفادة بناءً على طلبه لتقديمها إلى '+DOT+' دون أدنى مسؤولية على المدرسة.</p>' },
+  { cat:"teacher", title:"إقرار استلام عهدة / كتب",
+    body:'<p>أقرّ أنا / '+DOTL+' — الوظيفة: '+DOT+'</p>'+
+      '<p>باستلامي العهدة التالية بحالة جيدة، وأتعهد بالمحافظة عليها وردّها عند الطلب:</p>'+
+      '<p>'+DOTL+'</p><p>'+DOTL+'</p>'+
+      '<p>التاريخ: '+DOT+' &nbsp; التوقيع: '+DOT+'</p>' },
+  /* ---- داخل المدرسة ---- */
+  { cat:"internal", title:"محضر اجتماع",
+    body:'<p>إنه في يوم '+DOT+' الموافق '+DOT+' الساعة '+DOT+'، '+
+      'اجتمع '+DOTL+'</p>'+
+      '<p>لمناقشة الموضوعات التالية:</p>'+
+      '<p>١) '+DOTL+'</p><p>٢) '+DOTL+'</p><p>٣) '+DOTL+'</p>'+
+      '<p><b>القرارات:</b></p><p>'+DOTL+'</p><p>'+DOTL+'</p>'+
+      '<p>وقد حُرّر هذا المحضر إثباتًا لما تقدّم.</p>' },
+  { cat:"internal", title:"كشف متابعة يومي للحصص",
+    body:'<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px">'+
+      '<tr><th style="border:1px solid #333;padding:6px">الحصة</th><th style="border:1px solid #333;padding:6px">الفصل</th>'+
+      '<th style="border:1px solid #333;padding:6px">المادة</th><th style="border:1px solid #333;padding:6px">المعلم</th>'+
+      '<th style="border:1px solid #333;padding:6px">ملاحظات</th></tr>'+
+      Array.from({length:7}).map(function(_,i){ return '<tr><td style="border:1px solid #333;padding:12px 6px;text-align:center">'+(i+1)+'</td>'+
+        '<td style="border:1px solid #333"></td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td></tr>'; }).join("")+
+      '</table>'+
+      '<p style="margin-top:14px">اسم المتابِع: '+DOT+' &nbsp; التوقيع: '+DOT+'</p>' },
+  { cat:"internal", title:"إذن دخول زائر",
+    body:'<p>يُسمح بدخول السيد / '+DOTL+'</p>'+
+      '<p>صفته: '+DOT+' — رقم قومي: '+DOT+'، لمقابلة '+DOT+'</p>'+
+      '<p>الغرض من الزيارة: '+DOT+'</p>'+
+      '<p>وقت الدخول: '+DOT+' — وقت الخروج: '+DOT+' — اعتماد: '+DOT+'</p>' },
+  /* ---- الإدارة التعليمية ---- */
+  { cat:"admin", title:"خطاب موجّه للإدارة التعليمية",
+    body:'<p>السيد الأستاذ / مدير عام إدارة '+DOT+' التعليمية &nbsp; المحترم</p>'+
+      '<p>تحية طيبة وبعد،،</p>'+
+      '<p>'+DOTL+'</p><p>'+DOTL+'</p><p>'+DOTL+'</p>'+
+      '<p>وتفضلوا بقبول وافر الاحترام،،</p>'+
+      '<p style="margin-top:20px">مدير المدرسة / '+DOT+' &nbsp; التوقيع: '+DOT+'</p>' },
+  { cat:"admin", title:"بيان إحصائي بأعداد الطلاب",
+    body:'<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px">'+
+      '<tr><th style="border:1px solid #333;padding:6px">الصف</th><th style="border:1px solid #333;padding:6px">عدد الفصول</th>'+
+      '<th style="border:1px solid #333;padding:6px">بنين</th><th style="border:1px solid #333;padding:6px">بنات</th>'+
+      '<th style="border:1px solid #333;padding:6px">الإجمالي</th></tr>'+
+      ["الأول الثانوي","الثاني الثانوي","الثالث الثانوي","الإجمالي العام"].map(function(r){
+        return '<tr><td style="border:1px solid #333;padding:9px 6px">'+r+'</td><td style="border:1px solid #333"></td>'+
+          '<td style="border:1px solid #333"></td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td></tr>'; }).join("")+
+      '</table>'+
+      '<p style="margin-top:14px">اعتماد المدير: '+DOT+'</p>' }
+];
+
+function paperDoc(title, bodyHTML){
+  return '<div style="max-width:820px;margin:0 auto;background:#fff">'+
+    '<div style="text-align:center;border-bottom:2px solid #0d2b3e;padding-bottom:10px;margin-bottom:18px">'+
+      '<div style="font-size:12px">'+esc(DB.meta.moderia||"")+'</div>'+
+      '<div style="font-size:12px">'+esc(DB.meta.edara||"")+'</div>'+
+      '<div style="font-size:18px;font-weight:700;font-family:Cairo,sans-serif;margin-top:4px">'+esc(DB.meta.school||"")+'</div>'+
+      '<div style="font-size:11px;color:#5d6b72;margin-top:2px">العام الدراسي '+esc(DB.meta.year||"")+'</div>'+
+    '</div>'+
+    '<h2 style="text-align:center;font-size:17px;margin:0 0 16px;text-decoration:underline">'+esc(title)+'</h2>'+
+    '<div style="font-size:14.5px;line-height:2.2">'+bodyHTML+'</div>'+
+    '<div style="margin-top:44px;display:flex;justify-content:space-between;font-size:13.5px;font-weight:600">'+
+      '<div>التاريخ: …… / …… / ٢٠……م</div><div>الختم والتوقيع: '+DOT+'</div></div>'+
+    '</div>';
+}
+
+function viewPapers(){
+  var can = ["manager","deputy","admin"].indexOf(UI.user.role)>=0;
+  var cat = UI.filters.paperCat || "all";
+  var h = pageHd("الورقيات","نماذج ومطبوعات المدرسة الجاهزة — بترويسة المدرسة وجاهزة للطباعة",
+    can?'<button class="btn" data-act="paperNew">+ نموذج مخصص</button>':'');
+
+  h += '<div class="chips noprint">'+
+    '<button class="'+(cat==="all"?"on":"")+'" data-act="paperCat" data-c="all">الكل</button>'+
+    PAPER_CATS.map(function(c){ return '<button class="'+(cat===c.id?"on":"")+'" data-act="paperCat" data-c="'+c.id+'">'+esc(c.name)+'</button>'; }).join("")+
+    '</div>';
+
+  var all = PAPER_TEMPLATES.map(function(t,i){ return {key:"b"+i, cat:t.cat, title:t.title, builtin:true}; })
+    .concat((DB.papers||[]).map(function(p){ return {key:p.id, cat:p.cat, title:p.title, builtin:false}; }));
+  var visible = cat==="all" ? all : all.filter(function(t){ return t.cat===cat; });
+
+  PAPER_CATS.forEach(function(c){
+    var items = visible.filter(function(t){ return t.cat===c.id; });
+    if(!items.length) return;
+    h += '<div class="card"><div class="hd"><h3>'+esc(c.name)+'</h3><span class="tag">'+items.length+'</span></div><div class="bd flush">';
+    items.forEach(function(t){
+      h += '<div class="list-item">'+
+        '<span class="av" style="background:var(--seal)">▤</span>'+
+        '<span class="tx"><b>'+esc(t.title)+'</b><small>'+esc(paperCatName(t.cat))+(t.builtin?'':' · نموذج مخصص')+'</small></span>'+
+        '<button class="btn ghost sm" data-act="paperOpen" data-k="'+t.key+'">فتح وطباعة</button>'+
+        (t.builtin?'':'<button class="btn ghost sm" data-act="paperDel" data-id="'+t.key+'" style="color:var(--danger);margin-right:6px">حذف</button>')+
+        '</div>';
+    });
+    h += '</div></div>';
+  });
+  if(!visible.length) h += '<div class="card"><div class="bd"><div class="empty"><div class="big">▤</div><b>مفيش نماذج في التصنيف ده</b></div></div></div>';
+  return h;
+}
+function modalPaper(){
+  openModal(mHead("نموذج ورقي مخصص")+'<div class="mb">'+
+    '<label class="f"><span>عنوان النموذج</span><input type="text" id="pp_title" placeholder="مثال: إقرار متابعة"></label>'+
+    '<label class="f"><span>التصنيف</span><select id="pp_cat">'+
+      PAPER_CATS.map(function(c){ return '<option value="'+c.id+'">'+esc(c.name)+'</option>'; }).join("")+'</select></label>'+
+    '<label class="f"><span>نص النموذج</span><textarea id="pp_body" style="min-height:190px" '+
+      'placeholder="اكتب نص الورقة. سيبها فراغات (……) في الأماكن اللي هتتملى بخط اليد."></textarea></label>'+
+    '<div class="note">بيتطبع تلقائيًا بترويسة المدرسة (المديرية، الإدارة، اسم المدرسة، العام الدراسي) فوق، وخانة التاريخ والتوقيع تحت.</div>'+
+    '</div>'+mFoot("حفظ النموذج","savePaper"));
+}
+function savePaper(){
+  var title = val("pp_title").trim();
+  if(!title){ toast("اكتب عنوان النموذج"); return; }
+  var body = val("pp_body");
+  if(!body.trim()){ toast("اكتب نص النموذج"); return; }
+  if(!Array.isArray(DB.papers)) DB.papers = [];
+  DB.papers.push({ id:uid("pp"), cat:val("pp_cat")||"internal", title:title, body:body, createdAt:today() });
+  saveNow(); closeModal(); render(); toast("اتحفظ النموذج");
+}
+
+
+/* ============================================================
+   نظام الاستمارات الديناميكية
+   وكيل شئون الطلاب بيعمل استمارات، والطالب بيملاها من صفحة الدخول.
+   الاسم (زي شهادة الميلاد) والرقم القومي ركنان أساسيان في كل استمارة.
+   ============================================================ */
+var FIELD_TYPES = [
+  {id:"text",     name:"نص قصير"},
+  {id:"textarea", name:"نص طويل"},
+  {id:"number",   name:"رقم"},
+  {id:"date",     name:"تاريخ"},
+  {id:"tel",      name:"هاتف"},
+  {id:"select",   name:"اختيار من قائمة"}
+];
+function fieldTypeName(t){ for(var i=0;i<FIELD_TYPES.length;i++) if(FIELD_TYPES[i].id===t) return FIELD_TYPES[i].name; return t; }
+function formsInit(){ if(!Array.isArray(DB.forms)) DB.forms=[]; if(!DB.formSubs||typeof DB.formSubs!=="object") DB.formSubs={}; if(DB.trackOpen===undefined) DB.trackOpen=true; }
+function formById(id){ formsInit(); for(var i=0;i<DB.forms.length;i++) if(DB.forms[i].id===id) return DB.forms[i]; return null; }
+function formSubsOf(id){ formsInit(); return Array.isArray(DB.formSubs[id]) ? DB.formSubs[id] : []; }
+function subByNat(formId, nat, exceptId){
+  var n = toEnDigits(String(nat||"")).replace(/\D/g,"");
+  var list = formSubsOf(formId);
+  for(var i=0;i<list.length;i++){ if(list[i].id===exceptId) continue; if(String(list[i].natId)===n) return list[i]; }
+  return null;
+}
+function canManageForms(){ return UI.user.role==="deputy" || UI.user.role==="manager"; }
+
+/* ---------- الـ hub: كل الاستمارات ---------- */
+function viewFormsHub(){
+  formsInit();
+  if(UI.sub && UI.sub.form==="track")
+    return '<button class="btn ghost sm noprint" data-act="formHub" style="margin-bottom:10px">→ كل الاستمارات</button>'+viewWishes();
+  if(UI.sub && UI.sub.form){
+    var ff = formById(UI.sub.form);
+    if(ff) return viewFormSubs(ff);
+    UI.sub = null;
+  }
+  var can = canManageForms();
+  var h = pageHd("استمارات الطلاب","الاستمارات اللي الطلاب بيملوها من صفحة الدخول — كل استمارة فيها الاسم والرقم القومي تلقائيًا",
+    can?'<button class="btn" data-act="formNew">+ استمارة جديدة</button>':'');
+
+  h += formCardHTML({
+    id:"track", title:"تحديد المسار — البكالوريا المصرية",
+    desc:"الطالب يختار مساره ومادة تخصصه (مع الاسم والرقم القومي والفصل السابق ونوعية التعليم).",
+    status: (DB.trackOpen!==false)?"open":"closed", count:(DB.wishes||[]).length, builtin:true, can:can, fields:4
+  });
+  DB.forms.forEach(function(f){
+    h += formCardHTML({ id:f.id, title:f.title, desc:f.desc, status:f.status,
+      count:formSubsOf(f.id).length, builtin:false, can:can, fields:(f.fields||[]).length });
+  });
+  if(can){
+    h += '<div class="note">تقدر تضيف استمارة جديدة تطلب فيها أي بيانات من الطلاب (مثلاً: بيانات ولي الأمر، محل الإقامة، رغبات النشاط، المستوى في اللغات...). '+
+      'الطالب هيلاقيها في صفحة الدخول أول ما تفتحها، وتقدر تقفلها أو تعيد فتحها في أي وقت.</div>';
+  }
+  return h;
+}
+function formCardHTML(o){
+  var open = o.status!=="closed";
+  var h = '<div class="card"><div class="hd">'+
+    '<div style="flex:1;min-width:150px"><h3>'+esc(o.title)+'</h3>'+
+    (o.desc?'<small style="color:var(--muted)">'+esc(o.desc)+'</small>':'')+'</div>'+
+    '<span class="tag '+(open?"ok":"bad")+'">'+(open?"مفتوحة":"مقفولة")+'</span>'+
+    '<span class="tag info">'+o.count+' تسجيل</span></div>'+
+    '<div class="bd" style="display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn ghost sm" data-act="formOpenSubs" data-id="'+o.id+'">عرض التسجيلات ('+o.count+')</button>';
+  if(o.can){
+    h += '<button class="btn '+(open?"ghost":"seal")+' sm" data-act="formToggle" data-id="'+o.id+'">'+(open?"قفل الاستمارة":"إعادة فتحها")+'</button>';
+    if(!o.builtin){
+      h += '<button class="btn ghost sm" data-act="formEdit" data-id="'+o.id+'">تعديل الحقول</button>'+
+        '<button class="btn ghost sm" data-act="formDel" data-id="'+o.id+'" style="color:var(--danger)">حذف</button>';
+    }
+  }
+  h += '</div></div>';
+  return h;
+}
+/* ---------- تسجيلات استمارة مخصصة ---------- */
+function viewFormSubs(f){
+  var can = canManageForms();
+  var q = (UI.filters.fsq||"").trim();
+  var subs = formSubsOf(f.id).slice().sort(function(a,b){ return (b.date+(b.time||""))<(a.date+(a.time||""))?-1:1; });
+  if(q) subs = subs.filter(function(s){ return s.name.indexOf(q)>=0 || String(s.natId).indexOf(q)>=0; });
+  var h = '<button class="btn ghost sm noprint" data-act="formHub" style="margin-bottom:10px">→ كل الاستمارات</button>';
+  h += pageHd(f.title, f.desc||"",
+    '<button class="btn" data-act="formExcel" data-id="'+f.id+'">⬇ تنزيل إكسيل</button>');
+  h += '<div class="card noprint"><div class="bd"><label class="f" style="margin:0"><span>بحث بالاسم أو الرقم القومي</span>'+
+    '<input type="text" id="fsq" value="'+esc(UI.filters.fsq||"")+'" placeholder="اكتب للبحث…"></label></div></div>';
+  h += printHd("كشف: "+f.title);
+  h += '<div class="card"><div class="hd"><h3>'+subs.length+' تسجيل</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>م</th><th>الاسم</th><th>الرقم القومي</th>';
+  (f.fields||[]).forEach(function(fd){ h += '<th>'+esc(fd.label)+'</th>'; });
+  h += '<th>تاريخ التسجيل</th>'+(can?'<th class="noprint">حذف</th>':'')+'</tr></thead><tbody>';
+  if(!subs.length) h += '<tr><td colspan="'+(3+(f.fields||[]).length+1+(can?1:0))+'"><div class="empty"><div class="big">★</div><b>مفيش تسجيلات لسه</b><p>الطلاب بيملوا الاستمارة دي من صفحة الدخول بزر «الدخول كطالب».</p></div></td></tr>';
+  subs.forEach(function(s,i){
+    h += '<tr><td class="rownum">'+(i+1)+'</td>'+
+      '<td><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
+      '<td class="num" style="direction:ltr">'+esc(s.natId)+'</td>';
+    (f.fields||[]).forEach(function(fd){
+      var v=(s.values||{})[fd.id];
+      h += '<td>'+esc(v==null||v===""?"—":(fd.type==="date"?fmtDate(v):v))+'</td>';
+    });
+    h += '<td class="num">'+fmtDate(s.date)+(s.time?' <small style="color:var(--muted)">'+esc(s.time)+'</small>':'')+'</td>';
+    if(can) h += '<td class="noprint"><button class="btn ghost sm" data-act="formSubDel" data-fid="'+f.id+'" data-id="'+s.id+'" style="color:var(--danger)">حذف</button></td>';
+    h += '</tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h;
+}
+/* ---------- منشئ الاستمارة ---------- */
+function modalFormBuilder(id){
+  formsInit();
+  var f = id ? formById(id) : null;
+  UI.formDraft = f ? { id:f.id, title:f.title, desc:f.desc||"", fields:(f.fields||[]).map(function(x){ return Object.assign({},x); }) }
+                   : { id:null, title:"", desc:"", fields:[] };
+  renderFormBuilder();
+}
+function renderFormBuilder(){
+  var d = UI.formDraft; if(!d) return;
+  var fieldsHTML = d.fields.map(function(fd,i){
+    return '<div style="border:1px solid var(--line);border-radius:9px;padding:9px;margin-bottom:7px">'+
+      '<div style="display:flex;gap:8px;align-items:center">'+
+      '<b style="flex:1">'+esc(fd.label||"(بدون عنوان)")+'</b>'+
+      '<span class="tag">'+esc(fieldTypeName(fd.type))+(fd.required?" · إجباري":"")+'</span>'+
+      '<button class="btn ghost sm" data-act="fbDelField" data-i="'+i+'" style="color:var(--danger)">حذف</button></div>'+
+      (fd.type==="select"&&fd.options&&fd.options.length?'<small style="color:var(--muted)">خيارات: '+esc(fd.options.join("، "))+'</small>':'')+
+      '</div>';
+  }).join("");
+  openModal(mHead(d.id?"تعديل الاستمارة":"استمارة جديدة")+
+    '<div class="mb">'+
+    '<label class="f"><span>عنوان الاستمارة</span><input type="text" id="fb_title" value="'+esc(d.title)+'" placeholder="مثال: بيانات ولي الأمر"></label>'+
+    '<label class="f"><span>وصف مختصر (اختياري)</span><input type="text" id="fb_desc" value="'+esc(d.desc)+'" placeholder="بيظهر للطالب تحت العنوان"></label>'+
+    '<div class="note">الاسم (زي شهادة الميلاد) والرقم القومي بيتطلبوا تلقائيًا في كل استمارة — مش محتاج تضيفهم.</div>'+
+    '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:10px 0 6px">الحقول الإضافية</div>'+
+    (fieldsHTML||'<div class="note" style="margin-bottom:8px">مفيش حقول إضافية لسه. ضيف اللي عايز الطالب يملاه تحت.</div>')+
+    '<div style="border-top:1px dashed var(--line);padding-top:10px;margin-top:6px">'+
+      '<div class="grid2">'+
+      '<label class="f"><span>اسم الحقل</span><input type="text" id="fb_fl" placeholder="مثال: محل الإقامة"></label>'+
+      '<label class="f"><span>النوع</span><select id="fb_ft">'+FIELD_TYPES.map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join("")+'</select></label>'+
+      '</div>'+
+      '<label class="f" id="fb_optWrap" style="display:none"><span>الخيارات (افصل بينها بفاصلة)</span><input type="text" id="fb_opt" placeholder="خيار ١، خيار ٢، خيار ٣"></label>'+
+      '<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="fb_req" style="width:18px;height:18px"><span>حقل إجباري</span></label>'+
+      '<button class="btn ghost block" data-act="fbAddField">+ إضافة الحقل للاستمارة</button>'+
+    '</div>'+
+    '</div>'+mFoot("حفظ الاستمارة","saveForm"));
+  var sel = document.getElementById("fb_ft");
+  if(sel) sel.onchange = function(){ var w=document.getElementById("fb_optWrap"); if(w) w.style.display = sel.value==="select"?"block":"none"; };
 }
 
 /* ============================================================
@@ -7312,7 +8093,7 @@ Object.assign(ACTS, {
     if(!confirm("هيترحّل "+todo.length+" طالب للصف الثاني، وكل واحد هيتسكّن على فصل مساره تلقائيًا. اللي مالوش فصل مطابق لمساره هيترحّل من غير تسكين وتقدر تسكّنه بعدين. تمام؟")) return;
     var done=0, noMatch=0, dup=0;
     todo.forEach(function(w){
-      var c = classForWishTrack(w.track);
+      var c = classForWishTrack(w.track, eduType(wishEdu(w)).sector);
       var r = migrateWishToStudent(w, c? c.id : "");
       if(r.ok){ done++; if(!r.assigned) noMatch++; }
       else if(r.dup) dup++;
@@ -7328,6 +8109,97 @@ Object.assign(ACTS, {
   }
 });
 
+/* ---------- أكشنات الورقيات ---------- */
+Object.assign(ACTS, {
+  paperCat: function(el){ UI.filters.paperCat = el.dataset.c; render(); },
+  paperNew: function(){ modalPaper(); },
+  savePaper: savePaper,
+  paperDel: function(el){
+    if(!confirm("حذف النموذج المخصص ده؟")) return;
+    DB.papers = (DB.papers||[]).filter(function(p){ return p.id!==el.dataset.id; });
+    saveNow(); render(); toast("اتحذف");
+  },
+  paperOpen: function(el){
+    var k = el.dataset.k, t = null, custom = false;
+    if(k.charAt(0)==="b"){ t = PAPER_TEMPLATES[Number(k.slice(1))]; }
+    else { t = (DB.papers||[]).filter(function(p){ return p.id===k; })[0]; custom = true; }
+    if(!t){ toast("النموذج مش موجود"); return; }
+    var body = custom ? esc(t.body).replace(/\n/g,"<br>") : t.body;
+    UI.sub = { paper: paperDoc(t.title, body) };
+    render();
+  }
+});
+
+/* ---------- أكشنات إدارة الاستمارات ---------- */
+Object.assign(ACTS, {
+  formHub: function(){ UI.sub = null; render(); },
+  formOpenSubs: function(el){ UI.sub = { form: el.dataset.id }; UI.filters.fsq = ""; render(); },
+  formNew: function(){ modalFormBuilder(null); },
+  formEdit: function(el){ modalFormBuilder(el.dataset.id); },
+  formToggle: function(el){
+    formsInit();
+    var id = el.dataset.id;
+    if(id==="track"){ DB.trackOpen = (DB.trackOpen===false); toast(DB.trackOpen? "اتفتحت استمارة المسار للطلاب":"اتقفلت — الطلاب مش هيشوفوها"); }
+    else{
+      var f = formById(id); if(!f) return;
+      f.status = (f.status==="closed") ? "open" : "closed";
+      toast(f.status==="closed"? "اتقفلت الاستمارة":"اتفتحت الاستمارة للطلاب");
+    }
+    saveNow(); render();
+  },
+  formDel: function(el){
+    if(!confirm("حذف الاستمارة وكل تسجيلاتها؟ مش هينفع ترجع.")) return;
+    formsInit();
+    var id = el.dataset.id;
+    DB.forms = DB.forms.filter(function(f){ return f.id!==id; });
+    if(DB.formSubs[id]) delete DB.formSubs[id];
+    UI.sub = null; saveNow(); render(); toast("اتحذفت الاستمارة");
+  },
+  formSubDel: function(el){
+    if(!confirm("حذف تسجيل الطالب ده؟")) return;
+    formsInit();
+    var fid = el.dataset.fid;
+    if(Array.isArray(DB.formSubs[fid])) DB.formSubs[fid] = DB.formSubs[fid].filter(function(s){ return s.id!==el.dataset.id; });
+    saveNow(); render(); toast("اتحذف");
+  },
+  formExcel: function(el){ formExcel(el.dataset.id); },
+  fbAddField: function(){
+    var d = UI.formDraft; if(!d) return;
+    d.title = val("fb_title"); d.desc = val("fb_desc");
+    var label = val("fb_fl").trim();
+    if(!label){ toast("اكتب اسم الحقل"); return; }
+    var type = val("fb_ft") || "text";
+    var fd = { id:uid("fd"), label:label, type:type,
+      required: !!(document.getElementById("fb_req") && document.getElementById("fb_req").checked) };
+    if(type==="select"){
+      var opts = val("fb_opt").split(/[,،]/).map(function(x){ return x.trim(); }).filter(Boolean);
+      if(!opts.length){ toast("اكتب خيارات القائمة مفصولة بفاصلة"); return; }
+      fd.options = opts;
+    }
+    d.fields.push(fd);
+    renderFormBuilder();
+  },
+  fbDelField: function(el){
+    var d = UI.formDraft; if(!d) return;
+    d.title = val("fb_title"); d.desc = val("fb_desc");
+    d.fields.splice(Number(el.dataset.i), 1);
+    renderFormBuilder();
+  },
+  saveForm: function(){
+    var d = UI.formDraft; if(!d) return;
+    var title = val("fb_title").trim();
+    if(!title){ toast("اكتب عنوان الاستمارة"); return; }
+    formsInit();
+    if(d.id){
+      var f = formById(d.id);
+      if(f){ f.title = title; f.desc = val("fb_desc").trim(); f.fields = d.fields; }
+    }else{
+      DB.forms.push({ id:uid("form"), title:title, desc:val("fb_desc").trim(), status:"open", fields:d.fields, createdAt:today() });
+    }
+    UI.formDraft = null; saveNow(); closeModal(); render(); toast("اتحفظت الاستمارة");
+  }
+});
+
 /* بحث فوري في شاشة الرغبات */
 document.addEventListener("input", function(e){
   if(!e.target || e.target.id!=="wq") return;
@@ -7337,6 +8209,18 @@ document.addEventListener("input", function(e){
     var pos = e.target.selectionStart;
     render();
     var n = document.getElementById("wq");
+    if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(err){} }
+  }, 280);
+});
+/* بحث فوري في تسجيلات الاستمارات المخصصة */
+document.addEventListener("input", function(e){
+  if(!e.target || e.target.id!=="fsq") return;
+  UI.filters.fsq = e.target.value;
+  clearTimeout(ACTS._fsq);
+  ACTS._fsq = setTimeout(function(){
+    var pos = e.target.selectionStart;
+    render();
+    var n = document.getElementById("fsq");
     if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(err){} }
   }, 280);
 });
@@ -7352,9 +8236,19 @@ document.addEventListener("click", function(e){
   var el = e.target.closest ? e.target.closest("[data-lact]") : null;
   if(!el) return;
   var a = el.dataset.lact;
-  if(a==="stu"){ e.preventDefault(); UI.stu = true; UI.wishDone = null; UI.wish = UI.wish || {}; renderLogin(); }
-  if(a==="wback"){ e.preventDefault(); UI.stu = false; UI.wishDone = null; UI.wish = null; renderLogin(); }
-  if(a==="wnew"){ e.preventDefault(); UI.wishDone = null; UI.wish = {}; renderLogin(); }
+  if(a==="stu"){ e.preventDefault(); UI.stu = true; UI.stuForm = null; UI.wishDone = null; UI.formDone = null; UI.wish = UI.wish || {}; renderLogin(); }
+  if(a==="stuPick"){
+    e.preventDefault();
+    var id = el.dataset.id;
+    UI.wishDone = null; UI.formDone = null;
+    if(id==="track"){ UI.stuForm = "track"; UI.wish = UI.wish || {}; }
+    else { UI.stuForm = id; UI.stuVals = {}; }
+    renderLogin();
+  }
+  if(a==="stuBack"){ e.preventDefault(); UI.stuForm = null; UI.wishDone = null; UI.formDone = null; UI.stuVals = null; UI.stu = true; renderLogin(); }
+  if(a==="cfsave"){ e.preventDefault(); saveCustomForm(el.dataset.id); }
+  if(a==="wback"){ e.preventDefault(); UI.stu = false; UI.stuForm = null; UI.wishDone = null; UI.formDone = null; UI.wish = null; renderLogin(); }
+  if(a==="wnew"){ e.preventDefault(); UI.wishDone = null; UI.wish = {}; UI.stuForm = "track"; UI.stu = true; renderLogin(); }
   if(a==="wsave"){ e.preventDefault(); saveWish(); }
 });
 /* ============================================================
