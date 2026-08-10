@@ -764,11 +764,11 @@ var NAV = {
     ["times","أوقات اليوم","◷"],
     ["dash","المؤشرات","▤"],["subs","الاحتياطي","⇄"],["events","الأحداث","☰"],
     ["absence","غياب الطلاب","!"],["staff","العاملون","✎"],["classes","الفصول","▦"],
-    ["students","الطلاب","👤"],["wishes","الاستمارات","★"],["papers","الورقيات","▤"],["schedule","الجداول","☷"],
+    ["students","الطلاب","👤"],["wishes","رغبات الطلاب","★"],["papers","الورقيات","▤"],["schedule","الجداول","☷"],
     ["dailyRep","التقرير اليومي","⎙"],["settings","الإعدادات","⚙"]
   ],
   deputy:[
-    ["today","لوحة اليوم","◉"],["students","الطلاب","👤"],["wishes","الاستمارات","★"],["papers","الورقيات","▤"],["classes","الفصول","▦"],
+    ["today","لوحة اليوم","◉"],["students","الطلاب","👤"],["wishes","رغبات الطلاب","★"],["papers","الورقيات","▤"],["classes","الفصول","▦"],
     ["absence","الغياب والإنذارات","!"],["events","الأحداث","☰"],["assign","التكليفات","⇄"],
     ["schedule","الجداول","☷"],["teachers","المعلمون","✎"],
     ["reports","الكشوف","⎙"],["settings","الإعدادات","⚙"]
@@ -886,7 +886,7 @@ function render(){
     case "myduty":     h = viewMyDuty(); break;
     case "calendar":   h = viewCalendar(); break;
     case "times":      h = viewTimes(); break;
-    case "wishes":     h = viewFormsHub(); break;
+    case "wishes":     h = (UI.sub && (UI.sub.form || UI.sub.forms)) ? viewFormsHub() : viewWishes(); break;
     case "papers":     h = viewPapers(); break;
     case "dash":       h = viewDash(); break;
     case "staff":      h = (UI.sub&&UI.sub.one) ? viewStaffOne(UI.sub.one) : viewStaff(); break;
@@ -1171,9 +1171,12 @@ function viewStudents(){
   var f = UI.filters;
   var mine = myClassIds();
   var list = DB.students.filter(function(s){
-    if(!mine[s.classId]) return false;
-    if(f.cls && s.classId!==f.cls) return false;
-    if(f.lvl && String(classById(s.classId)&&classById(s.classId).level)!==String(f.lvl)) return false;
+    if(s.status==="left") return false;
+    var c = classById(s.classId);
+    var isUn = !c;                                  /* غير مسكّن على فصل */
+    if(!isUn && !mine[s.classId]) return false;     /* المسكّن لازم يكون في القسم الحالي */
+    if(f.cls && s.classId!==f.cls) return false;    /* فلتر الفصل بيستبعد غير المسكّنين تلقائيًا */
+    if(f.lvl && (!c || String(c.level)!==String(f.lvl))) return false;
     if(f.q){
       var q=f.q.trim();
       if(q && String(s.name).indexOf(q)<0 && String(s.natId||"").indexOf(q)<0) return false;
@@ -1192,26 +1195,14 @@ function viewStudents(){
       impBtn("students",{},"استيراد من إكسيل")+
       '<button class="btn ghost sm noprint" data-act="impTpl" data-tg="students" style="margin-right:6px">نموذج جاهز</button>':''));
 
-  /* الطلاب غير المسكّنين — بيظهروا دايمًا مهما كانت الفلاتر عشان ما يختفوش */
+  /* تنبيه بسيط بسطر واحد — الطلاب غير المسكّنين ظاهرين في الكشف نفسه بعلامة «غير مسكّن» */
   if(unassigned.length){
     var g2c = grade2Classes();
-    h += '<div class="card noprint" style="border-color:#f0dcb8"><div class="hd" style="background:#fdf3e3">'+
-      '<h3 style="color:#7d4d0d">⚠ '+unassigned.length+' طالب غير مسكّن على فصل</h3>'+
-      (g2c.length?'<button class="btn seal sm" data-act="assignAllUn">تسكين تلقائي حسب المسار</button>':'')+
-      '</div><div class="bd flush">';
-    unassigned.sort(function(a,b){ return sortAr(a.name,b.name); }).forEach(function(s){
-      var info = parseNationalId(s.natId);
-      h += '<div class="list-item">'+
-        '<span class="av">'+esc(initials(s.name))+'</span>'+
-        '<span class="tx"><b>'+esc(s.name)+'</b><small>'+
-          (s.bacTrack?esc(wishTrackName(s.bacTrack))+' · ':'')+
-          (s.bacSubject?esc(s.bacSubject)+' · ':'')+
-          (info?esc(info.gender):'')+(s.prevClass?' · كان في '+esc(s.prevClass):'')+
-        '</small></span>'+
-        '<button class="btn ghost sm" data-act="editStudent" data-id="'+s.id+'">تسكين</button></div>';
-    });
-    if(!g2c.length) h += '<div class="note bad" style="margin:10px">مفيش فصول للصف الثاني لسه. أنشئ فصول «صف ثاني» من شاشة الفصول، وبعدها اضغط «تسكين تلقائي».</div>';
-    h += '</div></div>';
+    h += '<div class="note warn noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
+      '<span style="flex:1;min-width:180px"><b>'+unassigned.length+' طالب</b> لسه غير مسكّن على فصل — ظاهرين تحت في الكشف بعلامة «غير مسكّن»، أو سكّنهم من زر «⇄ ترحيل» جوه الفصل.</span>'+
+      (g2c.length?'<button class="btn seal sm" data-act="assignAllUn">تسكين تلقائي حسب المسار</button>'
+                 :'<span style="font-size:12px;color:var(--muted)">أنشئ فصول «صف ثاني» الأول</span>')+
+      '</div>';
   }
 
   h += '<div class="card noprint"><div class="bd">'+
@@ -7690,29 +7681,29 @@ function canManageForms(){ return UI.user.role==="deputy" || UI.user.role==="man
 function viewFormsHub(){
   formsInit();
   if(UI.sub && UI.sub.form==="track")
-    return '<button class="btn ghost sm noprint" data-act="formHub" style="margin-bottom:10px">→ كل الاستمارات</button>'+viewWishes();
+    return '<button class="btn ghost sm noprint" data-act="formHub" style="margin-bottom:10px">→ رغبات الطلاب</button>'+viewWishes();
   if(UI.sub && UI.sub.form){
     var ff = formById(UI.sub.form);
     if(ff) return viewFormSubs(ff);
     UI.sub = null;
   }
   var can = canManageForms();
-  var h = pageHd("استمارات الطلاب","الاستمارات اللي الطلاب بيملوها من صفحة الدخول — كل استمارة فيها الاسم والرقم القومي تلقائيًا",
+  var h = '<button class="btn ghost sm noprint" data-act="formHub" style="margin-bottom:10px">→ رغبات الطلاب والنوعيات</button>';
+  h += pageHd("استمارات إضافية","استمارات مخصصة الطلاب بيملوها من صفحة الدخول (بخلاف استمارة المسار) — كل استمارة فيها الاسم والرقم القومي تلقائيًا",
     can?'<button class="btn" data-act="formNew">+ استمارة جديدة</button>':'');
 
-  h += formCardHTML({
-    id:"track", title:"تحديد المسار — البكالوريا المصرية",
-    desc:"الطالب يختار مساره ومادة تخصصه (مع الاسم والرقم القومي والفصل السابق ونوعية التعليم).",
-    status: (DB.trackOpen!==false)?"open":"closed", count:(DB.wishes||[]).length, builtin:true, can:can, fields:4
-  });
+  if(!DB.forms.length){
+    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">✎</div>'+
+      '<b>مفيش استمارات إضافية</b>'+
+      '<p>تقدر تضيف استمارة تطلب فيها أي بيانات من الطلاب (بيانات ولي الأمر، محل الإقامة، رغبات النشاط...). '+
+      'الطالب هيلاقيها في صفحة الدخول أول ما تفتحها.</p>'+
+      (can?'<button class="btn" data-act="formNew">+ إنشاء أول استمارة</button>':'')+'</div></div></div>';
+    return h;
+  }
   DB.forms.forEach(function(f){
     h += formCardHTML({ id:f.id, title:f.title, desc:f.desc, status:f.status,
       count:formSubsOf(f.id).length, builtin:false, can:can, fields:(f.fields||[]).length });
   });
-  if(can){
-    h += '<div class="note">تقدر تضيف استمارة جديدة تطلب فيها أي بيانات من الطلاب (مثلاً: بيانات ولي الأمر، محل الإقامة، رغبات النشاط، المستوى في اللغات...). '+
-      'الطالب هيلاقيها في صفحة الدخول أول ما تفتحها، وتقدر تقفلها أو تعيد فتحها في أي وقت.</div>';
-  }
   return h;
 }
 function formCardHTML(o){
@@ -7740,7 +7731,7 @@ function viewFormSubs(f){
   var q = (UI.filters.fsq||"").trim();
   var subs = formSubsOf(f.id).slice().sort(function(a,b){ return (b.date+(b.time||""))<(a.date+(a.time||""))?-1:1; });
   if(q) subs = subs.filter(function(s){ return s.name.indexOf(q)>=0 || String(s.natId).indexOf(q)>=0; });
-  var h = '<button class="btn ghost sm noprint" data-act="formHub" style="margin-bottom:10px">→ كل الاستمارات</button>';
+  var h = '<button class="btn ghost sm noprint" data-act="formsManage" style="margin-bottom:10px">→ الاستمارات الإضافية</button>';
   h += pageHd(f.title, f.desc||"",
     '<button class="btn" data-act="formExcel" data-id="'+f.id+'">⬇ تنزيل إكسيل</button>');
   h += '<div class="card noprint"><div class="bd"><label class="f" style="margin:0"><span>بحث بالاسم أو الرقم القومي</span>'+
@@ -7837,6 +7828,17 @@ function viewWishes(){
     (UI.user.role==="deputy"&&all.length?'<button class="btn seal" data-act="wMigrateAll">⇪ ترحيل الكل للصف ٢</button>':'')+
     '<button class="btn" data-act="wExcel" style="margin-right:6px">⬇ تنزيل إكسيل</button>'+
     '<button class="btn ghost" data-act="wPdf" style="margin-right:6px">⬇ تنزيل PDF</button>');
+
+  var trackOpen = DB.trackOpen!==false;
+  var customCount = (DB.forms||[]).length;
+  if(canManageForms()){
+    h += '<div class="note noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">'+
+      '<span class="tag '+(trackOpen?"ok":"bad")+'">استمارة المسار للطلاب: '+(trackOpen?"مفتوحة":"مقفولة")+'</span>'+
+      '<button class="btn ghost sm" data-act="formToggle" data-id="track">'+(trackOpen?"قفل الاستمارة":"إعادة فتحها")+'</button>'+
+      '<span style="flex:1"></span>'+
+      '<button class="btn ghost sm" data-act="formsManage">استمارات إضافية'+(customCount?' ('+customCount+')':'')+' ›</button>'+
+      '</div>';
+  }
 
   if(!all.length){
     return h + '<div class="card"><div class="bd"><div class="empty"><div class="big">★</div>'+
@@ -8133,6 +8135,7 @@ Object.assign(ACTS, {
 /* ---------- أكشنات إدارة الاستمارات ---------- */
 Object.assign(ACTS, {
   formHub: function(){ UI.sub = null; render(); },
+  formsManage: function(){ UI.sub = { forms:true }; render(); },
   formOpenSubs: function(el){ UI.sub = { form: el.dataset.id }; UI.filters.fsq = ""; render(); },
   formNew: function(){ modalFormBuilder(null); },
   formEdit: function(el){ modalFormBuilder(el.dataset.id); },
