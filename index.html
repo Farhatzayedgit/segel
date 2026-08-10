@@ -633,7 +633,7 @@ function blankDB(){
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
     sectors:{}, wishes:[],
-    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}
+    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[]
   };
 }
 
@@ -665,7 +665,7 @@ function load(){
     curriculumInit();
     migrateSubjectHours();
     actInit();
-    calCfg(); examsInit(); xfInit(); logInit(); lessonInit();
+    calCfg(); examsInit(); xfInit(); logInit(); lessonInit(); msgInit();
   }catch(e){ DB = seed(); }
 }
 /* ترحيل: الصف بقى بيان مستقل في الطالب نفسه — مش مستنتج من الفصل.
@@ -1231,7 +1231,7 @@ var NAV = {
     ["_g","المدرسة"],
     ["calendar","التقويم الدراسي","calendar"],["times","أوقات اليوم","times"],
     ["events","الأحداث","events"],["papers","الورقيات","papers"],
-    ["health","صحة البيانات","duty"],["oplog","سجل العمليات","times"],["settings","الإعدادات","settings"]
+    ["parents","أولياء الأمور","forms"],["health","صحة البيانات","duty"],["oplog","سجل العمليات","times"],["settings","الإعدادات","settings"]
   ],
   deputy:[
     ["_g","المتابعة اليومية"],
@@ -1242,7 +1242,7 @@ var NAV = {
     ["curriculum","الهيكل الدراسي","plan"],["classes","الفصول","classes"],
     ["acts","الأنشطة","art"],["schedule","الجداول","schedule"],["teachers","المعلمون","teachers"],
     ["_g","المستندات"],
-    ["papers","الورقيات","papers"],["health","صحة البيانات","duty"],
+    ["papers","الورقيات","papers"],["parents","أولياء الأمور","forms"],["health","صحة البيانات","duty"],
     ["events","الأحداث","events"],["settings","الإعدادات","settings"]
   ],
   admin:[
@@ -1259,7 +1259,7 @@ var NAV = {
     ["myschedule","جدولي","schedule"],["mystudents","طلابي","students"]
   ],
   student:[
-    ["parent","ملخص الطالب","students"],["mygrades","درجاتي","grades"],["myattend","حضوري","attend"],["mysched","جدولي","schedule"]
+    ["parent","متابعة الطالب","students"],["mygrades","درجاتي","grades"],["myattend","حضوري","attend"],["mysched","جدولي","schedule"]
   ]
 };
 
@@ -1527,6 +1527,7 @@ function render(){
     case "myschedule": h = viewMySchedule(); break;
     case "mystudents": h = viewMyStudents(); break;
     case "parent":     h = viewParent(); break;
+    case "parents":    h = viewParents(); break;
     case "mygrades":   h = viewMyGrades(); break;
     case "myattend":   h = viewMyAttend(); break;
     case "mysched":    h = viewStudentSched(); break;
@@ -2696,6 +2697,141 @@ function viewLessonsBoard(){
   h += '</tbody></table></div></div></div>';
   return h;
 }
+/* ============================================================
+   أولياء الأمور: رسائل من المدرسة + أسئلة من ولي الأمر
+   ============================================================ */
+function msgInit(){ if(!Array.isArray(DB.msgs)) DB.msgs = []; return DB.msgs; }
+/* رسالة من المدرسة لولي أمر طالب */
+function sendParentMsg(sid, text, kind){
+  msgInit();
+  var st = studentById(sid); if(!st) return null;
+  var m = {
+    id: uid("mg"), sid: sid, dir: "out",           /* out = من المدرسة */
+    kind: kind || "note",                           /* note / warn / praise */
+    text: String(text||"").trim(),
+    from: (UI.user && UI.user.name) || "المدرسة",
+    role: (ROLES[UI.user && UI.user.role]||{}).name || "",
+    at: Date.now(), day: today(), read: false
+  };
+  DB.msgs.unshift(m);
+  return m;
+}
+/* سؤال من ولي الأمر */
+function askParentQ(sid, text){
+  msgInit();
+  var m = {
+    id: uid("mg"), sid: sid, dir: "in",             /* in = من ولي الأمر */
+    kind: "ask", text: String(text||"").trim(),
+    from: "ولي الأمر", role: "",
+    at: Date.now(), day: today(), read: false, reply: "", replyBy: "", replyAt: 0
+  };
+  DB.msgs.unshift(m);
+  return m;
+}
+function msgsOf(sid, dir){
+  msgInit();
+  return DB.msgs.filter(function(m){ return m.sid===sid && (!dir || m.dir===dir); });
+}
+function unreadParentQ(){
+  msgInit();
+  return DB.msgs.filter(function(m){
+    if(m.dir!=="in" || m.reply) return false;
+    var st = studentById(m.sid);
+    return st && studentSector(st)===curSector();
+  });
+}
+var MSG_KIND = {
+  note:  { name:"ملاحظة",  cls:"info" },
+  warn:  { name:"تنبيه",    cls:"bad"  },
+  praise:{ name:"تحية وشكر", cls:"ok"   },
+  absent:{ name:"غياب",     cls:"warn" }
+};
+/* نافذة إرسال رسالة — متاحة للمعلم والوكيل والمدير */
+function modalSendMsg(sid){
+  var st = studentById(sid); if(!st) return;
+  var c = classById(st.classId);
+  openModal(mHead("رسالة لولي أمر "+st.name)+
+    '<div class="mb">'+
+    '<div class="note">'+esc(st.name)+(c?' — '+esc(c.name):'')+
+    (st.guardian?' · ولي الأمر: '+esc(st.guardian):'')+
+    (st.phone?' · '+esc(st.phone):'')+'</div>'+
+    '<label class="f"><span>نوع الرسالة</span><select id="mg_kind2">'+
+      Object.keys(MSG_KIND).filter(function(k){ return k!=="absent"; })
+        .map(function(k){ return '<option value="'+k+'">'+esc(MSG_KIND[k].name)+'</option>'; }).join("")+
+      '</select></label>'+
+    '<label class="f"><span>نص الرسالة *</span><textarea id="mg_text" rows="4" '+
+      'placeholder="مثال: ابنكم متأخر في تسليم الواجبات، برجاء المتابعة."></textarea></label>'+
+    '<div class="note">الرسالة هتظهر لولي الأمر أول ما يدخل بالرقم القومي للطالب.</div>'+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="doSendMsg" data-id="'+sid+'">إرسال</button></div>');
+}
+/* شاشة أولياء الأمور للمدير والوكيل */
+function viewParents(){
+  msgInit();
+  var tab = UI.pTab==="out" ? "out" : "in";
+  var mine = DB.msgs.filter(function(m){
+    var st = studentById(m.sid);
+    return st && studentSector(st)===curSector();
+  });
+  var qs = mine.filter(function(m){ return m.dir==="in"; });
+  var outs = mine.filter(function(m){ return m.dir==="out"; });
+  var pending = qs.filter(function(m){ return !m.reply; }).length;
+
+  var h = pageHd("أولياء الأمور", qs.length+" سؤال · "+outs.length+" رسالة مرسلة",
+    '<button class="btn ghost" data-act="print">⎙ طباعة</button>');
+
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("أسئلة تنتظر الرد", pending, pending?"محتاجة رد":"تمام", pending?"acc-r":"acc-g")+
+    stat("إجمالي الأسئلة", qs.length, "من أولياء الأمور", "acc")+
+    stat("رسائل المدرسة", outs.length, "اتبعتت", "acc")+
+    '</div>';
+
+  h += '<div class="chips noprint">'+
+    '<button class="'+(tab==="in"?"on":"")+'" data-act="pTab" data-t="in">أسئلة أولياء الأمور'+(pending?" ("+pending+")":"")+'</button>'+
+    '<button class="'+(tab==="out"?"on":"")+'" data-act="pTab" data-t="out">رسائل المدرسة</button>'+
+    '</div>';
+
+  var list = (tab==="in" ? qs : outs).sort(function(a,b){ return b.at - a.at; });
+  h += '<div class="card"><div class="hd"><h3>'+(tab==="in"?"الأسئلة الواردة":"الرسائل المرسلة")+' ('+list.length+')</h3></div>'+
+    '<div class="bd flush">';
+  if(!list.length) h += '<div class="empty"><div class="big">'+icon("forms",34)+'</div>'+
+    '<b>'+(tab==="in"?"مفيش أسئلة":"مفيش رسائل")+'</b>'+
+    '<p>'+(tab==="in"?"أسئلة أولياء الأمور هتظهر هنا أول ما يبعتوها."
+                     :"ابعت رسالة من صفحة أي طالب.")+'</p></div>';
+  list.forEach(function(m){
+    var st = studentById(m.sid);
+    var c = st ? classById(st.classId) : null;
+    var d = new Date(m.at);
+    h += '<div class="list-item" style="align-items:flex-start">'+
+      '<span class="tx"><b>'+esc(st?st.name:"—")+(c?' — '+esc(c.name):'')+'</b>'+
+      '<small>'+esc(fmtDate(m.day))+' '+("0"+d.getHours()).slice(-2)+':'+("0"+d.getMinutes()).slice(-2)+
+      (m.dir==="out"? ' · '+esc(m.from)+(m.role?' ('+esc(m.role)+')':'') : '')+
+      ' · <span class="tag '+(MSG_KIND[m.kind]||{}).cls+'">'+esc((MSG_KIND[m.kind]||{name:"سؤال"}).name)+'</span></small>'+
+      '<div style="margin-top:5px;font-size:13px;line-height:1.7">'+esc(m.text)+'</div>'+
+      (m.dir==="in" && m.reply ? '<div style="margin-top:6px;padding:7px 9px;background:var(--line-2);border-radius:8px;font-size:12.5px">'+
+        '<b>الرد:</b> '+esc(m.reply)+'<br><small style="color:var(--muted)">'+esc(m.replyBy)+'</small></div>' : '')+
+      '</span>'+
+      (m.dir==="in" && !m.reply ? '<button class="btn sm" data-act="replyQ" data-id="'+m.id+'">رد</button>' : '')+
+      '<button class="btn ghost sm" data-act="delMsg" data-id="'+m.id+'" style="color:var(--danger);margin-right:4px">حذف</button>'+
+      '</div>';
+  });
+  h += '</div></div>';
+  return h;
+}
+function modalReplyQ(mid){
+  msgInit();
+  var m = DB.msgs.filter(function(x){ return x.id===mid; })[0];
+  if(!m) return;
+  var st = studentById(m.sid);
+  openModal(mHead("رد على ولي أمر "+(st?st.name:""))+
+    '<div class="mb">'+
+    '<div class="note"><b>السؤال:</b> '+esc(m.text)+'</div>'+
+    '<label class="f"><span>الرد *</span><textarea id="rp_text" rows="4"></textarea></label>'+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="doReplyQ" data-id="'+mid+'">إرسال الرد</button></div>');
+}
 function viewStudents(){
   var f = UI.filters;
   var mine = myClassIds();
@@ -2855,6 +2991,12 @@ function viewStudent(id){
     kv("النشاط التربوي", s.actId?actName(s.actId):"—")+
     kv("التربية المهنية", s.vocId?actName(s.vocId):"—")+
     '</div>';
+  h += '<div class="card noprint"><div class="bd" style="display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn" data-act="sendMsg" data-id="'+s.id+'">✉ رسالة لولي الأمر</button>'+
+    (msgsOf(s.id,"out").length?'<span class="tag info" style="align-self:center">'+msgsOf(s.id,"out").length+' رسالة اتبعتت</span>':'')+
+    (msgsOf(s.id,"in").filter(function(m){ return !m.reply; }).length?
+      '<span class="tag bad" style="align-self:center">'+msgsOf(s.id,"in").filter(function(m){ return !m.reply; }).length+' سؤال منتظر رد</span>':'')+
+    '</div></div>';
   h += xfCards("student", s);
   h += '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:14px 0 4px;font-size:13px">البيانات الشخصية</div>'+
     '<div class="grid2">'+
@@ -4570,34 +4712,129 @@ function viewMyStudents(){
    ============================================================ */
 function myStudent(){ return UI.user.studentId ? studentById(UI.user.studentId) : null; }
 
-/* ملخص ولي الأمر — كل اللي يهمه في شاشة واحدة */
+/* ============================================================
+   بوابة ولي الأمر — معلومات اليوم + متابعة شاملة + رسائل
+   ============================================================ */
+function todayInfo(st){
+  var date = today();
+  var c = classById(st.classId);
+  var out = { present:null, mark:"", lessons:[], msgs:[] };
+  if(c){
+    var rec = DB.attend[c.id+"|"+date];
+    if(rec && rec[st.id]!==undefined){
+      var v = rec[st.id];
+      out.mark = v;
+      out.present = (v!=="A");
+    }
+    /* حصص النهاردة وموضوعاتها */
+    var di = new Date(date).getDay();
+    lessonInit();
+    DB.schedule.filter(function(x){ return x.classId===c.id && x.day===di; })
+      .sort(function(a,b){ return a.period-b.period; })
+      .forEach(function(x){
+        var su = subjById(x.subjectId);
+        if(!su) return;
+        var L = DB.lessons[lessonKey(c.id, su.id, date)] || {};
+        out.lessons.push({ p:x.period, su:su, t:x.teacherId?teacherName(x.teacherId):"",
+                           topic:L.topic||"", hw:L.hw||"" });
+      });
+  }
+  out.msgs = msgsOf(st.id,"out").filter(function(m){ return m.day===date; });
+  return out;
+}
 function viewParent(){
   var sid = UI.user.studentId;
   var st = sid ? studentById(sid) : null;
   if(!st) return pageHd("ملف الطالب","")+
     '<div class="card"><div class="bd"><div class="empty"><b>مفيش طالب مربوط بالحساب</b></div></div></div>';
+  var tab = UI.pvTab || "today";
+  var c = classById(st.classId);
+  var h = pageHd(st.name, (c?c.name+" · ":"")+(studentLevelOf(st)?levelName(studentLevelOf(st)):"")+
+      (st.natId?" · "+st.natId:""),
+    '<button class="btn ghost noprint" data-act="print">⎙ طباعة</button>');
+
+  h += '<div class="chips noprint">'+
+    '<button class="'+(tab==="today"?"on":"")+'" data-act="pvTab" data-t="today">معلومات اليوم</button>'+
+    '<button class="'+(tab==="all"?"on":"")+'" data-act="pvTab" data-t="all">متابعة شاملة</button>'+
+    '<button class="'+(tab==="msg"?"on":"")+'" data-act="pvTab" data-t="msg">الرسائل والأسئلة</button>'+
+    '</div>';
+
+  if(tab==="today")  return h + parentToday(st);
+  if(tab==="msg")    return h + parentMsgs(st);
+  return h + parentAll(st);
+}
+/* ---------- معلومات اليوم ---------- */
+function parentToday(st){
+  var i = todayInfo(st);
+  var ds = dayStatus(today());
+  var h = '';
+  if(ds && ds.off){
+    return '<div class="note warn"><b>'+esc(ds.why||"إجازة")+'</b> — مفيش دراسة النهاردة.</div>';
+  }
+  /* الحضور */
+  var box = i.present===null
+    ? '<div class="note">لسه الغياب مترصدش النهاردة.</div>'
+    : (i.present
+      ? '<div class="note ok"><b>ابنك حاضر النهاردة ✓</b>'+(i.mark==="L"?' — بس اتأخر عن الطابور':'')+'</div>'
+      : '<div class="note bad"><b>ابنك غايب النهاردة</b> — لو فيه عذر كلّم المدرسة.</div>');
+  h += box;
+
+  /* رسائل النهاردة */
+  if(i.msgs.length){
+    h += '<div class="card"><div class="hd"><h3>رسائل النهاردة من المدرسة</h3></div><div class="bd flush">';
+    i.msgs.forEach(function(m){
+      h += '<div class="list-item"><span class="tx">'+
+        '<b><span class="tag '+(MSG_KIND[m.kind]||{}).cls+'">'+esc((MSG_KIND[m.kind]||{name:""}).name)+'</span> '+
+        esc(m.from)+'</b><small>'+esc(m.text)+'</small></span></div>';
+    });
+    h += '</div></div>';
+  }
+
+  /* حصص اليوم */
+  h += '<div class="card"><div class="hd"><h3>حصص اليوم ('+i.lessons.length+')</h3></div><div class="bd flush">';
+  if(!i.lessons.length) h += '<div class="empty"><b>مفيش حصص مسجّلة النهاردة</b></div>';
+  i.lessons.forEach(function(L){
+    h += '<div class="list-item"><span class="tag">'+L.p+'</span>'+
+      '<span class="tx"><b>'+esc(L.su.name)+(L.t?' — '+esc(L.t):'')+'</b>'+
+      '<small>'+(L.topic? esc(L.topic) : 'لسه مسجّلش الدرس')+
+      (L.hw? ' · <b>واجب:</b> '+esc(L.hw) : '')+'</small></span></div>';
+  });
+  h += '</div></div>';
+  return h;
+}
+/* ---------- المتابعة الشاملة ---------- */
+function parentAll(st){
   var c = classById(st.classId);
   var att = attendStats(st.id, st.classId);
   var e = eligibilityOf(st.id, st.classId);
   var need = num(DB.bac.passPct,50);
+  var beh = DB.behavior.filter(function(b){ return b.studentId===st.id; })
+    .sort(function(a,b){ return (a.date<b.date)?1:-1; });
+  var h = '';
 
-  var h = pageHd(st.name, (c?c.name+" · ":"")+(studentLevelOf(st)?levelName(studentLevelOf(st)):""),
-    '<button class="btn ghost" data-act="print">⎙ طباعة</button>');
-
-  /* تنبيه الأهلية */
   if(e.verdict==="bad"){
-    h += '<div class="note bad"><b>تنبيه مهم:</b> فيه '+e.bad+' مادة نسبة الطالب فيها أقل من '+need+'٪ '+
-      '— ده معناه إنه <b>مش هيُسمح له بدخول امتحان نهاية العام</b> فيها. راجع المدرسة فورًا.</div>';
+    h += '<div class="note bad"><b>تنبيه مهم:</b> فيه '+e.bad+' مادة نسبة ابنك فيها أقل من '+need+'٪ '+
+      '— يعني <b>مش هيُسمح له بدخول امتحان نهاية العام</b> فيها. راجع المدرسة فورًا.</div>';
   }else if(e.verdict==="risk"){
-    h += '<div class="note warn"><b>انتبه:</b> فيه مواد الطالب قريب فيها من الحد الأدنى ('+need+'٪). '+
-      'محتاج متابعة عشان ما يتحرمش.</div>';
+    h += '<div class="note warn"><b>انتبه:</b> فيه مواد ابنك قريب فيها من الحد الأدنى ('+need+'٪).</div>';
+  }
+  if(att.abs >= num(DB.absRules.warn1,5)){
+    h += '<div class="note warn"><b>الغياب وصل '+att.abs+' يوم.</b> '+
+      'الغياب المتكرر بيأثر على درجة المواظبة وعلى حق دخول الامتحان.</div>';
   }
 
   h += '<div class="stats" style="margin-bottom:12px">'+
     stat("نسبة الحضور", att.days? att.rate+"٪" : "—", att.days+" يوم مرصود", att.rate<75?"acc-r":"acc-g")+
     stat("أيام الغياب", att.abs, "بدون عذر", att.abs?"acc-r":"")+
+    stat("غياب بعذر", att.exc, "مقبول", "")+
+    stat("تأخير", att.late, "عن الطابور", att.late?"":"")+
+    '</div>';
+
+  h += '<div class="stats" style="margin-bottom:12px">'+
     stat("مواد فوق الحد", e.ok, "من "+e.total, "acc-g")+
     stat("مواد تحت الحد", e.bad, e.bad?"خطر حرمان":"تمام", e.bad?"acc-r":"")+
+    stat("ملاحظات السلوك", beh.length, beh.length?"محتاجة متابعة":"مفيش", beh.length?"acc-r":"acc-g")+
+    stat("رسائل المدرسة", msgsOf(st.id,"out").length, "إجمالي", "")+
     '</div>';
 
   /* المواد */
@@ -4614,6 +4851,15 @@ function viewParent(){
       '<td class="num">'+(r.pct===null?"—":r.pct+"٪")+'</td><td>'+lbl+'</td></tr>';
   });
   h += '</tbody></table></div></div></div>';
+
+  /* السلوك */
+  h += '<div class="card"><div class="hd"><h3>ملاحظات السلوك ('+beh.length+')</h3></div><div class="bd flush">';
+  if(!beh.length) h += '<div class="empty"><b>مفيش ملاحظات</b><p>سلوك ابنك مفيهوش أي ملاحظات مسجّلة.</p></div>';
+  beh.slice(0,15).forEach(function(b){
+    h += '<div class="list-item"><span class="tx"><b>'+esc(fmtDate(b.date||""))+'</b>'+
+      '<small>'+esc(b.note||b.text||"—")+'</small></span></div>';
+  });
+  h += '</div></div>';
 
   /* آخر الدروس والواجبات */
   lessonInit();
@@ -4637,7 +4883,45 @@ function viewParent(){
   });
   h += '</div></div>';
 
-  h += '<div class="note noprint">البيانات دي للاطلاع فقط. لأي استفسار أو اعتراض، كلّم وكيل شئون الطلاب بالمدرسة.</div>';
+  h += '<div class="note noprint">البيانات دي للاطلاع فقط. لأي استفسار استخدم تبويب «الرسائل والأسئلة».</div>';
+  return h;
+}
+/* ---------- الرسائل والأسئلة ---------- */
+function parentMsgs(st){
+  var outs = msgsOf(st.id,"out").sort(function(a,b){ return b.at-a.at; });
+  var ins  = msgsOf(st.id,"in").sort(function(a,b){ return b.at-a.at; });
+  var h = '';
+  h += '<div class="card"><div class="hd"><h3>اسأل المدرسة</h3></div><div class="bd">'+
+    '<div class="note">اكتب أي استفسار عن ابنك أو عن المدرسة. السؤال هيوصل لوكيل شئون الطلاب والمدير، '+
+    'والرد هيظهرلك هنا.</div>'+
+    '<label class="f"><span>سؤالك</span><textarea id="pq_text" rows="3" placeholder="اكتب سؤالك…"></textarea></label>'+
+    '<button class="btn block" data-act="askQ" data-id="'+st.id+'">إرسال السؤال</button>'+
+    '</div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>رسائل المدرسة ('+outs.length+')</h3></div><div class="bd flush">';
+  if(!outs.length) h += '<div class="empty"><b>مفيش رسائل</b></div>';
+  outs.forEach(function(m){
+    h += '<div class="list-item" style="align-items:flex-start"><span class="tx">'+
+      '<b><span class="tag '+(MSG_KIND[m.kind]||{}).cls+'">'+esc((MSG_KIND[m.kind]||{name:""}).name)+'</span> '+
+      esc(m.from)+(m.role?' — '+esc(m.role):'')+'</b>'+
+      '<small>'+esc(fmtDate(m.day))+'</small>'+
+      '<div style="margin-top:4px;font-size:13px;line-height:1.7">'+esc(m.text)+'</div></span></div>';
+  });
+  h += '</div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>أسئلتك ('+ins.length+')</h3></div><div class="bd flush">';
+  if(!ins.length) h += '<div class="empty"><b>مبعتّش أسئلة لسه</b></div>';
+  ins.forEach(function(m){
+    h += '<div class="list-item" style="align-items:flex-start"><span class="tx">'+
+      '<b>'+esc(fmtDate(m.day))+'</b>'+
+      '<div style="margin-top:3px;font-size:13px">'+esc(m.text)+'</div>'+
+      (m.reply
+        ? '<div style="margin-top:6px;padding:7px 9px;background:#eef6ee;border-radius:8px;font-size:12.5px">'+
+          '<b>رد المدرسة:</b> '+esc(m.reply)+'<br><small style="color:var(--muted)">'+esc(m.replyBy)+'</small></div>'
+        : '<div style="margin-top:5px"><span class="tag warn">في انتظار الرد</span></div>')+
+      '</span></div>';
+  });
+  h += '</div></div>';
   return h;
 }
 function viewMyGrades(){
@@ -5553,6 +5837,40 @@ var ACTS = {
   gsearch: function(){ modalSearch(); },
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
+  goParents: function(){ UI.tab="parents"; UI.sub=null; render(); },
+  pTab:  function(el){ UI.pTab = el.dataset.t; render(); },
+  pvTab: function(el){ UI.pvTab = el.dataset.t; render(); },
+  sendMsg: function(el){ modalSendMsg(el.dataset.id); },
+  doSendMsg: function(el){
+    var txt = val("mg_text").trim();
+    if(!txt){ toast("اكتب نص الرسالة"); return; }
+    sendParentMsg(el.dataset.id, txt, val("mg_kind2")||"note");
+    saveNow(); closeModal(); render(); toast("اتبعتت لولي الأمر");
+  },
+  replyQ: function(el){ modalReplyQ(el.dataset.id); },
+  doReplyQ: function(el){
+    msgInit();
+    var m = DB.msgs.filter(function(x){ return x.id===el.dataset.id; })[0];
+    if(!m) return;
+    var txt = val("rp_text").trim();
+    if(!txt){ toast("اكتب الرد"); return; }
+    m.reply = txt;
+    m.replyBy = ((UI.user&&UI.user.name)||"المدرسة")+" — "+fmtDate(today());
+    m.replyAt = Date.now();
+    saveNow(); closeModal(); render(); toast("اتبعت الرد");
+  },
+  delMsg: function(el){
+    if(!confirm("حذف الرسالة؟")) return;
+    msgInit();
+    DB.msgs = DB.msgs.filter(function(x){ return x.id!==el.dataset.id; });
+    saveNow(); render(); toast("اتحذفت");
+  },
+  askQ: function(el){
+    var txt = val("pq_text").trim();
+    if(!txt){ toast("اكتب سؤالك"); return; }
+    askParentQ(el.dataset.id, txt);
+    saveNow(); render(); toast("اتبعت سؤالك — هيتردّ عليه من المدرسة");
+  },
   findSuspects: function(){ modalSuspects(); },
   delOneSuspect: function(el){
     var st = studentById(el.dataset.id);
@@ -9021,6 +9339,11 @@ function renderLogin(){
   /* شاشة الطالب: ملء الاستمارات من غير رقم سري */
   if(UI.wishDone){ box.innerHTML = wishDoneHTML(UI.wishDone); return; }
   if(UI.formDone){ box.innerHTML = formDoneHTML(UI.formDone); return; }
+  if(UI.par){
+    box.innerHTML = parentLoginHTML();
+    var pn = document.getElementById("par_nat"); if(pn) pn.focus();
+    return;
+  }
   if(UI.stu){
     if(UI.stuForm==="track"){
       box.innerHTML = wishFormHTML();
@@ -9071,6 +9394,12 @@ function renderLogin(){
   h += '<button class="who" data-lact="stu" style="margin-top:'+(picked?"12px":"7px")+';border-color:var(--gold);background:#fdfaf3">'+
     '<span class="av" style="background:var(--gold)">ط</span>'+
     '<span class="tx"><b>الدخول كطالب</b><small>ملء استمارات المدرسة — من غير رقم سري</small></span>'+
+    '<span class="chev">‹</span></button>';
+
+  /* دخول ولي الأمر بالرقم القومي للطالب */
+  h += '<button class="who" data-lact="par" style="margin-top:7px;border-color:var(--ok);background:#f4faf4">'+
+    '<span class="av" style="background:var(--ok)">و</span>'+
+    '<span class="tx"><b>الدخول كولي أمر</b><small>بالرقم القومي للطالب — متابعة يومية</small></span>'+
     '<span class="chev">‹</span></button>';
 
   var c = syncCfgLoad();
@@ -9512,6 +9841,14 @@ function pendingTasks(){
       title: mism+" طالب في القسم الغلط",
       desc:"نوعيتهم مش مطابقة لقسم فصلهم — بيظهروا في الكشف الغلط.",
       act:"fixSectors", btn:"تصحيح" });
+  }
+  /* أسئلة أولياء الأمور */
+  var pq = unreadParentQ().length;
+  if(pq){
+    t.push({ icon:"forms", tone:"warn",
+      title: pq+" سؤال من أولياء الأمور",
+      desc:"مستنيين رد من المدرسة.",
+      act:"goParents", btn:"الرد" });
   }
   /* تكرار مشتبه فيه */
   var sus2 = suspectDuplicates().length;
@@ -11623,6 +11960,12 @@ function formRows(f){
   });
 }
 /* بيرحّل صف واحد لطالب. mode: "reg" عادي أو "home" منازل */
+/* القسم المستنتج من نوعية التعليم — فاضي لو النوعية مش محددة */
+function eduSector(edu){
+  if(edu==="srv") return "srv";
+  if(edu==="reg") return "reg";
+  return "";
+}
 function migrateRowToStudent(r, opt){
   opt = opt || {};
   var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
@@ -11651,7 +11994,8 @@ function migrateRowToStudent(r, opt){
       if(opt.asHome===true && exists.edu!=="home"){ exists.edu="home"; exists.classId=""; ch++; }
       else if(opt.asHome===false && r.edu && r.edu!=="home"){ put("edu", r.edu); }
       else put("edu", r.edu);
-      if(opt.sector && exists.sector!==opt.sector && !classById(exists.classId)){ exists.sector = opt.sector; ch++; }
+      var wantSec = eduSector(r.edu) || opt.sector;
+      if(wantSec && exists.sector!==wantSec && !classById(exists.classId)){ exists.sector = wantSec; ch++; }
       /* تسكين تلقائي لو لسه من غير فصل */
       if(opt.autoPlace && !isHomeStudent(exists) && !classById(exists.classId)){
         var c0 = autoClassFor(exists);
@@ -11668,7 +12012,9 @@ function migrateRowToStudent(r, opt){
     id: uid("s"), status:"active", joined: today(),
     name: name, natId: nat, classId: "",
     edu: isHome ? "home" : (r.edu||"reg"),
-    sector: opt.sector || r.sector || curSector(),
+    /* نوعية الطالب هي اللي بتحدد قسمه — مش القسم اللي الوكيل واقف فيه.
+       من غير كده طالب خدمات يترحّل وإنت في نظامي فيروح نظامي بالغلط. */
+    sector: (isHome ? "reg" : (eduSector(r.edu) || r.sector || opt.sector || curSector())),
     phone: r.phone || "", guardian: r.guardian || "",
     prevClass: r.prevClass || "", bacTrack: r.bacTrack || "", bacSubject: r.bacSubject || "",
     fromForm: opt.formId || ""
@@ -11829,7 +12175,8 @@ function doFormMigrate(el){
   var asHome = val("mg_kind")==="home";
   var place = !!(document.getElementById("mg_place")||{}).checked;
   markUndo("ترحيل من استمارة");
-  var r = migrateFormRows(f, picked, { level:lvl, asHome:asHome, autoPlace:place && !asHome, sector:curSector() });
+  /* مبنبعتش sector عشان نوعية كل طالب هي اللي تحدد قسمه */
+  var r = migrateFormRows(f, picked, { level:lvl, asHome:asHome, autoPlace:place && !asHome });
   UI.migRows = null;
   saveNow(); closeModal(); render();
   var parts = [];
@@ -12403,7 +12750,35 @@ document.addEventListener("click", function(e){
   if(a==="wback"){ e.preventDefault(); UI.stu = false; UI.stuForm = null; UI.wishDone = null; UI.formDone = null; UI.wish = null; renderLogin(); }
   if(a==="wnew"){ e.preventDefault(); UI.wishDone = null; UI.wish = {}; UI.stuForm = "track"; UI.stu = true; renderLogin(); }
   if(a==="wsave"){ e.preventDefault(); saveWish(); }
+  if(a==="par"){ e.preventDefault(); UI.par = true; UI.stu = false; UI.parErr = ""; renderLogin(); }
+  if(a==="parBack"){ e.preventDefault(); UI.par = false; UI.parErr = ""; renderLogin(); }
+  if(a==="parGo"){ e.preventDefault(); doParentLogin(); }
 });
+/* ---------- دخول ولي الأمر بالرقم القومي ---------- */
+function parentLoginHTML(){
+  return '<div class="who" style="display:block;cursor:default;border-color:var(--ok)">'+
+      '<b style="font-family:Cairo,sans-serif;font-size:15px">متابعة ولي الأمر</b>'+
+      '<div style="font-size:12.5px;color:var(--muted);margin-top:3px">'+
+      'اكتب الرقم القومي لابنك (١٤ رقم) عشان تشوف متابعته اليومية.</div></div>'+
+    '<label class="f" style="margin-top:12px"><span>الرقم القومي للطالب</span>'+
+      '<input type="text" id="par_nat" inputmode="numeric" maxlength="14" placeholder="١٤ رقم"></label>'+
+    (UI.parErr? '<div class="note bad">'+esc(UI.parErr)+'</div>' : '')+
+    '<button class="btn block" data-lact="parGo">دخول</button>'+
+    '<button class="btn ghost block" data-lact="parBack" style="margin-top:8px">رجوع</button>';
+}
+function doParentLogin(){
+  var nat = toEnDigits((document.getElementById("par_nat")||{}).value || "").replace(/\D/g,"");
+  if(nat.length!==14){ UI.parErr = "الرقم القومي لازم يكون ١٤ رقم."; renderLogin(); return; }
+  var st = DB.students.filter(function(x){ return x.natId===nat && x.status!=="left"; })[0];
+  if(!st){ UI.parErr = "مفيش طالب بالرقم ده. تأكد من الرقم أو كلّم المدرسة."; renderLogin(); return; }
+  UI.parErr = ""; UI.par = false;
+  UI.user = { id:"parent_"+st.id, role:"student", studentId:st.id, name:"ولي أمر "+st.name, parent:true };
+  UI.sector = studentSector(st);
+  UI.tab = "parent"; UI.sub = null; UI.pvTab = "today";
+  setHeaderSector();
+  document.getElementById("app").classList.add("on");
+  render();
+}
 /* ============================================================
    توليد جداول الحصص — مرتبط بالنصاب القانوني المصري
    ------------------------------------------------------------
