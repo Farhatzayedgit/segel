@@ -795,6 +795,20 @@ function studentImpact(id){
   notes = DB.behavior.filter(function(b){ return b.studentId===id; }).length;
   return {marks:marks, days:days, notes:notes};
 }
+function teacherImpact(id){
+  return {
+    assigns: DB.assign.filter(function(a){ return a.teacherId===id; }).length,
+    sched:   DB.schedule.filter(function(s){ return s.teacherId===id; }).length,
+    users:   DB.users.filter(function(u){ return u.teacherId===id; }).length
+  };
+}
+function teacherImpactLines(im){
+  var p = [];
+  if(im.assigns) p.push(im.assigns+" تكليف (فصل ومادة)");
+  if(im.sched)   p.push(im.sched+" حصة في الجدول هتفضى");
+  if(im.users)   p.push(im.users+" حساب دخول");
+  return p;
+}
 function impactLines(im){
   var p = [];
   if(im.marks) p.push(im.marks+" درجة");
@@ -1721,9 +1735,23 @@ function modalBulkTeachers(ids){
     '<div class="note">اللي تسيبه فاضي مش هيتغيّر.</div>'+
     '<div style="max-height:16vh;overflow:auto;border:1px solid var(--line);border-radius:9px;padding:8px;margin-bottom:10px;font-size:12.5px">'+
       ts.map(function(t){ return esc(t.name); }).join("، ")+'</div>'+
-    '<label class="f"><span>التخصص</span><input type="text" id="bt_sub" placeholder="سيبه فاضي = من غير تغيير"></label>'+
+    '<div class="grid2">'+
+      '<label class="f"><span>مادة التدريس</span><input type="text" id="bt_sub" placeholder="من غير تغيير"></label>'+
+      '<label class="f"><span>الوظيفة الحالية</span><input type="text" id="bt_job" placeholder="من غير تغيير"></label>'+
+    '</div>'+
+    '<div class="grid2">'+
+      '<label class="f"><span>الدرجة المالية</span><input type="text" id="bt_fin" placeholder="من غير تغيير"></label>'+
+      '<label class="f"><span>الوظيفة على الكادر</span><input type="text" id="bt_cadre" placeholder="من غير تغيير"></label>'+
+    '</div>'+
+    '<div class="grid2">'+
+      '<label class="f"><span>نوع المؤهل</span><input type="text" id="bt_qtype" placeholder="من غير تغيير"></label>'+
+      '<label class="f"><span>المجموعة النوعية</span><input type="text" id="bt_qgrp" placeholder="من غير تغيير"></label>'+
+    '</div>'+
     '<label class="f"><span>الحالة</span><select id="bt_status"><option value="">— من غير تغيير —</option>'+
       '<option value="active">بالعمل</option><option value="left">منقول / خارج الخدمة</option></select></label>'+
+    '<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer">'+
+      '<input type="checkbox" id="bt_enrich" checked style="width:18px;height:18px">'+
+      '<span>إعادة استخراج البيانات من الرقم القومى (مواليد، نوع، محافظة، سن)</span></label>'+
     '</div>'+
     '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
     '<button class="btn" data-act="doBulkTeachers">تطبيق على '+ts.length+' معلم</button></div>');
@@ -1732,11 +1760,20 @@ function doBulkTeachers(){
   var ids = UI.bulkIds || [];
   var ts = ids.map(function(i){ return teacherById(i); }).filter(Boolean);
   if(!ts.length){ toast("مفيش معلمين محددين"); return; }
-  var sub = val("bt_sub").trim(), status = val("bt_status");
+  var vals = {
+    subject:   val("bt_sub").trim(),
+    jobNow:    val("bt_job").trim(),
+    finGrade:  val("bt_fin").trim(),
+    cadreJob:  val("bt_cadre").trim(),
+    qualType:  val("bt_qtype").trim(),
+    qualGroup: val("bt_qgrp").trim(),
+    status:    val("bt_status")
+  };
+  var doEnrich = !!(document.getElementById("bt_enrich")||{}).checked;
   markUndo("تعديل "+ts.length+" معلم");
   ts.forEach(function(t){
-    if(sub) t.subject = sub;
-    if(status) t.status = status;
+    for(var k in vals) if(vals[k]) t[k] = vals[k];
+    if(doEnrich) enrichTeacher(t);
   });
   UI.bulkIds = null;
   saveNow(); closeModal(); render();
@@ -2819,52 +2856,47 @@ function viewTeachers(){
       '<span style="flex:1"></span><button class="btn ghost sm" data-act="clearTeachFilters">✕ مسح الفلاتر</button></div>':'')+
     '</div></div>';
 
-  /* كشف كامل للطباعة والتصدير — بنفس أعمدة كشوف مراجعة بيانات العاملين */
+  /* كشف واحد بكل البيانات + تحديد وتعديل وحذف — زي كشف الطلاب بالظبط */
   h += printHd("كشف بيانات العاملين");
-  h += '<div class="card"><div class="hd"><h3>كشف البيانات الكامل</h3>'+
-    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة / تصدير</button></div>'+
+  h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' معلم</h3>'+
+    (isDep?'<button class="btn ghost sm noprint" data-act="bulkEditTeachers">✎ تعديل المحددين</button>'+
+      '<button class="btn ghost sm noprint" data-act="bulkDelTeachers" style="color:var(--danger);margin-right:5px">حذف المحددين</button>':'')+
+    '<button class="btn ghost sm noprint" data-act="print" style="margin-right:5px">⎙ طباعة / تصدير</button></div>'+
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    (isDep?'<th class="noprint" style="width:34px"><input type="checkbox" id="selAllTch" style="width:17px;height:17px"></th>':'')+
     '<th>م</th><th>كود المعلم</th><th>الرقم القومى</th><th>الاسم رباعى</th><th>مادة التدريس</th>'+
     '<th>تاريخ التعيين</th><th>الدرجة المالية</th><th>الوظيفة الحالية</th>'+
-    '<th>المؤهل</th><th>نوع المؤهل</th><th>الوظيفة على الكادر</th><th>الهاتف</th>'+
+    '<th>المؤهل</th><th>نوع المؤهل</th><th>الوظيفة على الكادر</th><th>الهاتف</th><th>الفصول</th>'+
+    (isDep?'<th class="noprint"></th>':'')+
     '</tr></thead><tbody>';
-  if(!list.length) h += '<tr><td colspan="12"><div class="empty"><b>مفيش معلمين مطابقين</b></div></td></tr>';
+  if(!list.length){
+    h += '<tr><td colspan="'+(isDep?15:13)+'"><div class="empty"><div class="big">'+icon("teachers",34)+'</div>'+
+      '<b>مفيش معلمين مطابقين</b><p>جرّب تغيّر الفلاتر أو امسحها.</p></div></td></tr>';
+  }
   list.forEach(function(t,i){
+    var a2 = assignsOfTeacher(t.id);
+    var cls2 = {}; a2.forEach(function(x){ cls2[x.classId]=1; });
     h += '<tr>'+
+      (isDep?'<td class="noprint"><input type="checkbox" class="tchck" data-id="'+t.id+'" style="width:17px;height:17px"></td>':'')+
       '<td class="rownum">'+(i+1)+'</td>'+
       '<td class="num" style="direction:ltr;text-align:right">'+esc(t.code||"—")+'</td>'+
       '<td class="num" style="direction:ltr;text-align:right">'+esc(t.natId||"—")+'</td>'+
-      '<td><b style="font-weight:600">'+esc(t.name)+'</b></td>'+
+      '<td style="min-width:160px"><b style="font-weight:600;cursor:pointer" data-act="openTeacher" data-id="'+t.id+'">'+esc(t.name)+'</b></td>'+
       '<td>'+esc(t.subject||"—")+'</td>'+
       '<td class="num">'+esc(t.hireDate?fmtDate(t.hireDate):"—")+'</td>'+
       '<td>'+esc(t.finGrade||"—")+'</td>'+
       '<td>'+esc(t.jobNow||"—")+'</td>'+
-      '<td><small>'+esc(t.qual||"—")+'</small></td>'+
+      '<td style="min-width:150px"><small>'+esc(t.qual||"—")+'</small></td>'+
       '<td>'+esc(t.qualType||"—")+'</td>'+
       '<td>'+esc(t.cadreJob||"—")+'</td>'+
       '<td class="num" style="direction:ltr;text-align:right">'+esc(t.phone||"—")+'</td>'+
+      '<td class="num">'+Object.keys(cls2).length+'</td>'+
+      (isDep?'<td class="noprint" style="white-space:nowrap">'+
+        '<button class="btn ghost sm" data-act="editTeacher" data-id="'+t.id+'">تعديل</button>'+
+        '<button class="btn ghost sm" data-act="delTeacher" data-id="'+t.id+'" style="color:var(--danger);margin-right:4px">حذف</button></td>':'')+
       '</tr>';
   });
   h += '</tbody></table></div></div></div>';
-
-  h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' معلم</h3>'+
-    (isDep?'<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer">'+
-      '<input type="checkbox" id="selAllTch" style="width:17px;height:17px"> تحديد الكل</label>':'')+
-    '</div><div class="bd flush">';
-  if(!list.length) h += '<div class="empty"><b>مفيش معلمين مطابقين</b><p>جرّب تغيّر الفلاتر.</p></div>';
-  list.forEach(function(t){
-    var a = assignsOfTeacher(t.id);
-    var cls = {}; a.forEach(function(x){ cls[x.classId]=1; });
-    h += '<div class="list-item">'+
-      (isDep?'<input type="checkbox" class="tchck" data-id="'+t.id+'" style="width:17px;height:17px;flex:0 0 17px">':'')+
-      '<button data-act="openTeacher" data-id="'+t.id+'" style="display:flex;align-items:center;gap:10px;flex:1;background:none;border:0;padding:0;cursor:pointer;text-align:right;font:inherit;color:inherit">'+
-      '<span class="av">'+esc(initials(t.name))+'</span>'+
-      '<span class="tx"><b>'+esc(t.name)+'</b><small>'+
-      (t.code?'كود '+esc(t.code)+' · ':'')+esc(t.subject||"—")+
-      (t.cadreJob?' · '+esc(t.cadreJob):'')+' · '+Object.keys(cls).length+' فصل · '+a.length+' تكليف'+
-      '</small></span><span class="chev">‹</span></button></div>';
-  });
-  h += '</div></div>';
   return h;
 }
 
@@ -4624,13 +4656,48 @@ var ACTS = {
   editTeacher: function(el){ modalTeacher(el.dataset.id); },
   saveTeacher: saveTeacher,
   delTeacher: function(el){
-    if(!confirm("حذف المعلم وحسابه وتكليفاته؟")) return;
-    var id = el.dataset.id;
-    DB.teachers = DB.teachers.filter(function(t){ return t.id!==id; });
-    DB.users = DB.users.filter(function(u){ return u.teacherId!==id; });
-    DB.assign = DB.assign.filter(function(a){ return a.teacherId!==id; });
-    DB.schedule.forEach(function(s){ if(s.teacherId===id) s.teacherId=""; });
-    save(); closeModal(); UI.sub=null; render(); toast("اتحذف");
+    var t0 = teacherById(el.dataset.id);
+    if(!t0) return;
+    UI.delIds = [t0.id];
+    var im = teacherImpact(t0.id);
+    confirmDanger({
+      title:"حذف المعلم", head:"هتحذف «"+t0.name+"» نهائيًا",
+      lines: teacherImpactLines(im),
+      note:"بعد الحذف هيظهر زر «تراجع» لمدة ١٥ ثانية.",
+      ok:"احذف المعلم", act:"doDelTeachers"
+    });
+  },
+  bulkDelTeachers: function(){
+    var ids = checkedIds("tchck");
+    if(!ids.length){ toast("حدّد معلمين الأول من المربعات"); return; }
+    var tot = {assigns:0, sched:0, users:0};
+    ids.forEach(function(id){
+      var im = teacherImpact(id);
+      tot.assigns += im.assigns; tot.sched += im.sched; tot.users += im.users;
+    });
+    UI.delIds = ids;
+    confirmDanger({
+      title:"حذف "+ids.length+" معلم",
+      head:"هتحذف "+ids.length+" معلم نهائيًا",
+      desc:"دي أسماء محددة من الكشف — راجعها كويس قبل ما توافق.",
+      lines: teacherImpactLines(tot),
+      note:"بعد الحذف هيظهر زر «تراجع» لمدة ١٥ ثانية.",
+      ok:"احذف "+ids.length+" معلم", act:"doDelTeachers"
+    });
+  },
+  doDelTeachers: function(){
+    var ids = UI.delIds || [];
+    if(!ids.length){ closeModal(); return; }
+    markUndo("حذف معلمين");
+    ids.forEach(function(id){
+      DB.teachers = DB.teachers.filter(function(t){ return t.id!==id; });
+      DB.users    = DB.users.filter(function(u){ return u.teacherId!==id; });
+      DB.assign   = DB.assign.filter(function(a){ return a.teacherId!==id; });
+      DB.schedule.forEach(function(s){ if(s.teacherId===id) s.teacherId=""; });
+    });
+    UI.delIds = null;
+    saveNow(); closeModal(); UI.sub=null; render();
+    toastUndo("اتحذف "+ids.length+" معلم");
   },
   assignTo: function(el){ modalAssign(el.dataset.id); },
   assignNew: function(){ modalAssign(); },
@@ -5231,7 +5298,7 @@ var IMPORT_SCHEMAS = {
       {k:"natId", label:"الرقم القومي", req:true, al:["الرقم القومي","قومي","رقم قومي","national","الرقم القومى"]},
       {k:"level", label:"الصف", al:["الصف","السنه","السنة","grade","level","المرحله","المرحلة"]},
       {k:"guardian", label:"ولي الأمر", al:["ولي الامر","ولي الأمر","اسم ولي الامر","guardian","parent"]},
-      {k:"phone", label:"هاتف ولي الأمر", al:["الهاتف","تليفون","موبايل","المحمول","رقم الهاتف","phone","mobile"]},
+      {k:"phone", label:"هاتف ولي الأمر", al:["هاتف ولي الامر","هاتف ولي الأمر","تليفون ولي الامر","الهاتف","تليفون","موبايل","المحمول","رقم الهاتف","phone","mobile"]},
       {k:"notes", label:"ملاحظات", al:["ملاحظات","ملاحظه","بيان","notes","remark"]}
     ]
   },
@@ -5411,22 +5478,39 @@ function detectHeader(grid, schema){
   }
   return bestScore >= 1 ? best : -1;
 }
+/* ربط أعمدة الملف بالحقول.
+   الأولوية: تطابق تام > العنوان بيحتوي الاسم البديل > الاسم البديل بيحتوي العنوان.
+   من غير الترتيب ده بيحصل تبادل بين الأعمدة المتشابهة
+   (مثلاً «الدرجة المالية» تروح لـ«تاريخ الدرجة المالية» لأنه أطول). */
+function aliasScore(n, na){
+  if(!n || !na) return 0;
+  if(n === na) return 10000 + na.length;                 /* تطابق تام */
+  if(na.length > 2 && n.indexOf(na) >= 0) return 1000 + na.length;   /* العنوان أوسع */
+  if(n.length  > 2 && na.indexOf(n)  >= 0) return 100 - (na.length - n.length); /* البديل أوسع — أضعف */
+  return 0;
+}
 function autoMap(header, schema){
-  var map = [];
-  var used = {};
+  var map = [], used = {};
+  var cands = [];
   (header||[]).forEach(function(cell, idx){
     map[idx] = "";
     if(!cell) return;
-    var n = normAr(cell), bestF = "", bestLen = 0;
+    var n = normAr(cell);
     schema.fields.forEach(function(f){
-      if(used[f.k] && !f.multi) return;
+      var best = 0;
       f.al.forEach(function(a){
-        var na = normAr(a);
-        var hit = (n===na) || (na.length>2 && n.indexOf(na)>=0) || (n.length>2 && na.indexOf(n)>=0);
-        if(hit && na.length > bestLen){ bestF = f.k; bestLen = na.length; }
+        var sc = aliasScore(n, normAr(a));
+        if(sc > best) best = sc;
       });
+      if(best > 0) cands.push({ idx:idx, k:f.k, sc:best, multi:!!f.multi });
     });
-    if(bestF){ map[idx] = bestF; used[bestF] = 1; }
+  });
+  /* الأقوى الأول: كده التطابق التام بياخد حقله قبل أي تطابق جزئي */
+  cands.sort(function(a,b){ return b.sc - a.sc; });
+  cands.forEach(function(c){
+    if(map[c.idx]) return;                 /* العمود اتربط بالفعل */
+    if(used[c.k] && !c.multi) return;      /* الحقل اتاخد بالفعل */
+    map[c.idx] = c.k; used[c.k] = 1;
   });
   return map;
 }
