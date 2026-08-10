@@ -7267,6 +7267,11 @@ var ACTS = {
     else { formsInit(); DB.formSubs[fid] = []; }
     saveNow(); render(); toastUndo("اتمسحت التسجيلات");
   },
+  trkStrictBtn: function(){
+    DB.trackStrict = !(DB.trackStrict!==false);
+    saveNow(); render();
+    toast(DB.trackStrict!==false ? "بقت ملزمة بالأرقام المسجّلة" : "بقت مفتوحة لأي رقم قومي");
+  },
   trkLvlBtn: function(){
     openModal(mHead("الصف المستهدف لاستمارة المسار")+
       '<div class="mb"><div class="note">الاستمارة هتبقى متاحة لطلاب الصف ده بس، '+
@@ -12512,7 +12517,14 @@ function formDoneHTML(o){
    بوابة الصف: الطالب لازم يكون مسجّل في صف الاستمارة
    بترجّع رسالة الخطأ، أو "" لو مسموح.
    ============================================================ */
+/* هل الاستمارة ملزمة بالأرقام القومية المسجّلة؟ */
+function formStrict(f){
+  if(!f) return false;
+  if(f.id==="track") return DB.trackStrict!==false;
+  return f.strictNat!==false;             /* الافتراضي: ملزمة */
+}
 function levelGateCheck(f, nat){
+  if(!formStrict(f)) return "";           /* مفتوحة لأي رقم قومي */
   var L = formTargetLevel(f);
   if(!L) return "";                       /* استمارة من غير صف = مفتوحة للكل */
   if(!nat) return "اكتب الرقم القومي";
@@ -12899,7 +12911,8 @@ function allForms(){
                level:num(DB.trackLevel,2), status: DB.trackOpen===false?"closed":"open", builtin:true }];
   (DB.forms||[]).forEach(function(f){
     out.push({ id:f.id, title:f.title, desc:f.desc, level:num(f.level,0),
-               status:f.status, builtin:false, fields:(f.fields||[]).length });
+               status:f.status, builtin:false, strictNat:f.strictNat!==false,
+               fields:(f.fields||[]).length });
   });
   return out;
 }
@@ -12965,7 +12978,8 @@ function formRowHTML(f, can){
     '<span class="ico" style="color:var(--muted)">'+icon("forms",20)+'</span>'+
     '<span class="tx"><b>'+esc(f.title)+'</b>'+
     '<small>'+(f.desc?esc(f.desc)+' · ':'')+n+' تسجيل'+
-    (f.builtin?' · استمارة أساسية':(f.fields?' · '+f.fields+' حقل':''))+'</small></span>'+
+    (f.builtin?' · استمارة أساسية':(f.fields?' · '+f.fields+' حقل':''))+
+    ' · '+(formStrict(f)?'المسجّلين فقط':'مفتوحة لأي رقم قومي')+'</small></span>'+
     '<span class="tag '+(open?"ok":"bad")+'">'+(open?"شغّالة":"مقفولة")+'</span>'+
     '<button class="btn ghost sm" data-act="formOpenSubs" data-id="'+esc(f.id)+'">فتح ›</button>'+
     '</div>';
@@ -12976,6 +12990,8 @@ function formToolbar(f, open){
   return '<div class="card noprint"><div class="bd" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">'+
     '<span class="tag '+(open?"ok":"bad")+'">'+(open?"شغّالة — الطلاب بيملوها":"مقفولة")+'</span>'+
     '<span class="tag info">'+esc(formLevelLabel(f))+'</span>'+
+    '<span class="tag '+(formStrict(f)?"":"warn")+'">'+
+      (formStrict(f)?'المسجّلين في الصف فقط':'أي رقم قومي مقبول')+'</span>'+
     '<span class="tag">'+n+' تسجيل</span>'+
     '<span style="flex:1"></span>'+
     '<button class="btn '+(open?"ghost":"seal")+' sm" data-act="formToggle" data-id="'+esc(f.id)+'">'+
@@ -12983,7 +12999,9 @@ function formToolbar(f, open){
     (f.id!=="track"
       ? '<button class="btn ghost sm" data-act="formEdit" data-id="'+esc(f.id)+'">تعديل الحقول والصف</button>'+
         '<button class="btn ghost sm" data-act="formDel" data-id="'+esc(f.id)+'" style="color:var(--danger)">حذف الاستمارة</button>'
-      : '<button class="btn ghost sm" data-act="trkLvlBtn">تغيير الصف المستهدف</button>')+
+      : '<button class="btn ghost sm" data-act="trkLvlBtn">تغيير الصف المستهدف</button>'+
+        '<button class="btn ghost sm" data-act="trkStrictBtn">'+
+        (formStrict({id:"track"})?"السماح بأي رقم قومي":"الالتزام بالمسجّلين")+'</button>')+
     (n? '<button class="btn ghost sm" data-act="formClearSubs" data-id="'+esc(f.id)+'" style="color:var(--danger)">مسح كل التسجيلات</button>':'')+
     '</div></div>';
 }
@@ -13392,8 +13410,10 @@ function viewFormSubs(f){
 function modalFormBuilder(id){
   formsInit();
   var f = id ? formById(id) : null;
-  UI.formDraft = f ? { id:f.id, title:f.title, desc:f.desc||"", level:num(f.level,0), fields:(f.fields||[]).map(function(x){ return Object.assign({},x); }) }
-                   : { id:null, title:"", desc:"", level:num(UI.newFormLvl,0), fields:[] };
+  UI.formDraft = f ? { id:f.id, title:f.title, desc:f.desc||"", level:num(f.level,0),
+                       strictNat: f.strictNat!==false,
+                       fields:(f.fields||[]).map(function(x){ return Object.assign({},x); }) }
+                   : { id:null, title:"", desc:"", level:num(UI.newFormLvl,0), strictNat:true, fields:[] };
   UI.newFormLvl = 0;
   renderFormBuilder();
 }
@@ -13417,6 +13437,12 @@ function renderFormBuilder(){
       LEVELS.map(function(l){ return '<option value="'+l.id+'"'+(num(d.level,0)===l.id?" selected":"")+'>'+esc(l.name)+'</option>'; }).join("")+
       '</select>'+
       '<small style="color:var(--muted);font-size:11.5px">مهم: ده الصف اللي المسجّلين هيترحّلوا ليه على طول — حتى لو لسه مش متسكّنين على فصول.</small></label>'+
+    '<label class="f"><span>مين يقدر يملا الاستمارة؟</span><select id="fb_strict">'+
+      '<option value="1"'+(d.strictNat!==false?" selected":"")+'>الطلاب المسجّلين في الصف ده فقط</option>'+
+      '<option value="0"'+(d.strictNat===false?" selected":"")+'>أي رقم قومي — حتى لو مش مسجّل</option>'+
+      '</select>'+
+      '<small style="color:var(--muted);font-size:11.5px">«المسجّلين فقط» بترفض أي رقم قومي مش موجود في الصف — '+
+      'مناسبة للاستمارات الرسمية. و«أي رقم قومي» بتفتحها للكل — مناسبة لاستمارات التقديم والطلاب الجدد.</small></label>'+
     '<div class="note">الاسم (زي شهادة الميلاد) والرقم القومي بيتطلبوا تلقائيًا في كل استمارة — مش محتاج تضيفهم.</div>'+
     '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:10px 0 6px">الحقول الإضافية</div>'+
     (fieldsHTML||'<div class="note" style="margin-bottom:8px">مفيش حقول إضافية لسه. ضيف اللي عايز الطالب يملاه تحت.</div>')+
@@ -13840,11 +13866,14 @@ Object.assign(ACTS, {
     if(!title){ toast("اكتب عنوان الاستمارة"); return; }
     formsInit();
     var lvl = num(val("fb_lvl"),0);
+    var strict = val("fb_strict")!=="0";
     if(d.id){
       var f = formById(d.id);
-      if(f){ f.title = title; f.desc = val("fb_desc").trim(); f.level = lvl; f.fields = d.fields; }
+      if(f){ f.title = title; f.desc = val("fb_desc").trim(); f.level = lvl;
+             f.strictNat = strict; f.fields = d.fields; }
     }else{
-      DB.forms.push({ id:uid("form"), title:title, desc:val("fb_desc").trim(), level:lvl, status:"open", fields:d.fields, createdAt:today() });
+      DB.forms.push({ id:uid("form"), title:title, desc:val("fb_desc").trim(), level:lvl,
+                      strictNat:strict, status:"open", fields:d.fields, createdAt:today() });
     }
     UI.formDraft = null; saveNow(); closeModal(); render(); toast("اتحفظت الاستمارة");
   }
