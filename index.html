@@ -3584,10 +3584,15 @@ function viewStudent(id){
     '</div>';
   h += '<div class="card noprint"><div class="bd" style="display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="btn" data-act="sendMsg" data-id="'+s.id+'">✉ رسالة لولي الأمر</button>'+
+    '<button class="btn ghost" data-act="stuStatement" data-id="'+s.id+'">📄 بيان حالة</button>'+
     (msgsOf(s.id,"out").length?'<span class="tag info" style="align-self:center">'+msgsOf(s.id,"out").length+' رسالة اتبعتت</span>':'')+
     (msgsOf(s.id,"in").filter(function(m){ return !m.reply; }).length?
       '<span class="tag bad" style="align-self:center">'+msgsOf(s.id,"in").filter(function(m){ return !m.reply; }).length+' سؤال منتظر رد</span>':'')+
     '</div></div>';
+  if(UI.stmtFor===s.id){
+    return '<button class="btn ghost sm noprint" data-act="closeStmt" style="margin-bottom:10px">→ رجوع لملف الطالب</button>'+
+      parentStatement(s);
+  }
   h += xfCards("student", s);
   h += '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:14px 0 4px;font-size:13px">البيانات الشخصية</div>'+
     '<div class="grid2">'+
@@ -5379,10 +5384,12 @@ function viewParent(){
     '<button class="'+(tab==="today"?"on":"")+'" data-act="pvTab" data-t="today">معلومات اليوم</button>'+
     '<button class="'+(tab==="all"?"on":"")+'" data-act="pvTab" data-t="all">متابعة شاملة</button>'+
     '<button class="'+(tab==="msg"?"on":"")+'" data-act="pvTab" data-t="msg">الرسائل والأسئلة</button>'+
+    '<button class="'+(tab==="stmt"?"on":"")+'" data-act="pvTab" data-t="stmt">بيان الحالة</button>'+
     '</div>';
 
   if(tab==="today")  return h + parentToday(st);
   if(tab==="msg")    return h + parentMsgs(st);
+  if(tab==="stmt")   return h + parentStatement(st);
   return h + parentAll(st);
 }
 /* ---------- معلومات اليوم ---------- */
@@ -5506,6 +5513,126 @@ function parentAll(st){
   h += '</div></div>';
 
   h += '<div class="note noprint">البيانات دي للاطلاع فقط. لأي استفسار استخدم تبويب «الرسائل والأسئلة».</div>';
+  return h;
+}
+/* ============================================================
+   بيان حالة الطالب — مستند رسمي جاهز للطباعة
+   ============================================================ */
+function parentStatement(st){
+  var c = classById(st.classId);
+  var info = parseNationalId(st.natId);
+  var att = attendStats(st.id, st.classId);
+  var e = eligibilityOf(st.id, st.classId);
+  var need = num(DB.bac.passPct,50);
+  var beh = DB.behavior.filter(function(b){ return b.studentId===st.id; })
+    .sort(function(a,b){ return (a.date<b.date)?1:-1; });
+
+  function row(k,v){
+    return '<tr><td style="width:33%;background:#f6f7f6;font-weight:600">'+esc(k)+'</td>'+
+      '<td>'+esc(v===null||v===undefined||v===""?"—":String(v))+'</td></tr>';
+  }
+  var h = '';
+
+  h += '<div class="note noprint">ده بيان حالة رسمي بكل بيانات ابنك في المدرسة. '+
+    'اضغط «طباعة البيان» عشان تطبعه أو تحفظه PDF.</div>';
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px" class="noprint">'+
+    '<button class="btn" data-act="print">⎙ طباعة البيان</button></div>';
+
+  /* ترويسة رسمية */
+  h += '<div class="card"><div class="bd">'+
+    '<div style="text-align:center;border-bottom:2px solid var(--ink);padding-bottom:9px;margin-bottom:12px">'+
+      '<div style="font-size:12px">جمهورية مصر العربية — وزارة التربية والتعليم</div>'+
+      '<div style="font-size:12.5px">'+esc(DB.meta.moderia||"")+' — '+esc(DB.meta.edara||"")+'</div>'+
+      '<div style="font-size:16px;font-weight:800;font-family:Cairo,sans-serif;margin-top:3px">'+esc(DB.meta.school||"")+'</div>'+
+      '<div style="font-size:15px;font-weight:700;margin-top:7px">بيــان حــالــة طــالــب</div>'+
+      '<div style="font-size:12px;color:var(--muted)">العام الدراسي '+esc(DB.meta.year||"")+
+        ' — الفصل الدراسي '+(DB.meta.term===1?"الأول":"الثاني")+'</div>'+
+    '</div>';
+
+  /* البيانات الأساسية */
+  h += '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:4px 0 6px;font-size:13.5px">أولًا: البيانات الأساسية</div>'+
+    '<table class="tbl" style="width:100%"><tbody>'+
+    row("اسم الطالب", st.name)+
+    row("الرقم القومي", st.natId)+
+    row("تاريخ الميلاد", info? fmtDate(info.birth) : (st.birth?fmtDate(st.birth):""))+
+    row("السن", (st.age||ageFrom(st.birth)) ? ((st.age||ageFrom(st.birth))+" سنة") : "")+
+    row("النوع", st.gender || (info?info.gender:""))+
+    row("محافظة الميلاد", st.birthGov || (info?info.govName:""))+
+    row("الديانة", st.religion)+
+    row("اسم ولي الأمر", st.guardian)+
+    row("رقم الهاتف", st.phone)+
+    '</tbody></table>';
+
+  /* البيانات الدراسية */
+  h += '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:14px 0 6px;font-size:13.5px">ثانيًا: البيانات الدراسية</div>'+
+    '<table class="tbl" style="width:100%"><tbody>'+
+    row("الصف الدراسي", studentLevelOf(st)? levelName(studentLevelOf(st)) : "")+
+    row("الفصل", c ? c.name : "غير مسكّن")+
+    row("نوعية التعليم", eduName(st.edu||"reg"))+
+    row("القسم", sectorName(studentSector(st)))+
+    row("النظام الدراسي", c ? systemName(c.system) : "")+
+    row("الشعبة / المسار", st.bacTrack ? wishTrackName(st.bacTrack) : (c? trackName(c.system,c.track):""))+
+    row("مادة التخصص", st.bacSubject)+
+    row("النشاط التربوي", st.actId? actName(st.actId) : "")+
+    row("التربية المهنية", st.vocId? actName(st.vocId) : "")+
+    row("الفصل السابق", st.prevClass)+
+    row("تاريخ القيد", st.joined? fmtDate(st.joined) : "")+
+    row("الحالة", st.status==="left" ? "خارج المدرسة" : "منتظم")+
+    '</tbody></table>';
+
+  /* الحضور والغياب */
+  h += '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:14px 0 6px;font-size:13.5px">ثالثًا: الحضور والغياب</div>'+
+    '<table class="tbl" style="width:100%"><tbody>'+
+    row("عدد أيام الرصد", att.days)+
+    row("أيام الحضور", att.present)+
+    row("أيام الغياب بدون عذر", att.abs)+
+    row("أيام الغياب بعذر", att.exc)+
+    row("مرات التأخير", att.late)+
+    row("نسبة الحضور", att.days? att.rate+"٪" : "—")+
+    '</tbody></table>';
+
+  /* الموقف في المواد */
+  h += '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:14px 0 6px;font-size:13.5px">'+
+    'رابعًا: الموقف في المواد <span style="font-weight:400;font-size:11.5px">'+
+    '(الحد الأدنى للسماح بدخول الامتحان: '+need+'٪ من التقييمات)</span></div>'+
+    '<table class="tbl" style="width:100%"><thead><tr>'+
+    '<th>م</th><th>المادة</th><th>نسبة التقييمات</th><th>الموقف</th></tr></thead><tbody>';
+  if(!e.rows.length) h += '<tr><td colspan="4" style="text-align:center;color:var(--muted)">لم تُرصد تقييمات بعد</td></tr>';
+  e.rows.forEach(function(r,i){
+    var lbl = r.state==="ok" ? "مسموح بدخول الامتحان"
+            : r.state==="risk" ? "مسموح — قريب من الحد"
+            : r.state==="bad" ? "غير مسموح بدخول الامتحان"
+            : "لم يُرصد";
+    h += '<tr><td class="rownum">'+(i+1)+'</td>'+
+      '<td><b style="font-weight:600">'+esc(r.su.name)+'</b></td>'+
+      '<td class="num">'+(r.pct===null?"—":r.pct+"٪")+'</td>'+
+      '<td>'+esc(lbl)+'</td></tr>';
+  });
+  h += '</tbody></table>';
+
+  /* السلوك */
+  h += '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:14px 0 6px;font-size:13.5px">خامسًا: ملاحظات السلوك</div>';
+  if(!beh.length){
+    h += '<div style="padding:9px;border:1px solid var(--line);border-radius:8px;font-size:13px">'+
+      'لا توجد ملاحظات سلوكية مسجّلة على الطالب.</div>';
+  }else{
+    h += '<table class="tbl" style="width:100%"><thead><tr><th>م</th><th>التاريخ</th><th>الملاحظة</th></tr></thead><tbody>';
+    beh.forEach(function(b,i){
+      h += '<tr><td class="rownum">'+(i+1)+'</td><td class="num">'+esc(b.date?fmtDate(b.date):"—")+'</td>'+
+        '<td>'+esc(b.note||b.text||"—")+'</td></tr>';
+    });
+    h += '</tbody></table>';
+  }
+
+  /* التوقيعات */
+  h += '<div style="margin-top:22px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:12.5px">'+
+    '<div style="text-align:center;flex:1;min-width:150px">وكيل شئون الطلاب<div style="margin-top:34px">.............................</div></div>'+
+    '<div style="text-align:center;flex:1;min-width:150px">مدير المدرسة<div style="margin-top:34px">.............................</div></div>'+
+    '</div>'+
+    '<div style="margin-top:14px;font-size:11.5px;color:var(--muted);text-align:center">'+
+    'حُرّر هذا البيان بتاريخ '+esc(fmtDate(today()))+' بناءً على البيانات المسجّلة بالمدرسة.</div>';
+
+  h += '</div></div>';
   return h;
 }
 /* ---------- الرسائل والأسئلة ---------- */
@@ -6568,6 +6695,11 @@ var ACTS = {
   goParents: function(){ UI.tab="parents"; UI.sub=null; render(); },
   pTab:  function(el){ UI.pTab = el.dataset.t; render(); },
   pvTab: function(el){ UI.pvTab = el.dataset.t; render(); },
+  stuStatement: function(el){
+    var st = studentById(el.dataset.id); if(!st) return;
+    UI.stmtFor = st.id; render();
+  },
+  closeStmt: function(){ UI.stmtFor = null; render(); },
   sendMsg: function(el){ modalSendMsg(el.dataset.id); },
   doSendMsg: function(el){
     var txt = val("mg_text").trim();
