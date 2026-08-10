@@ -2890,6 +2890,8 @@ function viewTeachers(){
     }
     return true;
   }).sort(function(a,b){ return sortAr(a.name,b.name); });
+  var regular = list.filter(function(t){ return !t.hourly; });
+  var hourly  = list.filter(function(t){ return !!t.hourly; });
 
   h += '<div class="card noprint"><div class="bd"><div class="grid2">'+
     '<label class="f" style="margin:0"><span>بحث بالاسم أو الكود أو الرقم القومى أو التخصص</span>'+
@@ -2908,7 +2910,7 @@ function viewTeachers(){
 
   /* كشف واحد بكل البيانات + تحديد وتعديل وحذف — زي كشف الطلاب بالظبط */
   h += printHd("كشف بيانات العاملين");
-  h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' معلم</h3>'+
+  h += '<div class="card"><div class="hd"><h3>المعلمون الأساسيون: '+regular.length+'</h3>'+
     (isDep?'<button class="btn ghost sm noprint" data-act="bulkEditTeachers">✎ تعديل المحددين</button>'+
       '<button class="btn ghost sm noprint" data-act="bulkDelTeachers" style="color:var(--danger);margin-right:5px">حذف المحددين</button>':'')+
     '<button class="btn ghost sm noprint" data-act="print" style="margin-right:5px">⎙ طباعة / تصدير</button></div>'+
@@ -2919,11 +2921,11 @@ function viewTeachers(){
     '<th>المؤهل</th><th>نوع المؤهل</th><th>الوظيفة على الكادر</th><th>الهاتف</th><th>الفصول</th>'+
     (isDep?'<th class="noprint"></th>':'')+
     '</tr></thead><tbody>';
-  if(!list.length){
+  if(!regular.length){
     h += '<tr><td colspan="'+(isDep?15:13)+'"><div class="empty"><div class="big">'+icon("teachers",34)+'</div>'+
       '<b>مفيش معلمين مطابقين</b><p>جرّب تغيّر الفلاتر أو امسحها.</p></div></td></tr>';
   }
-  list.forEach(function(t,i){
+  regular.forEach(function(t,i){
     var a2 = assignsOfTeacher(t.id);
     var cls2 = {}; a2.forEach(function(x){ cls2[x.classId]=1; });
     h += '<tr>'+
@@ -2947,6 +2949,44 @@ function viewTeachers(){
       '</tr>';
   });
   h += '</tbody></table></div></div></div>';
+
+  /* ---------- المعلمون بالأجر ---------- */
+  h += '<div class="card"><div class="hd"><div style="flex:1">'+
+    '<span class="eyebrow">بالحصة</span><h3>المعلمون بالأجر ('+hourly.length+')</h3></div>'+
+    (isDep?'<button class="btn" data-act="addHourly">+ إضافة معلم بالأجر</button>'+
+      '<button class="btn ghost" data-act="goShortage" style="margin-right:6px">بيان العجز</button>':'')+
+    '</div><div class="bd flush">';
+  if(!hourly.length){
+    h += '<div class="empty"><b>مفيش معلمين بالأجر</b>'+
+      '<p>دول بيتسجّلوا يدويًا لسد العجز في مادة معيّنة، وبيشتغلوا بعدد حصص متعاقد عليه. '+
+      'شوف «بيان العجز» عشان تعرف محتاج مين وكام حصة.</p></div>';
+  }else{
+    h += '<div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+      (isDep?'<th class="noprint" style="width:34px"></th>':'')+
+      '<th>م</th><th>الاسم</th><th>الرقم القومى</th><th>مادة التدريس</th>'+
+      '<th>حصص متعاقد عليها</th><th>الحِمل الحالي</th><th>المؤهل</th><th>الهاتف</th><th>ملاحظات</th>'+
+      (isDep?'<th class="noprint"></th>':'')+'</tr></thead><tbody>';
+    hourly.forEach(function(t,i){
+      var n = nisabOf(t.id), l = plannedHours(t.id,{});
+      h += '<tr>'+
+        (isDep?'<td class="noprint"><input type="checkbox" class="tchck" data-id="'+t.id+'" style="width:17px;height:17px"></td>':'')+
+        '<td class="rownum">'+(i+1)+'</td>'+
+        '<td><b style="font-weight:600;cursor:pointer" data-act="openTeacher" data-id="'+t.id+'">'+esc(t.name)+'</b></td>'+
+        '<td class="num" style="direction:ltr;text-align:right">'+esc(t.natId||"—")+'</td>'+
+        '<td><b>'+esc(t.subject||"—")+'</b></td>'+
+        '<td class="num">'+n+'</td>'+
+        '<td class="num"><span class="tag '+(l>n?"bad":(l?"ok":"warn"))+'">'+l+'</span></td>'+
+        '<td><small>'+esc(t.qual||"—")+'</small></td>'+
+        '<td class="num" style="direction:ltr;text-align:right">'+esc(t.phone||"—")+'</td>'+
+        '<td><small>'+esc(t.dataErr||"—")+'</small></td>'+
+        (isDep?'<td class="noprint" style="white-space:nowrap">'+
+          '<button class="btn ghost sm" data-act="editHourly" data-id="'+t.id+'">تعديل</button>'+
+          '<button class="btn ghost sm" data-act="delTeacher" data-id="'+t.id+'" style="color:var(--danger);margin-right:4px">حذف</button></td>':'')+
+        '</tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  h += '</div></div>';
   return h;
 }
 
@@ -3076,17 +3116,63 @@ function normSubjWords(x){
     .map(function(w){ return w.replace(/^ال/,""); })
     .filter(function(w){ return w.length>2; });
 }
+/* الحد الأدنى اللي يعتبر «المادة دي تخصصه» */
+var SUBJ_MATCH_MIN = 1;
+/* كلمات عامة مش بتحدّد تخصص لوحدها — «لغة» مش معناها إنجليزي وفرنساوي نفس الشيء */
+var GENERIC_SUBJ_WORDS = ["لغه","ماده","مواد","علم","علوم","تربيه","دراسات","مستوي","متقدم","اساسي","عام","اولي","ثانيه","ثالثه"];
+/* تصنيف المادة/التخصص لرمز موحّد — ده اللي بيمنع اللخبطة بين اللغات */
+function canonSubject(x){
+  var n = normAr(x||"");
+  if(!n) return "";
+  if(/انجليزي|انجليزيه|english|اجنبيه الاولي|الاولي/.test(n) && /لغه|انجليزي|english/.test(n)) return "en";
+  if(/فرنسي|فرنسيه|الماني|المانيه|ايطالي|اسباني|صيني|ياباني|اجنبيه الثانيه|الثانيه/.test(n) && /لغه|فرنسي|الماني|ايطالي|اسباني/.test(n)) return "l2";
+  if(/عربي|عربيه/.test(n)) return "ar";
+  if(/دينيه|ديني|اسلاميه|تربيه دينيه/.test(n)) return "rel";
+  if(/وطنيه/.test(n)) return "nat";
+  if(/رياضه|رياضيه بدنيه|تربيه رياضيه/.test(n)) return "pe";
+  if(/موسيقيه|موسيقي/.test(n)) return "mus";
+  if(/فنيه|رسم/.test(n)) return "art";
+  if(/رياضيات|جبر|هندسه/.test(n)) return "math";
+  if(/فيزياء/.test(n)) return "phys";
+  if(/كيمياء/.test(n)) return "chem";
+  if(/احياء|بيولوج/.test(n)) return "bio";
+  if(/علوم متكامله|^علوم$|علوم و/.test(n)) return "sci";
+  if(/تاريخ/.test(n)) return "hist";
+  if(/جغرافيا/.test(n)) return "geo";
+  if(/فلسفه|منطق/.test(n)) return "phil";
+  if(/علم نفس|اجتماع/.test(n)) return "psy";
+  if(/برمجه|حاسب|كمبيوتر|ذكاء اصطناعي|تكنولوجيا/.test(n)) return "cs";
+  if(/اقتصاد/.test(n)) return "econ";
+  if(/احصاء/.test(n)) return "stat";
+  if(/محاسبه/.test(n)) return "acc";
+  if(/اداره اعمال|اداره/.test(n)) return "biz";
+  if(/زراع/.test(n)) return "agri";
+  if(/مكتبه/.test(n)) return "lib";
+  if(/اقتصاد منزلي|منزلي/.test(n)) return "home";
+  if(/صحافه|اعلام/.test(n)) return "media";
+  return "";
+}
+function normSubjWords(x){
+  return normAr(x||"").split(/\s+/)
+    .map(function(w){ return w.replace(/^ال/,""); })
+    .filter(function(w){ return w.length>2 && GENERIC_SUBJ_WORDS.indexOf(w)<0; });
+}
+/* هل المعلم بيدرّس المادة دي؟ */
 function teacherFitsSubject(t, subName){
-  var ts = normAr(t.subject||""), sn = normAr(subName||"");
+  var ts = normAr(t && t.subject || ""), sn = normAr(subName||"");
   if(!ts || !sn) return 0;
+  /* التصنيف الموحّد هو الحكم الأول: لو الاتنين معروفين لازم يتطابقوا */
+  var ct = canonSubject(ts), cs = canonSubject(sn);
+  if(ct && cs) return ct===cs ? 4 : 0;
   if(ts===sn) return 4;
   if(ts.indexOf(sn)>=0 || sn.indexOf(ts)>=0) return 3;
+  /* آخر حل: كلمات مشتركة غير عامة */
   var a = normSubjWords(ts), b = normSubjWords(sn);
   var hits = 0;
   a.forEach(function(w){ if(b.indexOf(w)>=0) hits++; });
-  if(hits) return hits>1 ? 2 : 1;
-  return 0;
+  return hits ? (hits>1 ? 2 : 1) : 0;
 }
+
 /* ---------- جدول الفصل ---------- */
 function viewSchedule(){
   var isDep = UI.user.role==="deputy" || UI.user.role==="admin";
@@ -4195,15 +4281,36 @@ function modalSched(cid, day, period){
   document.getElementById("h_s").onchange = function(){ fillSchedTeacher(""); };
   document.getElementById("h_t").onchange = checkBusy;
 }
+/* قائمة معلمي المادة: كل اللي مادة تدريسهم هي المادة دي — مش المسند بس */
 function fillSchedTeacher(sel){
   var cid = MODAL.dataset.cid, sid = val("h_s");
   var el = document.getElementById("h_t");
-  var a = DB.assign.filter(function(x){ return x.classId===cid && x.subjectId===sid; });
-  var list = a.length ? a.map(function(x){ return teacherById(x.teacherId); }).filter(Boolean) : DB.teachers;
-  if(!sel && a.length) sel = a[0].teacherId;
-  el.innerHTML = '<option value="">— بدون معلم —</option>'+list.map(function(t){
-    return '<option value="'+t.id+'"'+(sel===t.id?" selected":"")+'>'+esc(t.name)+'</option>';
-  }).join("");
+  if(!el) return;
+  var su = subjById(sid);
+  var a = DB.assign.filter(function(x){ return x.classId===cid && x.subjectId===sid; })[0];
+  if(!sel && a) sel = a.teacherId;
+
+  if(!su){ el.innerHTML = '<option value="">— اختر المادة الأول —</option>'; checkBusy(); return; }
+
+  var pool = DB.teachers.filter(function(t){ return t.status!=="left"; });
+  var same = [], near = [], other = [];
+  pool.forEach(function(t){
+    var f = teacherFitsSubject(t, su.name);
+    if(f >= SUBJ_MATCH_MIN) same.push(t);
+    else if(f > 0) near.push(t);
+    else other.push(t);
+  });
+  function opt(t){
+    var n = nisabOf(t.id), l = loadNow(t.id);
+    return '<option value="'+t.id+'"'+(sel===t.id?" selected":"")+'>'+
+      esc(t.name)+' — '+esc(t.subject||"بدون تخصص")+' ('+l+'/'+n+')'+
+      (t.hourly?' · بالأجر':'')+'</option>';
+  }
+  var h = '<option value="">— بدون معلم —</option>';
+  if(same.length) h += '<optgroup label="معلمو '+esc(su.name)+'">'+same.map(opt).join("")+'</optgroup>';
+  if(near.length) h += '<optgroup label="تخصص قريب">'+near.map(opt).join("")+'</optgroup>';
+  if(other.length) h += '<optgroup label="تخصص مختلف — غير مفضّل">'+other.map(opt).join("")+'</optgroup>';
+  el.innerHTML = h;
   checkBusy();
 }
 function checkBusy(){
@@ -4228,7 +4335,21 @@ function saveSched(){
   }else{
     DB.schedule.push({id:uid("h"), classId:cid, day:day, period:p, subjectId:sid, teacherId:tid});
   }
-  save(); closeModal(); render(); toast("اتحفظ");
+  var msg = "اتحفظ";
+  if(sid && tid) msg = syncAssignFromSchedule(cid, sid, tid) ? "اتحفظ · واتحدّث الإسناد وباقي حصص المادة" : "اتحفظ";
+  saveNow(); closeModal(); render(); toast(msg);
+}
+/* الجدول والإسناد مربوطين: تغيير المعلم في أي مكان بيتطبق في التاني */
+function syncAssignFromSchedule(cid, sid, tid){
+  var a = DB.assign.filter(function(x){ return x.classId===cid && x.subjectId===sid; })[0];
+  if(a && a.teacherId===tid) return false;
+  DB.assign = DB.assign.filter(function(x){ return !(x.classId===cid && x.subjectId===sid); });
+  DB.assign.push({ id:uid("as"), classId:cid, subjectId:sid, teacherId:tid });
+  /* باقي حصص نفس المادة في نفس الفصل تتحوّل للمعلم الجديد */
+  DB.schedule.forEach(function(x){
+    if(x.classId===cid && x.subjectId===sid) x.teacherId = tid;
+  });
+  return true;
 }
 
 /* ---------- نافذة السلوك ---------- */
@@ -4527,6 +4648,11 @@ var ACTS = {
   gsearch: function(){ modalSearch(); },
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
+  addHourly:  function(el){ modalHourly(null, el && el.dataset ? el.dataset.sub : ""); },
+  editHourly: function(el){ modalHourly(el.dataset.id); },
+  saveHourly: saveHourly,
+  goShortage: function(){ UI.tab="schedule"; UI.sub={st:"short"}; render(); },
+  shScope: function(el){ UI.shScope = el.dataset.v; render(); },
   autoSubs: function(el){ autoSubjects(el.dataset.id); },
   goTeachers: function(){ UI.tab="teachers"; UI.sub=null; render(); },
   hoursFromPlan: function(){
@@ -10886,6 +11012,9 @@ var NISAB_SEC = {
 var NISAB_SUPERVISOR_CUT = 2;
 
 function nisabOf(tid){
+  var th = teacherById(tid);
+  /* المعلم بالأجر نصابه = الحصص المتعاقد عليها */
+  if(th && th.hourly) return Math.max(1, num(th.hourQuota, 10));
   var s = staffById("T"+tid);
   var job = s ? s.job : "معلم";
   var base = NISAB_SEC[job];
@@ -11059,11 +11188,13 @@ function viewScheduleHub(){
     stBtn("day","الجدول اليومي",t)+
     (isDep? stBtn("gen","توليد تلقائي",t) : "")+
     (isDep? stBtn("hours","تفاصيل الجدول",t) : "")+
+    (isDep? stBtn("short","بيان العجز",t) : "")+
     stBtn("load","الأنصبة",t)+'</div>';
   if(t==="classes") return h + viewSchedule();
   if(t==="day")   return h + viewDaySchedule();
   if(t==="gen")   return h + viewGenSched();
   if(t==="hours") return h + viewSubjHours();
+  if(t==="short") return h + viewShortage();
   if(t==="load")  return h + viewLoads();
   return h;
 }
@@ -11120,6 +11251,184 @@ function viewDaySchedule(){
 }
 
 /* ---------- حصص المواد الأسبوعية ---------- */
+/* ============================================================
+   العجز: كل مادة — مطلوب كام حصة، ومتاح كام، والفرق
+   ============================================================ */
+function shortageReport(levels){
+  var classes = myClasses().filter(function(c){
+    return !levels || levels.indexOf(Number(c.level))>=0;
+  });
+  /* المطلوب لكل اسم مادة */
+  var need = {};
+  classes.forEach(function(c){
+    DB.subjects.filter(function(su){ return su.classId===c.id; }).forEach(function(su){
+      var hrs = subjHours(su);
+      if(!hrs) return;
+      var k = normAr(su.name);
+      if(!need[k]) need[k] = { name:su.name, need:0, classes:0 };
+      need[k].need += hrs;
+      need[k].classes++;
+    });
+  });
+  /* المتاح: مجموع أنصبة المعلمين اللي المادة دي تخصصهم */
+  var pool = DB.teachers.filter(function(t){ return t.status!=="left"; });
+  var rows = [];
+  for(var k in need){
+    var o = need[k];
+    var mine = pool.filter(function(t){ return teacherFitsSubject(t, o.name) >= SUBJ_MATCH_MIN; });
+    var cap = 0, capH = 0, used = 0;
+    mine.forEach(function(t){
+      var n = nisabOf(t.id);
+      if(t.hourly) capH += n; else cap += n;
+      used += plannedHours(t.id, {});
+    });
+    var total = cap + capH;
+    rows.push({
+      name: o.name, need: o.need, classes: o.classes,
+      teachers: mine.length,
+      hourlyTeachers: mine.filter(function(t){ return t.hourly; }).length,
+      capacity: total, capReg: cap, capHourly: capH,
+      gap: Math.max(0, o.need - total),
+      spare: Math.max(0, total - o.need),
+      list: mine
+    });
+  }
+  rows.sort(function(a,b){ return b.gap - a.gap || b.need - a.need; });
+  return rows;
+}
+/* ---------- معلم بالأجر ---------- */
+function modalHourly(id, presetSubject){
+  var t = id ? teacherById(id) : null;
+  function fv(k){ return esc(t?(t[k]||""):""); }
+  openModal(mHead(t?"تعديل معلم بالأجر":"إضافة معلم بالأجر")+
+    '<div class="mb">'+
+    '<div class="note">المعلم بالأجر بيشتغل بالحصة لسد العجز. بياناته بتتسجّل يدوي، '+
+    'وبيدخل التوزيع التلقائي زي أي معلم بس <b>بعد الأساسيين</b>.</div>'+
+    '<label class="f"><span>الاسم *</span><input type="text" id="hr_name" value="'+fv("name")+'"></label>'+
+    '<div class="grid2">'+
+      '<label class="f"><span>الرقم القومى</span><input type="text" id="hr_nat" inputmode="numeric" value="'+fv("natId")+'"></label>'+
+      '<label class="f"><span>الهاتف</span><input type="tel" id="hr_ph" value="'+fv("phone")+'"></label>'+
+    '</div>'+
+    '<label class="f"><span>مادة التدريس *</span><input type="text" id="hr_sub" value="'+
+      esc(t? (t.subject||"") : (presetSubject||""))+'" placeholder="لازم تطابق اسم المادة في الجدول"></label>'+
+    '<div class="grid2">'+
+      '<label class="f"><span>عدد الحصص المتعاقد عليها أسبوعيًا *</span>'+
+        '<input type="number" id="hr_q" min="1" max="40" value="'+esc(t?teacherQuotaRaw(t):10)+'"></label>'+
+      '<label class="f"><span>المؤهل</span><input type="text" id="hr_qual" value="'+fv("qual")+'"></label>'+
+    '</div>'+
+    '<label class="f"><span>ملاحظات</span><input type="text" id="hr_note" value="'+fv("dataErr")+'" placeholder="مثال: ندب من مدرسة ... / بقرار رقم ..."></label>'+
+    '<label class="f"><span>الرقم السري لحساب الدخول</span><input type="text" id="hr_pin" inputmode="numeric" value="'+
+      esc(t?(userOfTeacher(t.id)||{}).pin||"":"")+'" placeholder="سيبه فاضي = يتولد تلقائي"></label>'+
+    (t?'<button class="btn ghost block" data-act="delTeacher" data-id="'+t.id+'" style="color:var(--danger)">حذف المعلم</button>':'')+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="saveHourly" data-id="'+(t?t.id:"")+'">حفظ</button></div>');
+}
+/* النصاب المسجّل يدويًا للمعلم (من غير الافتراضي) */
+function teacherQuotaRaw(t){ return num(t && t.hourQuota, 0) || 10; }
+function saveHourly(el){
+  var id = el && el.dataset ? el.dataset.id : "";
+  var name = cleanName(val("hr_name"));
+  if(!name){ toast("اكتب اسم المعلم"); return; }
+  var sub = val("hr_sub").trim();
+  if(!sub){ toast("اكتب مادة التدريس — من غيرها مش هياخد حصص"); return; }
+  var nat = toEnDigits(val("hr_nat")).replace(/\D/g,"");
+  if(nat && nat.length!==14){ toast("الرقم القومى لازم ١٤ رقم"); return; }
+  if(nat){
+    var dup = DB.teachers.filter(function(x){ return x.natId===nat && x.id!==id; })[0];
+    if(dup){ toast("الرقم القومى مسجّل بالفعل للمعلم: "+dup.name); return; }
+  }
+  var t = id ? teacherById(id) : null;
+  if(!t){ t = { id:uid("t"), status:"active" }; DB.teachers.push(t); }
+  t.name = name;
+  t.subject = sub;
+  t.hourly = true;
+  t.natId = nat;
+  t.phone = toEnDigits(val("hr_ph")).replace(/[^\d+]/g,"");
+  t.qual = val("hr_qual").trim();
+  t.dataErr = val("hr_note").trim();
+  t.hourQuota = Math.max(1, Math.min(40, num(val("hr_q"), 10)));
+  t.cadreJob = t.cadreJob || "معلم بالأجر";
+  t.jobNow = t.jobNow || "معلم بالأجر";
+  enrichTeacher(t);
+  var u = userOfTeacher(t.id);
+  if(!u){ u = { id:uid("u"), role:"teacher", teacherId:t.id }; DB.users.push(u); }
+  u.name = name;
+  var wanted = normPin(val("hr_pin"));
+  if(wanted && !pinCheck(wanted, u.id)) u.pin = wanted;
+  else if(!u.pin || pinCheck(u.pin, u.id)) u.pin = genPin();
+  saveNow(); closeModal(); render();
+  toast(id?"اتحفظ":"اتضاف معلم بالأجر — "+t.hourQuota+" حصة أسبوعيًا");
+}
+function viewShortage(){
+  var scope = UI.shScope || "all";
+  var levels = scope==="all" ? null : scope.split("").map(Number);
+  var rows = shortageReport(levels);
+  var gapTotal = rows.reduce(function(a,r){ return a+r.gap; }, 0);
+  var gapSubs  = rows.filter(function(r){ return r.gap>0; });
+  var noT      = rows.filter(function(r){ return r.teachers===0; });
+
+  var h = '<div class="chips noprint">'+
+    ['all','1','12','123','2','3'].map(function(v){
+      var lbl = v==="all"?"كل الصفوف":(v==="1"?"الأول":(v==="2"?"الثاني":(v==="3"?"الثالث":
+                (v==="12"?"الأول والثاني":"الأول والثاني والثالث"))));
+      return '<button class="'+(scope===v?"on":"")+'" data-act="shScope" data-v="'+v+'">'+esc(lbl)+'</button>';
+    }).join("")+'</div>';
+
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("إجمالي العجز", gapTotal, "حصة أسبوعيًا", gapTotal?"acc-r":"acc-g")+
+    stat("مواد بها عجز", gapSubs.length, "محتاجة معلمين", gapSubs.length?"acc-r":"")+
+    stat("مواد بدون معلم خالص", noT.length, "أخطر حالة", noT.length?"acc-r":"")+
+    stat("معلمون بالأجر", DB.teachers.filter(function(t){ return t.hourly && t.status!=="left"; }).length, "مسجّلين", "acc")+
+    '</div>';
+
+  if(gapTotal){
+    h += '<div class="note bad"><b>إجمالي العجز '+gapTotal+' حصة أسبوعيًا.</b> '+
+      'دي الحصص اللي محتاجة معلمين بالأجر أو ندب — التفاصيل تحت لكل مادة.</div>';
+  }else{
+    h += '<div class="note ok"><b>مفيش عجز.</b> أنصبة المعلمين الحاليين بتغطي كل الحصص المطلوبة.</div>';
+  }
+
+  h += printHd("بيان العجز في المعلمين");
+  h += '<div class="card"><div class="hd"><h3>العجز حسب المادة</h3>'+
+    '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة / تصدير</button></div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>م</th><th>المادة</th><th>الفصول</th><th>الحصص المطلوبة</th>'+
+    '<th>المعلمون</th><th>إجمالي الأنصبة</th><th>العجز</th><th>الفائض</th>'+
+    '</tr></thead><tbody>';
+  if(!rows.length) h += '<tr><td colspan="8"><div class="empty"><b>مفيش مواد بحصص</b></div></td></tr>';
+  rows.forEach(function(r,i){
+    h += '<tr>'+
+      '<td class="rownum">'+(i+1)+'</td>'+
+      '<td><b style="font-weight:600">'+esc(r.name)+'</b></td>'+
+      '<td class="num">'+r.classes+'</td>'+
+      '<td class="num"><b>'+r.need+'</b></td>'+
+      '<td class="num">'+(r.teachers? r.teachers+(r.hourlyTeachers?' ('+r.hourlyTeachers+' بالأجر)':'')
+                                    : '<span class="tag bad">لا يوجد</span>')+'</td>'+
+      '<td class="num">'+r.capacity+'</td>'+
+      '<td>'+(r.gap? '<span class="tag bad">'+r.gap+' حصة</span>' : '<span class="tag ok">مغطاة</span>')+'</td>'+
+      '<td class="num">'+(r.spare||"—")+'</td>'+
+      '</tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+
+  if(gapSubs.length){
+    h += '<div class="card noprint"><div class="hd"><h3>المطلوب توفيره</h3></div><div class="bd flush">';
+    gapSubs.forEach(function(r){
+      var needT = Math.ceil(r.gap / 24);   /* تقدير: نصاب معلم بالأجر */
+      h += '<div class="list-item">'+
+        '<span class="ico" style="color:var(--danger)">'+icon("absence",20)+'</span>'+
+        '<span class="tx"><b>'+esc(r.name)+' — عجز '+r.gap+' حصة</b>'+
+        '<small>'+(r.teachers? 'متاح '+r.teachers+' معلم بإجمالي '+r.capacity+' حصة، والمطلوب '+r.need
+                             : 'مفيش أي معلم بالتخصص ده خالص')+
+        ' · يكفيها معلم بالأجر واحد على الأقل'+(needT>1?' ('+needT+' معلمين)':'')+'</small></span>'+
+        '<button class="btn ghost sm" data-act="addHourly" data-sub="'+esc(r.name)+'">+ معلم بالأجر</button>'+
+        '</div>';
+    });
+    h += '</div></div>';
+  }
+  return h;
+}
 function viewSubjHours(){
   var g = gate("classes","subjects");
   if(g) return g;
@@ -11322,12 +11631,13 @@ function autoAssignTeachers(levels, opt){
     var best = null, bestScore = -1;
     pool.forEach(function(t){
       var fit = teacherFitsSubject(t, d.su.name);
-      if(opt.strict && !fit) return;
+      /* مادة التدريس شرط أساسي — مدرس فرنساوي مايدخلش إنجليزي */
+      if(fit < SUBJ_MATCH_MIN) return;
       var n = nisabOf(t.id);
       var used = load[t.id] || 0;
       if(used + d.hrs > n) return;                 /* هيعدّي نصابه */
       var free = (n - used) / Math.max(1, n);      /* نسبة المتاح — للعدالة */
-      var score = fit*1000 + free*100;
+      var score = fit*1000 + free*100 - (t.hourly?500:0);  /* الأساسيين الأول، وبعدين بالأجر */
       if(score > bestScore){ bestScore = score; best = t; }
     });
     if(!best){ res.noTeacher.push(d); return; }
@@ -11355,9 +11665,8 @@ function modalAutoAssign(){
       '<option value="3"'+(scope==="3"?" selected":"")+'>الصف الثالث فقط ('+cnt[3]+' فصل)</option>'+
       '<option value="23"'+(scope==="23"?" selected":"")+'>الثاني والثالث ('+(cnt[2]+cnt[3])+' فصل)</option>'+
       '</select><small style="color:var(--muted);font-size:11.5px">الصفوف اللي برّه الاختيار تكليفاتها هتفضل زي ما هي، وحِمل معلميها هيتحسب.</small></label>'+
-    '<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">'+
-      '<input type="checkbox" id="ag_strict" style="width:18px;height:18px">'+
-      '<span>تخصص المعلم لازم يطابق المادة (من غيرها ممكن يسند مادة قريبة عند الضرورة)</span></label>'+
+    '<div class="note ok"><b>مادة التدريس شرط أساسي.</b> المعلم مبياخدش غير المادة اللي هي تخصصه — '+
+    'مدرس فرنساوي عمره ما هياخد حصص إنجليزي. واللي مالوش معلم بتخصصه هيظهرلك في تقرير العجز.</div>'+
     '<div class="note warn">تكليفات الصفوف المختارة هتتمسح وتتوزّع من جديد. فيه «تراجع» بعدها.</div>'+
     '</div>'+
     '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
@@ -11367,9 +11676,8 @@ function doAutoAssign(){
   var scope = val("ag_scope") || "1";
   UI.asgScope = scope;
   var levels = scope.split("").map(Number);
-  var strict = !!(document.getElementById("ag_strict")||{}).checked;
   markUndo("توزيع التكليفات");
-  var r = autoAssignTeachers(levels, { strict:strict });
+  var r = autoAssignTeachers(levels, {});
   if(r.err){ toast(r.err); return; }
   UI.asgResult = r;
   saveNow(); closeModal(); render();
