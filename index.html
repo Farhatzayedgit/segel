@@ -633,7 +633,7 @@ function blankDB(){
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
     sectors:{}, wishes:[],
-    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[]
+    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}
   };
 }
 
@@ -665,7 +665,7 @@ function load(){
     curriculumInit();
     migrateSubjectHours();
     actInit();
-    calCfg(); examsInit();
+    calCfg(); examsInit(); xfInit();
   }catch(e){ DB = seed(); }
 }
 /* ترحيل: الصف بقى بيان مستقل في الطالب نفسه — مش مستنتج من الفصل.
@@ -2056,6 +2056,92 @@ function doMergeDups(){
   saveNow(); closeModal(); render();
   toastUndo("اتدمج المكرر — اتشال "+removed+" سجل زيادة");
 }
+/* ============================================================
+   البيانات الإضافية — أعمدة يضيفها الوكيل بنفسه للطلاب أو المعلمين
+   بتتطبق على الكل، وبتظهر في التعديل وفي الملف وفي الكشوف والتصدير.
+   ============================================================ */
+function xfInit(){
+  if(!DB.extraFields || typeof DB.extraFields!=="object") DB.extraFields = {};
+  if(!Array.isArray(DB.extraFields.student)) DB.extraFields.student = [];
+  if(!Array.isArray(DB.extraFields.teacher)) DB.extraFields.teacher = [];
+  return DB.extraFields;
+}
+function xfList(scope){ xfInit(); return DB.extraFields[scope==="teacher"?"teacher":"student"]; }
+function xfGet(o, fid){ return (o && o.extra && o.extra[fid]!==undefined) ? o.extra[fid] : ""; }
+function xfSet(o, fid, v){
+  if(!o) return;
+  if(!o.extra || typeof o.extra!=="object") o.extra = {};
+  if(v==="" || v===null || v===undefined) delete o.extra[fid];
+  else o.extra[fid] = v;
+}
+/* حقول الإدخال في نافذة التعديل */
+function xfInputs(scope, o){
+  var list = xfList(scope);
+  if(!list.length) return "";
+  var h = '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:10px 0 6px;font-size:13px">'+
+    'بيانات إضافية</div><div class="grid2">';
+  list.forEach(function(f){
+    var v = esc(xfGet(o, f.id));
+    if(f.type==="select"){
+      h += '<label class="f"><span>'+esc(f.label)+'</span><select class="xf" data-fid="'+f.id+'">'+
+        '<option value="">—</option>'+
+        (f.options||[]).map(function(op){ return '<option value="'+esc(op)+'"'+(xfGet(o,f.id)===op?" selected":"")+'>'+esc(op)+'</option>'; }).join("")+
+        '</select></label>';
+    }else{
+      var tp = f.type==="number"?"number":(f.type==="date"?"date":(f.type==="tel"?"tel":"text"));
+      h += '<label class="f"><span>'+esc(f.label)+'</span>'+
+        '<input type="'+tp+'" class="xf" data-fid="'+f.id+'" value="'+v+'"></label>';
+    }
+  });
+  return h + '</div>';
+}
+/* بيقرا اللي اتكتب في الحقول الإضافية ويحفظه */
+function xfCollect(o){
+  Array.prototype.slice.call(document.querySelectorAll(".xf")).forEach(function(el){
+    xfSet(o, el.dataset.fid, el.value);
+  });
+}
+/* عرض البيانات الإضافية في صفحة الطالب/المعلم */
+function xfCards(scope, o){
+  var list = xfList(scope);
+  if(!list.length) return "";
+  var any = list.some(function(f){ return xfGet(o,f.id)!==""; });
+  if(!any) return "";
+  return '<div class="card"><div class="hd"><h3>بيانات إضافية</h3></div><div class="bd"><div class="grid2">'+
+    list.map(function(f){ return kv(f.label, xfGet(o,f.id)||"—"); }).join("")+
+    '</div></div></div>';
+}
+/* شاشة إدارة الحقول */
+function modalExtraFields(scope){
+  var list = xfList(scope);
+  var title = scope==="teacher" ? "بيانات المعلمين الإضافية" : "بيانات الطلاب الإضافية";
+  var rows = list.map(function(f,i){
+    return '<div class="list-item">'+
+      '<span class="tx"><b>'+esc(f.label)+'</b><small>'+esc(fieldTypeName(f.type))+
+      (f.options&&f.options.length?' · '+esc(f.options.join(" / ")):'')+'</small></span>'+
+      '<button class="btn ghost sm" data-act="xfUp" data-s="'+scope+'" data-i="'+i+'"'+(i===0?" disabled":"")+'>▲</button>'+
+      '<button class="btn ghost sm" data-act="xfDel" data-s="'+scope+'" data-i="'+i+'" style="color:var(--danger);margin-right:4px">حذف</button>'+
+      '</div>';
+  }).join("");
+  openModal(mHead(title)+
+    '<div class="mb">'+
+    '<div class="note">أي بيان تضيفه هنا هيظهر في تعديل <b>كل</b> '+(scope==="teacher"?"المعلمين":"الطلاب")+
+    ' (نظامي وخدمات ومنازل)، وفي ملف كل واحد، وفي التصدير.</div>'+
+    (rows || '<div class="empty"><b>مفيش بيانات إضافية</b></div>')+
+    '<div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">'+
+      '<div class="grid2">'+
+        '<label class="f"><span>اسم البيان الجديد</span><input type="text" id="xf_label" placeholder="مثال: رقم ولي الأمر الثاني"></label>'+
+        '<label class="f"><span>النوع</span><select id="xf_type">'+
+          '<option value="text">نص</option><option value="number">رقم</option>'+
+          '<option value="date">تاريخ</option><option value="tel">هاتف</option>'+
+          '<option value="select">اختيار من قائمة</option></select></label>'+
+      '</div>'+
+      '<label class="f"><span>خيارات القائمة (افصل بينهم بفاصلة)</span>'+
+        '<input type="text" id="xf_opts" placeholder="مثال: ممتاز، جيد جدًا، جيد"></label>'+
+      '<button class="btn block" data-act="xfAdd" data-s="'+scope+'">+ إضافة البيان</button>'+
+    '</div></div>'+
+    '<div class="mf"><button class="btn" data-act="close">تمام</button></div>');
+}
 function viewStudents(){
   var f = UI.filters;
   var mine = myClassIds();
@@ -2078,6 +2164,7 @@ function viewStudents(){
   var h = pageHd("الطلاب", sub,
     (UI.user.role==="deputy"?'<button class="btn" data-act="addStudent">+ إضافة طالب</button>'+
       impBtn("students",{},"استيراد من إكسيل")+
+      '<button class="btn ghost sm noprint" data-act="xfManage" data-s="student" style="margin-right:6px">+ بيان إضافي</button>'+
       '<button class="btn ghost sm noprint" data-act="enrichAll" style="margin-right:6px">⟳ استخراج البيانات للكل</button>'+
       '<button class="btn ghost sm noprint" data-act="impTpl" data-tg="students" style="margin-right:6px">نموذج جاهز</button>':''));
 
@@ -2112,9 +2199,11 @@ function viewStudents(){
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
     (canBulk?'<th class="noprint" style="width:34px"><input type="checkbox" id="selAllStu" style="width:17px;height:17px"></th>':'')+
     '<th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الصف</th><th>الفصل</th><th>النوعية</th><th>المسار</th><th>مادة التخصص</th><th>الحالة</th>'+
+    xfList("student").map(function(f){ return '<th>'+esc(f.label)+'</th>'; }).join("")+
+    (canBulk?'<th class="noprint"></th>':'')+
     '</tr></thead><tbody>';
   if(!list.length){
-    h += '<tr><td colspan="'+(canBulk?10:9)+'"><div class="empty"><div class="big">'+icon("students",34)+'</div><b>مفيش طلاب مطابقين</b>'+
+    h += '<tr><td colspan="'+((canBulk?10:9)+xfList("student").length)+'"><div class="empty"><div class="big">'+icon("students",34)+'</div><b>مفيش طلاب مطابقين</b>'+
       '<p>'+(DB.students.length?'جرّب تغيّر الفلاتر.':'ابدأ بإضافة الفصول ثم الطلاب.')+'</p></div></td></tr>';
   }
   list.forEach(function(s,i){
@@ -2131,7 +2220,12 @@ function viewStudents(){
       '<td><small>'+esc(eduName(s.edu||"reg"))+'</small></td>'+
       '<td><small>'+(s.bacTrack?esc(wishTrackName(s.bacTrack)):(c?esc(trackName(c.system,c.track)):"—"))+'</small></td>'+
       '<td><small>'+esc(s.bacSubject||"—")+'</small></td>'+
-      '<td><span class="tag '+a.c+'">'+a.t+'</span></td></tr>';
+      '<td><span class="tag '+a.c+'">'+a.t+'</span></td>'+
+      xfList("student").map(function(f){ return '<td><small>'+esc(xfGet(s,f.id)||"—")+'</small></td>'; }).join("")+
+      (canBulk?'<td class="noprint" style="white-space:nowrap">'+
+        '<button class="btn ghost sm" data-act="editStudent" data-id="'+s.id+'">تعديل</button>'+
+        '<button class="btn ghost sm" data-act="delStudent" data-id="'+s.id+'" style="color:var(--danger);margin-right:4px">حذف</button></td>':'')+
+      '</tr>';
   });
   h += '</tbody></table></div></div></div>';
   return h;
@@ -2190,6 +2284,7 @@ function viewStudent(id){
     kv("النشاط التربوي", s.actId?actName(s.actId):"—")+
     kv("التربية المهنية", s.vocId?actName(s.vocId):"—")+
     '</div>';
+  h += xfCards("student", s);
   h += '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:14px 0 4px;font-size:13px">البيانات الشخصية</div>'+
     '<div class="grid2">'+
     kv("الرقم القومي", s.natId||"—")+kv("تاريخ الميلاد", nidInfo?fmtDate(nidInfo.birth):"—")+
@@ -2568,6 +2663,7 @@ function viewHome(){
   var h = pageHd("المنازل", all.length+" طالب منازل في قسم "+sectorName(curSector())+" — انتساب، امتحانات فقط",
     (isDep?'<button class="btn" data-act="addHome">+ إضافة طالب منازل</button>'+
       '<button class="btn ghost" data-act="homeFromForm" style="margin-right:6px">⇪ ترحيل من استمارة</button>'+
+      '<button class="btn ghost sm" data-act="xfManage" data-s="student" style="margin-right:6px">+ بيان إضافي</button>'+
       impBtn("home",{},"استيراد ملف"):''));
 
   h += '<div class="note noprint" style="margin-bottom:10px">طلاب المنازل مالهمش فصول ولا أعمال سنة ولا غياب — الشاشة دي لعرض بياناتهم وتصديرها بس.</div>';
@@ -2586,9 +2682,10 @@ function viewHome(){
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
     '<th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الصف</th><th>تاريخ الميلاد</th>'+
     '<th>النوع</th><th>المحافظة</th><th>ولي الأمر</th><th>الهاتف</th>'+
+    xfList("student").map(function(f){ return '<th>'+esc(f.label)+'</th>'; }).join("")+
     (isDep?'<th class="noprint"></th>':'')+'</tr></thead><tbody>';
   if(!list.length){
-    h += '<tr><td colspan="'+(isDep?10:9)+'"><div class="empty"><div class="big">'+icon("students",34)+'</div><b>مفيش طلاب منازل</b>'+
+    h += '<tr><td colspan="'+((isDep?10:9)+xfList("student").length)+'"><div class="empty"><div class="big">'+icon("students",34)+'</div><b>مفيش طلاب منازل</b>'+
       '<p>'+(all.length?'جرّب تغيّر الفلاتر.':'ضيف طالب، أو ارفع ملف إكسيل/PDF، أو رحّل من استمارة سجّلها الطلاب.')+'</p></div></td></tr>';
   }
   list.forEach(function(s,i){
@@ -2603,6 +2700,7 @@ function viewHome(){
       '<td>'+esc(s.birthGov||(info?info.govName:"—"))+'</td>'+
       '<td>'+esc(s.guardian||"—")+'</td>'+
       '<td class="num" style="direction:ltr;text-align:right">'+esc(s.phone||"—")+'</td>'+
+      xfList("student").map(function(f){ return '<td><small>'+esc(xfGet(s,f.id)||"—")+'</small></td>'; }).join("")+
       (isDep?'<td class="noprint"><button class="btn ghost sm" data-act="editHome" data-id="'+s.id+'">تعديل</button>'+
         '<button class="btn ghost sm" data-act="delHome" data-id="'+s.id+'" style="color:var(--danger);margin-right:4px">حذف</button></td>':'')+
       '</tr>';
@@ -2625,6 +2723,7 @@ function modalHome(id){
       '<label class="f"><span>هاتف ولي الأمر</span><input type="text" id="h_phone" inputmode="tel" value="'+esc(s?s.phone||"":"")+'"></label>'+
     '</div>'+
     '<label class="f"><span>ولي الأمر</span><input type="text" id="h_guard" value="'+esc(s?s.guardian||"":"")+'" placeholder="بيتملّي تلقائيًا من الاسم"></label>'+
+    xfInputs("student", s)+
     '<label class="f"><span>ملاحظات</span><input type="text" id="h_notes" value="'+esc(s?s.notes||"":"")+'"></label>'+
     '</div>'+
     '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
@@ -2661,6 +2760,7 @@ function saveHome(el){
   s.phone = toEnDigits(val("h_phone")).replace(/[^\d+]/g,"");
   s.guardian = cleanName(val("h_guard")) || s.guardian || "";
   s.notes = val("h_notes");
+  xfCollect(s);
   enrichStudent(s);
   saveNow(); closeModal(); render();
   toast(id?"اتحفظ":"اتضاف طالب منازل");
@@ -2909,6 +3009,7 @@ function viewTeachers(){
   var h = pageHd("المعلمون", DB.teachers.length+" معلم",
     isDep?'<button class="btn" data-act="addTeacher">+ إضافة معلم</button>'+
       '<button class="btn ghost" data-act="bulkEditTeachers" style="margin-right:6px">✎ تعديل المحددين</button>'+
+      '<button class="btn ghost sm" data-act="xfManage" data-s="teacher" style="margin-right:6px">+ بيان إضافي</button>'+
       impBtn("teachers",{},"استيراد من إكسيل"):'');
   if(!DB.teachers.length){
     return h+'<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("teachers",34)+'</div><b>مفيش معلمين مسجّلين</b>'+
@@ -2961,10 +3062,11 @@ function viewTeachers(){
     '<th>م</th><th>كود المعلم</th><th>الرقم القومى</th><th>الاسم رباعى</th><th>مادة التدريس</th>'+
     '<th>تاريخ التعيين</th><th>الدرجة المالية</th><th>الوظيفة الحالية</th>'+
     '<th>المؤهل</th><th>نوع المؤهل</th><th>الوظيفة على الكادر</th><th>الهاتف</th><th>الفصول</th>'+
+    xfList("teacher").map(function(f){ return '<th>'+esc(f.label)+'</th>'; }).join("")+
     (isDep?'<th class="noprint"></th>':'')+
     '</tr></thead><tbody>';
   if(!regular.length){
-    h += '<tr><td colspan="'+(isDep?15:13)+'"><div class="empty"><div class="big">'+icon("teachers",34)+'</div>'+
+    h += '<tr><td colspan="'+((isDep?15:13)+xfList("teacher").length)+'"><div class="empty"><div class="big">'+icon("teachers",34)+'</div>'+
       '<b>مفيش معلمين مطابقين</b><p>جرّب تغيّر الفلاتر أو امسحها.</p></div></td></tr>';
   }
   regular.forEach(function(t,i){
@@ -2985,6 +3087,7 @@ function viewTeachers(){
       '<td>'+esc(t.cadreJob||"—")+'</td>'+
       '<td class="num" style="direction:ltr;text-align:right">'+esc(t.phone||"—")+'</td>'+
       '<td class="num">'+Object.keys(cls2).length+'</td>'+
+      xfList("teacher").map(function(f){ return '<td><small>'+esc(xfGet(t,f.id)||"—")+'</small></td>'; }).join("")+
       (isDep?'<td class="noprint" style="white-space:nowrap">'+
         '<button class="btn ghost sm" data-act="editTeacher" data-id="'+t.id+'">تعديل</button>'+
         '<button class="btn ghost sm" data-act="delTeacher" data-id="'+t.id+'" style="color:var(--danger);margin-right:4px">حذف</button></td>':'')+
@@ -3091,6 +3194,7 @@ function viewTeacher(id){
   h += '</div>';
 
   h += teacherDataCards(t);
+  h += xfCards("teacher", t);
 
   h += '<div class="card"><div class="hd"><h3>الفصول والمواد المُسندة ('+a.length+')</h3>'+
     (isDep?'<button class="btn ghost sm" data-act="assignTo" data-id="'+t.id+'">+ إسناد فصل</button>':'')+'</div><div class="bd flush">';
@@ -4021,6 +4125,7 @@ function modalStudent(id, presetCls){
     '<label class="f"><span>مجموع الصف الثاني (بكالوريا)</span><input type="number" id="s_bp" step="0.5" min="0" '+
       'value="'+esc(s?(s.bacPrev||""):"")+'" placeholder="من 400 — لطلاب ٣ ثانوي بكالوريا"></label>'+
     '</div>'+
+    xfInputs("student", s)+
     '<label class="f"><span>ملاحظات</span><textarea id="s_notes">'+esc(s?(s.notes||""):"")+'</textarea></label>'+
     (s?'<button class="btn ghost block" data-act="delStudent" data-id="'+s.id+'" style="color:var(--danger)">حذف الطالب نهائيًا</button>':'')+
     '</div>'+mFoot("حفظ","saveStudent"));
@@ -4087,6 +4192,7 @@ function saveStudent(){
   if(s.edu==="home"){ s.classId = ""; }
   s.joined = val("s_j");
   s.notes = val("s_notes").trim();
+  xfCollect(s);
   var bp = val("s_bp").trim();
   if(bp==="") delete s.bacPrev; else s.bacPrev = num(bp,0);
   enrichStudent(s);   /* تاريخ الميلاد + النوع + المحافظة + ولي الأمر تلقائيًا */
@@ -4285,6 +4391,7 @@ function modalTeacher(id){
       }).join("")+'</div>'+
       '<small style="color:var(--muted);font-size:11.5px">المواد المستخرجة من تخصصه محددة تلقائيًا. '+
       'علّم على أي مادة زيادة يقدر يدرّسها (مثلاً معلم التاريخ ياخد التربية الوطنية).</small></label>'+
+    xfInputs("teacher", t)+
     '<label class="f"><span>أخطاء البيانات / ملاحظات</span><input type="text" id="t_err" value="'+fv("dataErr")+'"></label>'+
     '<label class="f"><span>الرقم السري لحساب الدخول</span><input type="text" id="t_pin" inputmode="numeric" value="'+esc(t?(userOfTeacher(t.id)||{}).pin||"":"1234")+'"></label>'+
     (t?'<button class="btn ghost block" data-act="delTeacher" data-id="'+t.id+'" style="color:var(--danger)">حذف المعلم</button>':'')+
@@ -4329,6 +4436,7 @@ function saveTeacher(){
   t.cadreDate = val("t_cadredate");
   t.dataErr = val("t_err").trim();
   t.phone = toEnDigits(val("t_ph")).replace(/[^\d+]/g,"");
+  xfCollect(t);
   var auto = canonSet(t.subject);
   t.alsoTeach = Array.prototype.slice.call(document.querySelectorAll(".alsoCk"))
     .filter(function(cb){ return cb.checked && !cb.disabled; })
@@ -4804,6 +4912,35 @@ var ACTS = {
   gsearch: function(){ modalSearch(); },
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
+  xfManage: function(el){ modalExtraFields(el.dataset.s); },
+  xfAdd: function(el){
+    var scope = el.dataset.s;
+    var lbl = val("xf_label").trim();
+    if(!lbl){ toast("اكتب اسم البيان"); return; }
+    var tp = val("xf_type") || "text";
+    var opts = val("xf_opts").split(/[,،]/).map(function(x){ return x.trim(); }).filter(Boolean);
+    if(tp==="select" && !opts.length){ toast("اكتب خيارات القائمة"); return; }
+    xfList(scope).push({ id:uid("xf"), label:lbl, type:tp, options:opts });
+    saveNow(); modalExtraFields(scope); render(); toast("اتضاف «"+lbl+"» لكل "+(scope==="teacher"?"المعلمين":"الطلاب"));
+  },
+  xfDel: function(el){
+    var scope = el.dataset.s, i = num(el.dataset.i,-1);
+    var list = xfList(scope);
+    if(!list[i]) return;
+    if(!confirm("حذف بيان «"+list[i].label+"»؟\nالقيم المسجّلة فيه هتتشال من الكل.")) return;
+    markUndo("حذف بيان إضافي");
+    var fid = list[i].id;
+    list.splice(i,1);
+    (scope==="teacher"?DB.teachers:DB.students).forEach(function(o){ if(o.extra) delete o.extra[fid]; });
+    saveNow(); modalExtraFields(scope); render(); toastUndo("اتحذف");
+  },
+  xfUp: function(el){
+    var scope = el.dataset.s, i = num(el.dataset.i,-1);
+    var list = xfList(scope);
+    if(i<1 || !list[i]) return;
+    var t0 = list[i-1]; list[i-1] = list[i]; list[i] = t0;
+    saveNow(); modalExtraFields(scope); render();
+  },
   placeActs: function(){
     if(!confirm("توزيع حصص النشاط؟\nهتتحط في نفس الخانة لكل فصول الصف الواحد عشان المجموعات تتكوّن.")) return;
     markUndo("توزيع حصص النشاط");
@@ -7385,11 +7522,21 @@ function staffInit(){
 /* كل العاملين: المعلمون (من جدول المعلمين) + باقي الوظائف */
 function staffAll(){
   staffInit();
+  /* بيانات المعلم هي المصدر الأساسي، وسجل العاملين بيكمّل الناقص بس.
+     كده أي بيانات يرفعها وكيل شئون الطلاب تظهر عند المدير على طول. */
   var out = DB.teachers.map(function(t){
     var ex = DB.staff.filter(function(x){ return x.teacherId===t.id; })[0] || {};
     return { id:"T"+t.id, kind:"teacher", teacherId:t.id, name:t.name,
-             job: ex.job || "معلم", phone: t.phone||ex.phone||"", natId:ex.natId||"",
-             hired: ex.hired||"", degree: ex.degree||"", note: ex.note||"" };
+             code:   t.code || "",
+             job:    t.cadreJob || t.jobNow || ex.job || "معلم",
+             subject:t.subject || "",
+             phone:  t.phone || ex.phone || "",
+             natId:  t.natId || ex.natId || "",
+             hired:  t.hireDate || ex.hired || "",
+             degree: t.qual || ex.degree || "",
+             qualType: t.qualType || "",
+             hourly: !!t.hourly,
+             note:   t.dataErr || ex.note || "" };
   });
   DB.staff.forEach(function(x){
     if(x.teacherId) return;
@@ -7461,7 +7608,12 @@ function viewStaff(){
   staffInit();
   var list = staffAll();
   var q = (UI.filters.stq||"").trim();
-  var shown = q ? list.filter(function(s){ return s.name.indexOf(q)>=0 || s.job.indexOf(q)>=0; }) : list;
+  var qd = toEnDigits(q);
+  var shown = q ? list.filter(function(s){
+    return normAr(s.name).indexOf(normAr(q))>=0 || normAr(s.job).indexOf(normAr(q))>=0 ||
+           normAr(s.subject||"").indexOf(normAr(q))>=0 ||
+           String(s.code||"").indexOf(qd)>=0 || String(s.natId||"").indexOf(qd)>=0;
+  }) : list;
   var teachers = list.filter(function(s){ return s.kind==="teacher"; }).length;
 
   var h = pageHd("العاملون بالمدرسة", list.length+" عامل · "+teachers+" معلم",
@@ -7474,19 +7626,27 @@ function viewStaff(){
   h += '<div class="card"><div class="hd"><h3>'+shown.length+' عامل</h3>'+
     '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة البيان</button></div>'+
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
-    '<th>م</th><th>الاسم</th><th>الوظيفة</th><th>المؤهل</th><th>تاريخ التعيين</th>'+
-    '<th>الهاتف</th><th>النصاب</th><th>الحضور</th></tr></thead><tbody>';
-  if(!shown.length) h += '<tr><td colspan="8"><div class="empty"><div class="big">'+icon("teachers",34)+'</div><b>مفيش عاملين</b>'+
+    '<th>م</th><th>الكود</th><th>الاسم</th><th>الرقم القومى</th><th>الوظيفة</th><th>مادة التدريس</th>'+
+    '<th>المؤهل</th><th>تاريخ التعيين</th><th>الهاتف</th><th>النصاب</th><th>الحِمل</th><th>الحضور</th>'+
+    '</tr></thead><tbody>';
+  if(!shown.length) h += '<tr><td colspan="12"><div class="empty"><div class="big">'+icon("teachers",34)+'</div><b>مفيش عاملين</b>'+
     '<p>المعلمون بيظهروا هنا تلقائي أول ما تضيفهم. ضيف باقي العاملين من زرار الإضافة.</p></div></td></tr>';
   shown.forEach(function(s,i){
     var st = staffAttStats(s.id);
-    var nis = s.kind==="teacher" ? teacherLoad(s.teacherId) : null;
+    var nis = s.kind==="teacher" ? nisabOf(s.teacherId) : null;
+    var load = s.kind==="teacher" ? plannedHours(s.teacherId, {}) : null;
     h += '<tr data-act="openStaff" data-id="'+s.id+'" style="cursor:pointer">'+
-      '<td class="rownum">'+(i+1)+'</td><td><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
-      '<td>'+esc(s.job)+'</td><td><small>'+esc(s.degree||"—")+'</small></td>'+
+      '<td class="rownum">'+(i+1)+'</td>'+
+      '<td class="num" style="direction:ltr;text-align:right">'+esc(s.code||"—")+'</td>'+
+      '<td><b style="font-weight:600">'+esc(s.name)+'</b>'+(s.hourly?' <span class="tag">بالأجر</span>':'')+'</td>'+
+      '<td class="num" style="direction:ltr;text-align:right">'+esc(s.natId||"—")+'</td>'+
+      '<td>'+esc(s.job)+'</td>'+
+      '<td>'+esc(s.subject||"—")+'</td>'+
+      '<td><small>'+esc(s.degree||"—")+'</small></td>'+
       '<td class="num">'+esc(s.hired? fmtDate(s.hired):"—")+'</td>'+
-      '<td class="num">'+esc(s.phone||"—")+'</td>'+
-      '<td class="num">'+(nis===null?"—":nis+" حصة")+'</td>'+
+      '<td class="num" style="direction:ltr;text-align:right">'+esc(s.phone||"—")+'</td>'+
+      '<td class="num">'+(nis===null?"—":nis)+'</td>'+
+      '<td class="num">'+(load===null?"—":'<span class="tag '+(load>nis?"bad":(load?"ok":""))+'">'+load+'</span>')+'</td>'+
       '<td class="num">'+(st.days? st.rate+"%" : "—")+'</td></tr>';
   });
   h += '</tbody></table></div></div></div>';
@@ -11925,6 +12085,7 @@ function modalHourly(id, presetSubject){
       '<label class="f"><span>المؤهل</span><input type="text" id="hr_qual" value="'+fv("qual")+'"></label>'+
     '</div>'+
     '<label class="f"><span>ملاحظات</span><input type="text" id="hr_note" value="'+fv("dataErr")+'" placeholder="مثال: ندب من مدرسة ... / بقرار رقم ..."></label>'+
+    xfInputs("teacher", t)+
     '<label class="f"><span>الرقم السري لحساب الدخول</span><input type="text" id="hr_pin" inputmode="numeric" value="'+
       esc(t?(userOfTeacher(t.id)||{}).pin||"":"")+'" placeholder="سيبه فاضي = يتولد تلقائي"></label>'+
     (t?'<button class="btn ghost block" data-act="delTeacher" data-id="'+t.id+'" style="color:var(--danger)">حذف المعلم</button>':'')+
@@ -11956,6 +12117,7 @@ function saveHourly(el){
   t.qual = val("hr_qual").trim();
   t.dataErr = val("hr_note").trim();
   t.hourQuota = Math.max(1, Math.min(40, num(val("hr_q"), 10)));
+  xfCollect(t);
   t.cadreJob = t.cadreJob || "معلم بالأجر";
   t.jobNow = t.jobNow || "معلم بالأجر";
   enrichTeacher(t);
