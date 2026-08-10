@@ -3120,37 +3120,68 @@ function normSubjWords(x){
 var SUBJ_MATCH_MIN = 1;
 /* كلمات عامة مش بتحدّد تخصص لوحدها — «لغة» مش معناها إنجليزي وفرنساوي نفس الشيء */
 var GENERIC_SUBJ_WORDS = ["لغه","ماده","مواد","علم","علوم","تربيه","دراسات","مستوي","متقدم","اساسي","عام","اولي","ثانيه","ثالثه"];
-/* تصنيف المادة/التخصص لرمز موحّد — ده اللي بيمنع اللخبطة بين اللغات */
+/* جدول تصنيف المواد — كل تصنيف واسمه ونمط التعرّف عليه */
+var SUBJ_CANON = [
+  ["en",   "لغة أجنبية أولى (إنجليزي)", /انجليزي|انجليزيه|english|اجنبيه الاولي|لغه اولي/],
+  ["l2",   "لغة أجنبية ثانية",          /فرنسي|فرنسيه|الماني|المانيه|ايطالي|اسباني|صيني|ياباني|اجنبيه الثانيه|لغه ثانيه/],
+  ["ar",   "لغة عربية",                 /عربي|عربيه/],
+  ["rel",  "تربية دينية",               /دين|دينيه|اسلاميه|مسيحيه/],
+  ["nat",  "تربية وطنية",               /وطنيه|وطني/],
+  ["pe",   "تربية رياضية",              /تربيه رياضيه|رياضيه بدنيه|بدنيه/],
+  ["mus",  "تربية موسيقية",             /موسيقيه|موسيقي/],
+  ["art",  "تربية فنية",                /فنيه|رسم/],
+  ["math", "رياضيات",                   /رياضيات|جبر|هندسه بحته|تفاضل/],
+  ["phys", "فيزياء",                    /فيزياء/],
+  ["chem", "كيمياء",                    /كيمياء/],
+  ["bio",  "أحياء",                     /احياء|بيولوج/],
+  ["sci",  "علوم",                      /علوم/],
+  ["hist", "تاريخ",                     /تاريخ/],
+  ["geo",  "جغرافيا",                   /جغرافيا/],
+  ["phil", "فلسفة ومنطق",               /فلسفه|منطق/],
+  ["psy",  "علم نفس واجتماع",           /علم نفس|اجتماع|نفسي/],
+  ["cs",   "حاسب وبرمجة",               /برمجه|حاسب|كمبيوتر|ذكاء اصطناعي|تكنولوجيا|معلومات/],
+  ["home", "اقتصاد منزلي",              /منزلي/],
+  ["econ", "اقتصاد",                    /اقتصاد/],
+  ["stat", "إحصاء",                     /احصاء/],
+  ["acc",  "محاسبة",                    /محاسبه/],
+  ["biz",  "إدارة أعمال",               /اداره اعمال|اداره|تجاره|تجــاره/],
+  ["agri", "زراعة",                     /زراع/],
+  ["media","صحافة وإعلام",              /صحافه|اعلام/],
+  ["lib",  "مكتبات",                    /مكتبه/]
+];
+function canonName(code){
+  for(var i=0;i<SUBJ_CANON.length;i++) if(SUBJ_CANON[i][0]===code) return SUBJ_CANON[i][1];
+  return code;
+}
+/* تصنيف واحد لاسم مادة (المواد اسمها بيدل على تخصص واحد) */
 function canonSubject(x){
-  var n = normAr(x||"");
-  if(!n) return "";
-  if(/انجليزي|انجليزيه|english|اجنبيه الاولي|الاولي/.test(n) && /لغه|انجليزي|english/.test(n)) return "en";
-  if(/فرنسي|فرنسيه|الماني|المانيه|ايطالي|اسباني|صيني|ياباني|اجنبيه الثانيه|الثانيه/.test(n) && /لغه|فرنسي|الماني|ايطالي|اسباني/.test(n)) return "l2";
-  if(/عربي|عربيه/.test(n)) return "ar";
-  if(/دينيه|ديني|اسلاميه|تربيه دينيه/.test(n)) return "rel";
-  if(/وطنيه/.test(n)) return "nat";
-  if(/رياضه|رياضيه بدنيه|تربيه رياضيه/.test(n)) return "pe";
-  if(/موسيقيه|موسيقي/.test(n)) return "mus";
-  if(/فنيه|رسم/.test(n)) return "art";
-  if(/رياضيات|جبر|هندسه/.test(n)) return "math";
-  if(/فيزياء/.test(n)) return "phys";
-  if(/كيمياء/.test(n)) return "chem";
-  if(/احياء|بيولوج/.test(n)) return "bio";
-  if(/علوم متكامله|^علوم$|علوم و/.test(n)) return "sci";
-  if(/تاريخ/.test(n)) return "hist";
-  if(/جغرافيا/.test(n)) return "geo";
-  if(/فلسفه|منطق/.test(n)) return "phil";
-  if(/علم نفس|اجتماع/.test(n)) return "psy";
-  if(/برمجه|حاسب|كمبيوتر|ذكاء اصطناعي|تكنولوجيا/.test(n)) return "cs";
-  if(/اقتصاد/.test(n)) return "econ";
-  if(/احصاء/.test(n)) return "stat";
-  if(/محاسبه/.test(n)) return "acc";
-  if(/اداره اعمال|اداره/.test(n)) return "biz";
-  if(/زراع/.test(n)) return "agri";
-  if(/مكتبه/.test(n)) return "lib";
-  if(/اقتصاد منزلي|منزلي/.test(n)) return "home";
-  if(/صحافه|اعلام/.test(n)) return "media";
-  return "";
+  var set = canonSet(x);
+  return set.length ? set[0] : "";
+}
+/* كل التصنيفات في نص واحد — تخصص المعلم ممكن يجمع أكتر من مادة
+   زي «لغة عربية ودين» = عربي + تربية دينية */
+/* تصنيفات بتلغي بعضها: «اقتصاد منزلي» مش «اقتصاد» */
+var CANON_EXCLUDE = { home:["econ"], pe:["math"], psy:["sci"] };
+function canonSet(x){
+  var n = normAr(x||""), out = [];
+  if(!n) return out;
+  SUBJ_CANON.forEach(function(row){
+    if(row[2].test(n) && out.indexOf(row[0])<0) out.push(row[0]);
+  });
+  out.slice().forEach(function(c){
+    (CANON_EXCLUDE[c]||[]).forEach(function(drop){
+      var i = out.indexOf(drop);
+      if(i>=0) out.splice(i,1);
+    });
+  });
+  return out;
+}
+/* المواد اللي المعلم يقدر يدرّسها = المستخرجة من تخصصه + اللي الوكيل ضافها له */
+function teacherCanons(t){
+  if(!t) return [];
+  var out = canonSet(t.subject);
+  (t.alsoTeach||[]).forEach(function(c){ if(out.indexOf(c)<0) out.push(c); });
+  return out;
 }
 function normSubjWords(x){
   return normAr(x||"").split(/\s+/)
@@ -3160,18 +3191,20 @@ function normSubjWords(x){
 /* هل المعلم بيدرّس المادة دي؟ */
 function teacherFitsSubject(t, subName){
   var ts = normAr(t && t.subject || ""), sn = normAr(subName||"");
-  if(!ts || !sn) return 0;
-  /* التصنيف الموحّد هو الحكم الأول: لو الاتنين معروفين لازم يتطابقوا */
-  var ct = canonSubject(ts), cs = canonSubject(sn);
-  if(ct && cs) return ct===cs ? 4 : 0;
+  if(!sn) return 0;
+  var cs = canonSubject(sn);
+  var set = teacherCanons(t);
+  /* التصنيف هو الحكم: لو المادة معروفة والمعلم عنده تصنيفات — لازم تكون فيهم */
+  if(cs && set.length) return set.indexOf(cs)>=0 ? 4 : 0;
+  if(!ts) return 0;
   if(ts===sn) return 4;
   if(ts.indexOf(sn)>=0 || sn.indexOf(ts)>=0) return 3;
-  /* آخر حل: كلمات مشتركة غير عامة */
   var a = normSubjWords(ts), b = normSubjWords(sn);
   var hits = 0;
   a.forEach(function(w){ if(b.indexOf(w)>=0) hits++; });
   return hits ? (hits>1 ? 2 : 1) : 0;
 }
+
 
 /* ---------- جدول الفصل ---------- */
 function viewSchedule(){
@@ -3192,7 +3225,8 @@ function viewSchedule(){
   h += printHd("جدول حصص "+className(cid));
   h += '<div class="card"><div class="hd"><h3>'+esc(className(cid))+'</h3>'+
     '<button class="btn ghost sm noprint" data-act="print">⎙ طباعة</button>'+
-    (isDep? impBtn("schedule",{classId:cid},"استيراد جدول")+
+    (isDep? '<button class="btn seal sm noprint" data-act="genOneClass" data-id="'+cid+'">⚙ توليد جدول الفصل ده</button>'+
+      impBtn("schedule",{classId:cid},"استيراد جدول")+
       '<button class="btn ghost sm noprint" data-act="clearSched" data-id="'+cid+'" style="margin-right:6px;color:var(--danger)">تفريغ الجدول</button>':'')+
     '</div><div class="bd"><div class="tbl-wrap"><table class="sched"><thead><tr><th>اليوم</th>';
   for(var p=1;p<=periodsCount();p++){
@@ -4175,6 +4209,18 @@ function modalTeacher(id){
       '<label class="f"><span>نوع المؤهل</span><input type="text" id="t_qtype" value="'+fv("qualType")+'" placeholder="عليا / متوسطة / دراسات عليا"></label>'+
       '<label class="f"><span>الهاتف</span><input type="tel" id="t_ph" value="'+fv("phone")+'"></label>'+
     '</div>'+
+    '<label class="f"><span>مواد إضافية يقدر يدرّسها</span>'+
+      '<div id="t_also" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid var(--line-2);border-radius:9px;max-height:130px;overflow:auto">'+
+      SUBJ_CANON.map(function(row){
+        var auto = canonSet(t?t.subject:"").indexOf(row[0])>=0;
+        var on = auto || ((t&&t.alsoTeach||[]).indexOf(row[0])>=0);
+        return '<label style="display:flex;align-items:center;gap:4px;font-size:12px;'+
+          (auto?'opacity:.6':'cursor:pointer')+'">'+
+          '<input type="checkbox" class="alsoCk" data-c="'+row[0]+'"'+(on?" checked":"")+
+          (auto?" disabled":"")+' style="width:15px;height:15px">'+esc(row[1])+'</label>';
+      }).join("")+'</div>'+
+      '<small style="color:var(--muted);font-size:11.5px">المواد المستخرجة من تخصصه محددة تلقائيًا. '+
+      'علّم على أي مادة زيادة يقدر يدرّسها (مثلاً معلم التاريخ ياخد التربية الوطنية).</small></label>'+
     '<label class="f"><span>أخطاء البيانات / ملاحظات</span><input type="text" id="t_err" value="'+fv("dataErr")+'"></label>'+
     '<label class="f"><span>الرقم السري لحساب الدخول</span><input type="text" id="t_pin" inputmode="numeric" value="'+esc(t?(userOfTeacher(t.id)||{}).pin||"":"1234")+'"></label>'+
     (t?'<button class="btn ghost block" data-act="delTeacher" data-id="'+t.id+'" style="color:var(--danger)">حذف المعلم</button>':'')+
@@ -4219,6 +4265,11 @@ function saveTeacher(){
   t.cadreDate = val("t_cadredate");
   t.dataErr = val("t_err").trim();
   t.phone = toEnDigits(val("t_ph")).replace(/[^\d+]/g,"");
+  var auto = canonSet(t.subject);
+  t.alsoTeach = Array.prototype.slice.call(document.querySelectorAll(".alsoCk"))
+    .filter(function(cb){ return cb.checked && !cb.disabled; })
+    .map(function(cb){ return cb.dataset.c; })
+    .filter(function(c){ return auto.indexOf(c)<0; });
   enrichTeacher(t);
   var u = userOfTeacher(t.id);
   if(!u){ u = {id:uid("u"), role:"teacher", teacherId:t.id}; DB.users.push(u); }
@@ -4648,6 +4699,19 @@ var ACTS = {
   gsearch: function(){ modalSearch(); },
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
+  genOneClass: function(el){
+    var cid = el.dataset.id, c = classById(cid);
+    if(!c) return;
+    if(!confirm("توليد جدول «"+c.name+"» تلقائيًا؟\nالجدول الحالي للفصل ده هيتمسح ويتبني من جديد.\n(باقي الفصول مش هتتأثر، وفيه تراجع بعدها)")) return;
+    markUndo("توليد جدول "+c.name);
+    var r = genOneClassSchedule(cid);
+    if(r.err){ toast(r.err); return; }
+    saveNow(); render();
+    var msg = "اتعمل جدول "+c.name+" — "+r.placed+" حصة";
+    if(r.noTeacher.length) msg += " · "+r.noTeacher.length+" مادة بدون معلم متاح";
+    if(r.left.length)      msg += " · "+r.left.length+" حصة مالقتش مكان";
+    toastUndo(msg);
+  },
   addHourly:  function(el){ modalHourly(null, el && el.dataset ? el.dataset.sub : ""); },
   editHourly: function(el){ modalHourly(el.dataset.id); },
   saveHourly: saveHourly,
@@ -11254,6 +11318,80 @@ function viewDaySchedule(){
 /* ============================================================
    العجز: كل مادة — مطلوب كام حصة، ومتاح كام، والفرق
    ============================================================ */
+/* ============================================================
+   توليد جدول فصل واحد — من غير ما يمس باقي الفصول
+   ============================================================ */
+function genOneClassSchedule(cid){
+  var c = classById(cid);
+  if(!c) return { err:"الفصل مش موجود" };
+  var subs = DB.subjects.filter(function(su){ return su.classId===cid; });
+  if(!subs.length) return { err:"الفصل مفيهوش مواد — اضغط «توليد المواد المقررة» الأول" };
+
+  var days = schoolDayIdx(), P = periodsCount();
+  /* الطلب: كل حصة مطلوبة ومعلمها */
+  var items = [], noT = [];
+  subs.forEach(function(su){
+    var hrs = subjHours(su);
+    if(!hrs) return;
+    var a = DB.assign.filter(function(x){ return x.classId===cid && x.subjectId===su.id; })[0];
+    var tid = a ? a.teacherId : "";
+    if(!tid){
+      /* مفيش إسناد — ندوّر على معلم بتخصص المادة وعنده متاح */
+      var best = null, bestFree = -1;
+      DB.teachers.filter(function(t){ return t.status!=="left"; }).forEach(function(t){
+        if(teacherFitsSubject(t, su.name) < SUBJ_MATCH_MIN) return;
+        var n = nisabOf(t.id), used = plannedHours(t.id, {});
+        if(used + hrs > n) return;
+        var free = (n - used) / Math.max(1,n) - (t.hourly?0.5:0);
+        if(free > bestFree){ bestFree = free; best = t; }
+      });
+      if(best){
+        tid = best.id;
+        DB.assign.push({ id:uid("as"), classId:cid, subjectId:su.id, teacherId:tid });
+      }else{ noT.push(su.name); return; }
+    }
+    for(var i=0;i<hrs;i++) items.push({ subjectId:su.id, teacherId:tid, name:su.name });
+  });
+  if(!items.length) return { err: noT.length? "مفيش معلمين متاحين لمواد الفصل ده" : "مفيش حصص مطلوبة" };
+
+  /* نمسح جدول الفصل ده بس */
+  DB.schedule = DB.schedule.filter(function(x){ return x.classId!==cid; });
+
+  var placed = 0, left = [];
+  var dayHas = {};   /* منع تكرار نفس المادة مرتين في يوم */
+  shuffle(items);
+  /* الأكتر حصصًا الأول */
+  items.forEach(function(it){
+    var done = false;
+    for(var pi=1; pi<=P && !done; pi++){
+      for(var k=0; k<days.length && !done; k++){
+        var d = days[(k + pi) % days.length];
+        if(schedCell(cid, d, pi)) continue;
+        if(it.teacherId && teacherBusy(it.teacherId, d, pi)) continue;
+        if(dayHas[d+"|"+it.subjectId]) continue;
+        DB.schedule.push({ id:uid("h"), classId:cid, day:d, period:pi,
+                           subjectId:it.subjectId, teacherId:it.teacherId });
+        dayHas[d+"|"+it.subjectId] = 1;
+        placed++; done = true;
+      }
+    }
+    /* لو مالقاش، نسمح بتكرار المادة في نفس اليوم */
+    if(!done){
+      for(var pj=1; pj<=P && !done; pj++){
+        for(var m=0; m<days.length && !done; m++){
+          var dd = days[m];
+          if(schedCell(cid, dd, pj)) continue;
+          if(it.teacherId && teacherBusy(it.teacherId, dd, pj)) continue;
+          DB.schedule.push({ id:uid("h"), classId:cid, day:dd, period:pj,
+                             subjectId:it.subjectId, teacherId:it.teacherId });
+          placed++; done = true;
+        }
+      }
+    }
+    if(!done) left.push(it.name);
+  });
+  return { placed:placed, left:left, noTeacher:noT, cls:c };
+}
 function shortageReport(levels){
   var classes = myClasses().filter(function(c){
     return !levels || levels.indexOf(Number(c.level))>=0;
