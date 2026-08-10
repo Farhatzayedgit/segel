@@ -1846,6 +1846,89 @@ function cascadeReset(f, dim){
   if(i<0) return;
   for(var j=i+1;j<order.length;j++) f[order[j]] = "";
 }
+/* ============================================================
+   تنظيف التكرار — بيدمج أي طلاب اتكرروا بنفس الرقم القومي
+   ============================================================ */
+function findDuplicates(){
+  var byNat = {}, dups = [];
+  DB.students.forEach(function(s){
+    if(!s.natId) return;
+    if(!byNat[s.natId]) byNat[s.natId] = [];
+    byNat[s.natId].push(s);
+  });
+  for(var k in byNat) if(byNat[k].length>1) dups.push({ natId:k, list:byNat[k] });
+  return dups;
+}
+/* الأصل = اللي عليه بيانات أكتر (درجات/غياب)، والباقي بيندمج فيه */
+function mergeDuplicate(group){
+  var best = group[0], bestScore = -1;
+  group.forEach(function(s){
+    var im = studentImpact(s.id);
+    var score = im.marks*10 + im.days*3 + im.notes + (s.classId?5:0);
+    if(score > bestScore){ bestScore = score; best = s; }
+  });
+  group.forEach(function(s){
+    if(s.id===best.id) return;
+    /* بنكمّل الناقص في الأصل من النسخة المكررة قبل ما نشيلها */
+    ["classId","phone","guardian","religion","bacTrack","bacSubject","prevClass","seat","notes"].forEach(function(k){
+      if(!best[k] && s[k]) best[k] = s[k];
+    });
+    if(!studentLevelOf(best) && studentLevelOf(s)) setStudentLevel(best, studentLevelOf(s));
+    if(best.edu==="reg" && s.edu && s.edu!=="reg") best.edu = s.edu;
+    /* نقل الدرجات والغياب للأصل لو مش موجودة عنده */
+    for(var k2 in DB.marks){
+      if(k2.indexOf(s.id+"|")!==0) continue;
+      var nk = best.id + k2.slice(s.id.length);
+      if(DB.marks[nk]===undefined) DB.marks[nk] = DB.marks[k2];
+      delete DB.marks[k2];
+    }
+    for(var a in DB.attend){
+      if(DB.attend[a][s.id]===undefined) continue;
+      if(DB.attend[a][best.id]===undefined) DB.attend[a][best.id] = DB.attend[a][s.id];
+      delete DB.attend[a][s.id];
+    }
+    DB.behavior.forEach(function(b){ if(b.studentId===s.id) b.studentId = best.id; });
+    DB.students = DB.students.filter(function(x){ return x.id!==s.id; });
+  });
+  enrichStudent(best);
+  return best;
+}
+function modalDuplicates(){
+  var dups = findDuplicates();
+  if(!dups.length){
+    openModal(mHead("فحص التكرار")+
+      '<div class="mb"><div class="empty"><div class="big">'+icon("attend",34)+'</div>'+
+      '<b>مفيش أي رقم قومي متكرر</b><p>كل طالب مسجّل مرة واحدة بس.</p></div></div>'+mFoot("تمام","close"));
+    return;
+  }
+  var extra = dups.reduce(function(a,d){ return a + d.list.length - 1; }, 0);
+  var body = dups.slice(0,60).map(function(d){
+    return '<div class="list-item">'+
+      '<span class="tx"><b>'+esc(d.list[0].name)+'</b><small><span style="direction:ltr">'+esc(d.natId)+'</span>'+
+      ' · مسجّل '+d.list.length+' مرات'+
+      ' · '+esc(d.list.map(function(s){ var c=classById(s.classId); return c?c.name:(isHomeStudent(s)?"منازل":"بدون فصل"); }).join(" / "))+
+      '</small></span></div>';
+  }).join("");
+  openModal(mHead("أرقام قومية متكررة")+
+    '<div class="mb">'+
+    '<div class="note bad"><b>'+dups.length+' رقم قومي متكرر</b> — يعني '+extra+' سجل زيادة.</div>'+
+    '<div class="note">الدمج بيسيب <b>سجل واحد</b> لكل رقم قومي: بيختار السجل اللي عليه درجات وغياب أكتر، '+
+    'وبينقل له أي بيانات ناقصة من السجلات المكررة، وبعدين يشيلها.</div>'+
+    '<div style="max-height:40vh;overflow:auto">'+body+
+      (dups.length>60?'<div class="note">…وكمان '+(dups.length-60)+' حالة</div>':'')+'</div>'+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="doMergeDups">دمج الكل ('+extra+' سجل هيتشال)</button></div>');
+}
+function doMergeDups(){
+  var dups = findDuplicates();
+  if(!dups.length){ closeModal(); return; }
+  markUndo("دمج المكرر");
+  var removed = 0;
+  dups.forEach(function(d){ removed += d.list.length-1; mergeDuplicate(d.list); });
+  saveNow(); closeModal(); render();
+  toastUndo("اتدمج المكرر — اتشال "+removed+" سجل زيادة");
+}
 function viewStudents(){
   var f = UI.filters;
   var mine = myClassIds();
@@ -1871,6 +1954,16 @@ function viewStudents(){
       '<button class="btn ghost sm noprint" data-act="enrichAll" style="margin-right:6px">⟳ استخراج البيانات للكل</button>'+
       '<button class="btn ghost sm noprint" data-act="impTpl" data-tg="students" style="margin-right:6px">نموذج جاهز</button>':''));
 
+  /* تنبيه التكرار — أخطر من التسكين لأنه بيخرب الإحصائيات والدرجات */
+  if(UI.user.role==="deputy"){
+    var dupN = findDuplicates().length;
+    if(dupN){
+      h += '<div class="note bad noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
+        '<span style="flex:1;min-width:200px"><b>'+dupN+' رقم قومي متكرر</b> — فيه طلاب مسجّلين أكتر من مرة. '+
+        'ده بيخرب الأعداد والدرجات، يفضل تدمجهم.</span>'+
+        '<button class="btn seal sm" data-act="findDups">فحص ودمج</button></div>';
+    }
+  }
   /* تنبيه بسيط بسطر واحد — الطلاب غير المسكّنين ظاهرين في الكشف نفسه بعلامة «غير مسكّن» */
   if(unassigned.length){
     var g2c = grade2Classes();
@@ -4129,6 +4222,8 @@ var ACTS = {
   gsearch: function(){ modalSearch(); },
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   clearTeachFilters: function(){ UI.filters.tq=""; UI.filters.tsub=""; render(); },
+  findDups: function(){ modalDuplicates(); },
+  doMergeDups: doMergeDups,
   goClasses:  function(){ UI.tab="classes";  UI.sub=null; render(); },
   goStudents: function(){ UI.tab="students"; UI.sub=null; render(); },
   undoLast: function(){ undoLast(); },
@@ -4941,7 +5036,7 @@ var IMPORT_SCHEMAS = {
   },
   students:{
     title:"استيراد الطلاب",
-    hint:"الملف المتوقّع فيه عمود لاسم الطالب على الأقل. أي أعمدة تانية (رقم الجلوس، الرقم القومي، ولي الأمر، الهاتف، الفصل) هتتعرّف لوحدها.",
+    hint:"محتاج عمود الاسم، ويفضّل جدًا عمود الرقم القومي — هو اللي بيمنع تكرار الطالب. لو الملف فيه عمود «نوعية التعليم» (نظامي/خدمات/منازل) البرنامج هيوزّعهم على أقسامهم لوحده، والمنازل مش هيتسكّنوا على فصول.",
     fields:[
       {k:"name", label:"اسم الطالب", req:true, multi:true, al:["اسم الطالب","الاسم","اسم","الطالب","اسم رباعي","الاسم رباعي","student","name","اسم التلميذ"]},
       {k:"seat", label:"رقم الجلوس", al:["رقم الجلوس","جلوس","رقم جلوس","seat","الرقم"]},
@@ -4951,6 +5046,9 @@ var IMPORT_SCHEMAS = {
       {k:"religion", label:"الديانة", al:["الديانه","الديانة","دين","religion"]},
       {k:"cls", label:"الفصل", al:["الفصل","فصل","الشعبه","الشعبة","class","section","المجموعه"]},
       {k:"level", label:"الصف", al:["الصف","السنه","السنة","grade","level","المرحله"]},
+      {k:"edu", label:"نوعية التعليم (نظامي/خدمات/منازل)", al:["نوعيه التعليم","نوعية التعليم","النوعيه","النوعية","النظام","نظام الدراسه","نظام الدراسة","القسم","الفتره","الفترة","نوع التعليم","edu","type"]},
+      {k:"track", label:"المسار", al:["المسار","مسار","الشعبه العلميه","التخصص","track"]},
+      {k:"subject", label:"مادة التخصص", al:["ماده التخصص","مادة التخصص","الماده","المادة","subject"]},
       {k:"notes", label:"ملاحظات", al:["ملاحظات","ملاحظه","بيان","notes","remark"]}
     ]
   },
@@ -5398,47 +5496,126 @@ function impHome(recs){
   });
   return r;
 }
+/* بيفهم نوعية التعليم من أي صياغة في الشيت */
+function parseEdu(v){
+  var t = normAr(String(v==null?"":v));
+  if(!t) return "";
+  if(/منازل|انتساب|منتسب|home/.test(t)) return "home";
+  if(/خدمات|خدمه|خدمة|فتره ثانيه|فترة ثانية|مسائي|service/.test(t)) return "srv";
+  if(/نظام|انتظام|منتظم|عام|صباحي|reg/.test(t)) return "reg";
+  return "";
+}
+/* بيفهم المسار من الاسم */
+function parseWishTrack(v){
+  var t = normAr(String(v==null?"":v));
+  if(!t) return "";
+  var wt = wishTracks();
+  for(var i=0;i<wt.length;i++) if(normAr(wt[i].name)===t) return wt[i].id;
+  if(/طب|حياه|حياة|بيولوج/.test(t)) return "med";
+  if(/هندس|حاسب|كمبيوتر|برمج/.test(t)) return "eng";
+  if(/اعمال|أعمال|تجار|محاسب|اقتصاد/.test(t)) return "bus";
+  if(/اداب|آداب|فنون|لغات|نفس/.test(t)) return "art";
+  return "";
+}
 function impStudents(recs){
-  var r = {add:0, upd:0, skip:0, err:[]};
+  var r = {add:0, upd:0, skip:0, err:[], dup:0, home:0, srv:0, reg:0};
   var defCls = UI.imp.ctx.classId || "";
   var newCls = 0;
+
+  /* فهرس الرقم القومي — المفتاح الوحيد اللي بنمنع بيه التكرار */
+  var byNat = {};
+  DB.students.forEach(function(s){ if(s.natId) byNat[s.natId] = s; });
+  /* فهرس مؤقت للأرقام اللي جوه نفس الملف عشان الملف نفسه ميكررش */
+  var seenInFile = {};
+
   recs.forEach(function(o, i){
     var name = cleanName(o.name||"");
-    if(!name || name.length<2){ r.err.push("سطر "+(i+1)+": مفيش اسم"); return; }
-    if(normAr(name).length<2){ r.err.push("سطر "+(i+1)+": الاسم مش مفهوم"); return; }
-    var cid = defCls;
-    if(o.cls){
-      var c = findClassByName(o.cls);
-      if(!c){
-        c = {id:uid("c"), name:cleanName(o.cls), level:parseLevel(o.level)||parseLevel(o.cls)||1,
-             system:"gen", track:"none", room:""};
-        if(c.level>1) c.track = parseTrack(o.cls) || "sci";
-        DB.classes.push(c); newCls++;
-      }
-      cid = c.id;
+    if(!name || normAr(name).length<2){ r.err.push("سطر "+(i+1)+": مفيش اسم مفهوم"); return; }
+
+    var nat = toEnDigits(String(o.natId==null?"":o.natId)).replace(/\D/g,"");
+    if(nat && nat.length!==14){
+      r.err.push("سطر "+(i+1)+": الرقم القومي مش ١٤ رقم ("+name+")");
+      nat = "";
     }
-    var exist = null;
-    DB.students.forEach(function(s){
-      if(exist) return;
-      if(normAr(s.name)===normAr(name) && (!cid || s.classId===cid)) exist = s;
-    });
+    /* تكرار جوه نفس الملف */
+    if(nat && seenInFile[nat]){ r.dup++; return; }
+    if(nat) seenInFile[nat] = 1;
+
+    /* نوعية التعليم بتحدد القسم والتسكين */
+    var edu = parseEdu(o.edu) || parseEdu(o.cls) || "";
+    var isHome = edu==="home";
+
+    /* الفصل — المنازل ملهمش فصول فمبنعملهمش فصل */
+    var cid = "";
+    if(!isHome){
+      cid = defCls;
+      if(o.cls){
+        var c = findClassByName(o.cls);
+        if(!c){
+          var lvl = parseLevel(o.level) || parseLevel(o.cls) || 1;
+          c = {id:uid("c"), name:cleanName(o.cls), level:lvl, system:"gen", track:"none", room:"",
+               sector: edu==="srv" ? "srv" : curSector()};
+          if(c.level>1) c.track = parseTrack(o.cls) || "sci";
+          DB.classes.push(c); newCls++;
+        }
+        cid = c.id;
+      }
+    }
+
+    /* البحث عن الطالب: بالرقم القومي أولًا وأخيرًا.
+       من غير رقم قومي بنرجع للاسم بس ننبّه إنه غير موثوق. */
+    var exist = nat ? byNat[nat] : null;
+    if(!nat){
+      DB.students.forEach(function(s){
+        if(exist || s.natId) return;   /* اللي عنده رقم قومي بنسيبه للمفتاح */
+        if(normAr(s.name)===normAr(name)) exist = s;
+      });
+    }
+
     if(exist && UI.imp.mode==="add"){ r.skip++; return; }
     var s = (exist && UI.imp.mode==="update") ? exist : {id:uid("s"), status:"active", joined:today()};
     if(s===exist) r.upd++; else { DB.students.push(s); r.add++; }
+
     s.name = name;
-    if(cid) assignStudentToClass(s, cid);
+    if(nat){ s.natId = nat; byNat[nat] = s; }
+
+    /* التوزيع حسب النوعية */
+    if(edu){
+      s.edu = edu;
+      s.sector = eduType(edu).sector;
+      if(edu==="home"){ s.classId = ""; r.home++; }
+      else r[edu==="srv"?"srv":"reg"]++;
+    }else if(!s.edu){
+      s.edu = "reg";
+      s.sector = curSector();
+      r.reg++;
+    }
+    if(!isHome && cid) assignStudentToClass(s, cid);
+
     var impLvl = parseLevel(o.level) || parseLevel(o.cls) || 0;
     if(impLvl) setStudentLevel(s, impLvl);
     else if(!studentLevelOf(s)) setStudentLevel(s, 1);
+
+    var trk = parseWishTrack(o.track);
+    if(trk) s.bacTrack = trk;
+    if(o.subject) s.bacSubject = String(o.subject).trim();
     if(o.seat!==undefined && o.seat!=="") s.seat = toEnDigits(o.seat).trim();
-    if(o.natId) s.natId = toEnDigits(o.natId).replace(/\D/g,"");
     if(o.guardian) s.guardian = cleanName(o.guardian);
     if(o.phone) s.phone = toEnDigits(o.phone).replace(/[^\d+]/g,"");
     if(o.religion){ var rel = normAr(o.religion); s.religion = /مسيح|قبط|c/.test(rel)?"مسيحي":"مسلم"; }
     if(o.notes) s.notes = o.notes;
     enrichStudent(s);   /* استخراج المواليد والنوع والمحافظة وولي الأمر تلقائيًا */
   });
-  if(newCls) r.note = "اتعمل <b>"+newCls+"</b> فصل جديد من أسماء الفصول اللي في الملف — راجعها من شاشة الفصول واظبط الصف والنظام.";
+
+  var notes = [];
+  if(newCls) notes.push("اتعمل <b>"+newCls+"</b> فصل جديد من أسماء الفصول اللي في الملف — راجعها من شاشة الفصول.");
+  if(r.dup)  notes.push("<b>"+r.dup+"</b> صف اتخطّى لأن رقمه القومي متكرر جوه نفس الملف.");
+  var dist = [];
+  if(r.reg)  dist.push(r.reg+" نظامي");
+  if(r.srv)  dist.push(r.srv+" خدمات");
+  if(r.home) dist.push(r.home+" منازل");
+  if(dist.length) notes.push("التوزيع حسب النوعية: <b>"+dist.join(" · ")+"</b>.");
+  if(notes.length) r.note = notes.join("<br>");
   return r;
 }
 function impTeachers(recs){
@@ -7620,6 +7797,14 @@ function pendingTasks(){
       title: noSub.length+" فصل من غير مواد مقررة",
       desc:"ولّد مواد كل فصل من الهيكل الدراسي بضغطة.",
       act:"goClasses", btn:"افتح الفصول" });
+  }
+  /* أرقام قومية متكررة */
+  var dups = findDuplicates().length;
+  if(dups){
+    t.push({ icon:"absence", tone:"warn",
+      title: dups+" رقم قومي متكرر",
+      desc:"فيه طلاب مسجّلين أكتر من مرة — بيخرب الأعداد والدرجات.",
+      act:"findDups", btn:"فحص ودمج" });
   }
   /* طلاب بيانات ناقصة */
   var badNat = myStudents().filter(function(s){ return !parseNationalId(s.natId); }).length;
