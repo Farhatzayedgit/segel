@@ -2806,6 +2806,16 @@ function healthChecks(){
     desc: dups.length? "فيه طلاب مسجّلين أكتر من مرة — بيخرب الأعداد والدرجات."
                      : "كل طالب مسجّل مرة واحدة.",
     act:"findDups", btn:"فحص ودمج" });
+  /* ١ص تطابق الاستمارات بين الوكيل والطالب */
+  var cat = formsCatalog();
+  var openN = cat.filter(function(f){ return f.open; }).length;
+  var stuN  = formsForStudents().length;
+  out.push({ id:"formsync", ok: openN===stuN, level:"bad",
+    title:"تطابق الاستمارات", n: Math.abs(openN-stuN),
+    desc: openN===stuN
+      ? openN+" استمارة مفتوحة، وكلها ظاهرة للطلاب بالظبط."
+      : "فيه اختلاف بين اللي إنت شايفه واللي الطالب شايفه.",
+    act:"goForms", btn:"مراجعة" });
   /* ١أ حسابات إدارية مكررة */
   var accs = accountMatches();
   out.push({ id:"accdup", ok:!accs.length, level:"bad",
@@ -6754,6 +6764,7 @@ var ACTS = {
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
   goPage: function(el){ setPage(el.dataset.k, num(el.dataset.p,1)); render(); },
+  goForms: function(){ UI.tab="wishes"; UI.sub=null; render(); },
   goParents: function(){ UI.tab="parents"; UI.sub=null; render(); },
   pTab:  function(el){ UI.pTab = el.dataset.t; render(); },
   pvTab: function(el){ UI.pvTab = el.dataset.t; render(); },
@@ -12606,11 +12617,10 @@ function saveWish(){
 
 /* ---------- الطالب: قائمة الاستمارات المفتوحة وملؤها ---------- */
 function studentFormsListHTML(){
-  formsInit();
-  var items = [];
-  if(DB.trackOpen!==false) items.push({id:"track", title:"تحديد المسار — البكالوريا", desc:"اختَر مسارك ومادة تخصصك"});
-  DB.forms.filter(function(f){ return f.status!=="closed"; }).forEach(function(f){
-    items.push({id:f.id, title:f.title, desc:f.desc});
+  /* نفس القائمة اللي الوكيل شايفها — مفيش بناء منفصل */
+  var items = formsForStudents().map(function(f){
+    return { id:f.id, title:f.title, desc:(f.desc||"") +
+             (f.level? (f.desc?" · ":"")+"لطلاب "+levelName(f.level) : "") };
   });
   var h = '<div style="text-align:center;margin-bottom:12px">'+
     '<div style="font-family:Cairo,sans-serif;font-weight:700;font-size:16px">استمارات المدرسة</div>'+
@@ -13061,20 +13071,43 @@ function viewFormsHub(){
    مركز الاستمارات — مقسّم بالصفوف
    كل استمارة تخص صف واحد، وبتقبل بس الطلاب المسجّلين في الصف ده.
    ============================================================ */
-function allForms(){
+/* ============================================================
+   قائمة الاستمارات — المصدر الوحيد للحقيقة
+   الوكيل والطالب بيقروا من هنا بالظبط، فمستحيل يختلفوا.
+   ============================================================ */
+function formsCatalog(){
   formsInit();
-  var out = [{ id:"track", title:"استمارة تحديد المسار", desc:"الطالب يختار مساره ومادة تخصصه",
-               level:num(DB.trackLevel,2), status: DB.trackOpen===false?"closed":"open", builtin:true }];
+  var out = [{
+    id:"track", title:"استمارة تحديد المسار", desc:"الطالب يختار مساره ومادة تخصصه",
+    level:num(DB.trackLevel,2), open: DB.trackOpen!==false,
+    strictNat: DB.trackStrict!==false, builtin:true, fields:0
+  }];
   (DB.forms||[]).forEach(function(f){
-    out.push({ id:f.id, title:f.title, desc:f.desc, level:num(f.level,0),
-               status:f.status, builtin:false, strictNat:f.strictNat!==false,
-               fields:(f.fields||[]).length });
+    if(!f || !f.id) return;                       /* سجل تالف — بنتخطاه بدل ما يلخبط */
+    out.push({
+      id:f.id, title:f.title || "(استمارة بدون عنوان)", desc:f.desc || "",
+      level:num(f.level,0), open: f.status!=="closed",
+      strictNat: f.strictNat!==false, builtin:false,
+      fields:(f.fields||[]).length
+    });
   });
   return out;
 }
+/* اللي الطالب بيشوفه فعلًا = المفتوحة بس */
+function formsForStudents(){
+  return formsCatalog().filter(function(f){ return f.open; });
+}
+/* توافق مع الكود القديم */
+function allForms(){
+  return formsCatalog().map(function(f){
+    return { id:f.id, title:f.title, desc:f.desc, level:f.level,
+             status: f.open?"open":"closed", builtin:f.builtin,
+             strictNat:f.strictNat, fields:f.fields };
+  });
+}
 function viewFormsIndex(){
   var can = canManageForms();
-  var forms = allForms();
+  var forms = formsCatalog();     /* المصدر الواحد مباشرة */
   var byLevel = {};
   var known = {}; LEVELS.forEach(function(l){ known[l.id] = 1; });
   forms.forEach(function(f){
@@ -13100,6 +13133,29 @@ function viewFormsIndex(){
       ((DB.forms||[]).length? '<button class="btn ghost sm" data-act="wipeForms" style="color:var(--danger)">🧹 مسح كل الاستمارات الإضافية</button>':'')+
       '</div></div>';
   }
+
+  /* معاينة حيّة: ده بالظبط اللي بيظهر في «الدخول كطالب» */
+  var open = forms.filter(function(f){ return f.open; });
+  h += '<div class="card"><div class="hd"><div style="flex:1">'+
+    '<span class="eyebrow">معاينة</span><h3>اللي الطالب بيشوفه دلوقتي ('+open.length+')</h3></div>'+
+    '<span class="tag '+(open.length?"ok":"bad")+'">'+(open.length?"شغّال":"مفيش استمارات مفتوحة")+'</span>'+
+    '</div><div class="bd flush">';
+  if(!open.length){
+    h += '<div class="empty"><b>الطالب مش هيلاقي أي استمارة</b>'+
+      '<p>كل الاستمارات مقفولة. افتح واحدة من القائمة تحت عشان تظهر له.</p></div>';
+  }else{
+    h += '<div class="note" style="margin:9px 12px">دي القائمة اللي بتظهر في صفحة الدخول تحت زر '+
+      '<b>«الدخول كطالب»</b> — نفس المصدر بالظبط، فمستحيل تختلف.</div>';
+    open.forEach(function(f){
+      h += '<div class="list-item">'+
+        '<span class="av" style="background:var(--gold)">★</span>'+
+        '<span class="tx"><b>'+esc(f.title)+'</b><small>'+
+        esc(f.desc||"")+(f.level? (f.desc?" · ":"")+"لطلاب "+esc(levelName(f.level)) : " · كل الصفوف")+
+        '</small></span>'+
+        '<button class="btn ghost sm" data-act="formOpenSubs" data-id="'+esc(f.id)+'">فتح ›</button></div>';
+    });
+  }
+  h += '</div></div>';
 
   LEVELS.forEach(function(l){
     var list = byLevel[l.id] || [];
@@ -13139,7 +13195,7 @@ function formSubsCount(id){
 }
 /* صف الاستمارة في القائمة */
 function formRowHTML(f, can){
-  var open = f.status!=="closed";
+  var open = (f.open!==undefined) ? !!f.open : (f.status!=="closed");
   var n = formSubsCount(f.id);
   return '<div class="list-item">'+
     '<span class="ico" style="color:var(--muted)">'+icon("forms",20)+'</span>'+
@@ -13147,7 +13203,7 @@ function formRowHTML(f, can){
     '<small>'+(f.desc?esc(f.desc)+' · ':'')+n+' تسجيل'+
     (f.builtin?' · استمارة أساسية':(f.fields?' · '+f.fields+' حقل':''))+
     ' · '+(formStrict(f)?'المسجّلين فقط':'مفتوحة لأي رقم قومي')+'</small></span>'+
-    '<span class="tag '+(open?"ok":"bad")+'">'+(open?"شغّالة":"مقفولة")+'</span>'+
+    '<span class="tag '+(open?"ok":"bad")+'">'+(open?"ظاهرة للطلاب":"مخفية")+'</span>'+
     '<button class="btn ghost sm" data-act="formOpenSubs" data-id="'+esc(f.id)+'">فتح ›</button>'+
     '</div>';
 }
@@ -13155,7 +13211,8 @@ function formRowHTML(f, can){
 function formToolbar(f, open){
   var n = formSubsCount(f.id);
   return '<div class="card noprint"><div class="bd" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">'+
-    '<span class="tag '+(open?"ok":"bad")+'">'+(open?"شغّالة — الطلاب بيملوها":"مقفولة")+'</span>'+
+    '<span class="tag '+(open?"ok":"bad")+'">'+
+      (open?"ظاهرة للطلاب دلوقتي":"مخفية عن الطلاب")+'</span>'+
     '<span class="tag info">'+esc(formLevelLabel(f))+'</span>'+
     '<span class="tag '+(formStrict(f)?"":"warn")+'">'+
       (formStrict(f)?'المسجّلين في الصف فقط':'أي رقم قومي مقبول')+'</span>'+
