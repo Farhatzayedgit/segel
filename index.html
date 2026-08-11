@@ -651,7 +651,7 @@ function blankDB(){
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
     sectors:{}, wishes:[],
-    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[], trackExtra:[], trackEdus:[], tables:{}, sessions:[], attLog:{}, attDone:{}
+    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[], trackExtra:[], trackEdus:[], tables:{}, lastMig:{}, sessions:[], attLog:{}, attDone:{}
   };
 }
 
@@ -9731,7 +9731,7 @@ var BULK = ["meta","weights","bac","control","absRules","users","teachers","clas
   "holidays","sectors","wishes",
   /* اللي كان ناقص — علشان كده الاستمارات ماكانتش بتوصل للطلاب */
   "forms","papers","activities","curriculum","tracksCustom","trackLevel","trackOpen","trackStrict",
-  "calendar","exams","extraFields","dupOk","msgs","notices","trackExtra","trackEdus","tables"];
+  "calendar","exams","extraFields","dupOk","msgs","notices","trackExtra","trackEdus","tables","lastMig"];
 /* المجموعات اللي بتتزامن عنصر عنصر (كل معلم بيكتب في خانته) */
 var GRAIN = ["attend","marks","staffAtt","subs","duty",
   /* تسجيلات الاستمارات ودفتر الحصة وسجل الغياب بالحصة */
@@ -13570,30 +13570,32 @@ var DOTL = "……………………………………………";
 var PAPER_TEMPLATES = [
   /* ---- الطلاب ---- */
   { cat:"student", title:"إفادة قيد طالب",
-    body:'<p>تشهد إدارة المدرسة بأن الطالب / '+DOTL+'</p>'+
-      '<p>المقيّد بالصف '+DOT+' — الشعبة / المسار '+DOT+' — رقم قومي '+DOT+'</p>'+
-      '<p>طالبٌ منتظمٌ بالدراسة بهذه المدرسة للعام الدراسي '+esc('')+' '+DOT+'، وقد أُعطيت له هذه الإفادة بناءً على طلبه للتقديم لـ '+DOT+' دون أدنى مسؤولية على المدرسة.</p>' },
+    body:'<p>تشهد إدارة مدرسة {المدرسة} بأن الطالب / {اسم_الطالب}</p>'+
+      '<p>المقيّد بالصف {الصف} — الفصل {الفصل} — الشعبة / المسار {المسار} — رقم قومي {الرقم_القومي}</p>'+
+      '<p>طالبٌ منتظمٌ بالدراسة بهذه المدرسة للعام الدراسي {العام_الدراسي}، وقد أُعطيت له هذه الإفادة '+
+      'بناءً على طلبه للتقديم لـ '+DOT+' دون أدنى مسؤولية على المدرسة.</p>'+
+      '<p style="margin-top:14px">حُرّر بتاريخ {التاريخ}</p>' },
   { cat:"student", title:"إذن انصراف مبكّر لطالب",
-    body:'<p>يُسمح بانصراف الطالب / '+DOTL+'</p>'+
-      '<p>المقيّد بالصف '+DOT+' الشعبة '+DOT+'، في تمام الساعة '+DOT+' من يوم '+DOT+'</p>'+
+    body:'<p>يُسمح بانصراف الطالب / {اسم_الطالب}</p>'+
+      '<p>المقيّد بالصف {الصف} الفصل {الفصل}، في تمام الساعة '+DOT+' من يوم {اليوم} الموافق {التاريخ}</p>'+
       '<p>وذلك بناءً على طلب ولي أمره / '+DOT+' وتحت مسؤوليته الكاملة.</p>'+
       '<p>توقيع ولي الأمر: '+DOT+' &nbsp;&nbsp; صلة القرابة: '+DOT+'</p>' },
   { cat:"student", title:"إنذار غياب لولي الأمر",
-    body:'<p>السيد ولي أمر الطالب / '+DOTL+'</p>'+
-      '<p>نحيطكم علمًا بأن نجلكم المقيّد بالصف '+DOT+' قد تغيّب عن الدراسة عدد '+DOT+' يوم دون عذر مقبول، '+
+    body:'<p>السيد ولي أمر الطالب / {اسم_الطالب}</p>'+
+      '<p>نحيطكم علمًا بأن نجلكم المقيّد بالصف {الصف} الفصل {الفصل} قد تغيّب عن الدراسة عدد {أيام_الغياب} يوم دون عذر مقبول، '+
       'وهذا إنذار '+DOT+' له.</p>'+
       '<p>ونلفت نظركم إلى أن تجاوز '+DOT+' يومًا يعرّضه للحرمان من دخول الامتحان طبقًا للائحة. '+
       'برجاء سرعة الحضور للمدرسة لمناقشة الأمر.</p>'+
       '<p>توقيع ولي الأمر بالعلم: '+DOT+'</p>' },
   { cat:"student", title:"طلب تحويل / نقل طالب",
     body:'<p>السيد الأستاذ / مدير المدرسة</p>'+
-      '<p>برجاء التكرم بالموافقة على تحويل الطالب / '+DOTL+'</p>'+
-      '<p>المقيّد بالصف '+DOT+' — رقم قومي '+DOT+' — من مدرستنا إلى مدرسة '+DOT+'</p>'+
+      '<p>برجاء التكرم بالموافقة على تحويل الطالب / {اسم_الطالب}</p>'+
+      '<p>المقيّد بالصف {الصف} — رقم قومي {الرقم_القومي} — من مدرسة {المدرسة} إلى مدرسة '+DOT+'</p>'+
       '<p>التابعة لإدارة '+DOT+' التعليمية، وذلك لـ '+DOT+'</p>'+
       '<p>مقدمه ولي الأمر / '+DOT+' &nbsp; التوقيع: '+DOT+'</p>' },
   { cat:"student", title:"إقرار وتعهد ولي أمر",
-    body:'<p>أقرّ أنا / '+DOTL+' ولي أمر الطالب / '+DOT+'</p>'+
-      '<p>المقيّد بالصف '+DOT+'، بأنني قد اطّلعت على لائحة الانضباط المدرسي، وأتعهد بـ '+DOT+'</p>'+
+    body:'<p>أقرّ أنا / {ولي_الأمر} ولي أمر الطالب / {اسم_الطالب}</p>'+
+      '<p>المقيّد بالصف {الصف} الفصل {الفصل}، بأنني قد اطّلعت على لائحة الانضباط المدرسي، وأتعهد بـ '+DOT+'</p>'+
       '<p>'+DOTL+'</p>'+
       '<p>وهذا إقرار مني بذلك.</p>'+
       '<p>الاسم: '+DOT+' &nbsp; الرقم القومي: '+DOT+' &nbsp; التوقيع: '+DOT+'</p>' },
@@ -13610,24 +13612,24 @@ var PAPER_TEMPLATES = [
     body:'<p>السيد الأستاذ / مدير المدرسة</p>'+
       '<p>برجاء الموافقة على منحي إجازة اعتيادية عدد '+DOT+' يوم، '+
       'اعتبارًا من '+DOT+' حتى '+DOT+'، وذلك لـ '+DOT+'</p>'+
-      '<p>مقدمه / '+DOT+' — الوظيفة: '+DOT+' — التوقيع: '+DOT+'</p>'+
+      '<p>مقدمه / {اسم_المعلم} — الوظيفة: {الوظيفة} — التوقيع: '+DOT+'</p>'+
       '<p style="margin-top:26px">رأي الإدارة: '+DOTL+'</p>' },
   { cat:"teacher", title:"طلب إجازة عارضة",
     body:'<p>السيد الأستاذ / مدير المدرسة</p>'+
       '<p>برجاء الموافقة على منحي إجازة عارضة يوم '+DOT+' لظرف طارئ، '+
       'مع العلم بأن رصيدي من الإجازات العارضة '+DOT+' يوم.</p>'+
-      '<p>مقدمه / '+DOT+' — الوظيفة: '+DOT+' — التوقيع: '+DOT+'</p>' },
+      '<p>مقدمه / {اسم_المعلم} — الوظيفة: {الوظيفة} — التوقيع: '+DOT+'</p>' },
   { cat:"teacher", title:"إذن تأخير / انصراف لمعلم",
-    body:'<p>يُسمح للسيد / '+DOTL+'</p>'+
-      '<p>الوظيفة: '+DOT+'، بالـ ( تأخير / انصراف ) في يوم '+DOT+' الساعة '+DOT+'</p>'+
+    body:'<p>يُسمح للسيد / {اسم_المعلم}</p>'+
+      '<p>الوظيفة: {الوظيفة}، بالـ ( تأخير / انصراف ) في يوم {اليوم} الموافق {التاريخ} الساعة '+DOT+'</p>'+
       '<p>وذلك لـ '+DOT+' على أن يُعوَّض ما يخصه من حصص.</p>'+
       '<p>توقيع طالب الإذن: '+DOT+' &nbsp; اعتماد المدير: '+DOT+'</p>' },
   { cat:"teacher", title:"إفادة عمل (إثبات عمل)",
-    body:'<p>تشهد إدارة المدرسة بأن السيد / '+DOTL+'</p>'+
-      '<p>رقم قومي '+DOT+'، يعمل بهذه المدرسة بوظيفة '+DOT+' منذ '+DOT+'</p>'+
+    body:'<p>تشهد إدارة مدرسة {المدرسة} بأن السيد / {اسم_المعلم}</p>'+
+      '<p>رقم قومي {الرقم_القومي_للمعلم}، يعمل بهذه المدرسة بوظيفة {الوظيفة} منذ {تاريخ_التعيين}</p>'+
       '<p>وقد أُعطيت له هذه الإفادة بناءً على طلبه لتقديمها إلى '+DOT+' دون أدنى مسؤولية على المدرسة.</p>' },
   { cat:"teacher", title:"إقرار استلام عهدة / كتب",
-    body:'<p>أقرّ أنا / '+DOTL+' — الوظيفة: '+DOT+'</p>'+
+    body:'<p>أقرّ أنا / {اسم_المعلم} — الوظيفة: {الوظيفة}</p>'+
       '<p>باستلامي العهدة التالية بحالة جيدة، وأتعهد بالمحافظة عليها وردّها عند الطلب:</p>'+
       '<p>'+DOTL+'</p><p>'+DOTL+'</p>'+
       '<p>التاريخ: '+DOT+' &nbsp; التوقيع: '+DOT+'</p>' },
@@ -13718,6 +13720,116 @@ function viewPapers(){
   });
   if(!visible.length) h += '<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("papers",34)+'</div><b>مفيش نماذج في التصنيف ده</b></div></div></div>';
   return h;
+}
+/* ============================================================
+   تعبئة الورقيات تلقائيًا ببيانات طالب أو معلم + بيانات المدرسة
+   الرموز المدعومة داخل نص النموذج:
+   {اسم_الطالب} {الرقم_القومي} {الصف} {الفصل} {المسار} {مادة_التخصص}
+   {النوعية} {ولي_الأمر} {الهاتف} {تاريخ_الميلاد} {السن} {النوع} {الديانة}
+   {نسبة_الحضور} {أيام_الغياب} {تاريخ_القيد}
+   {اسم_المعلم} {كود_المعلم} {مادة_التدريس} {المؤهل} {تاريخ_التعيين} {الوظيفة}
+   {المدرسة} {الإدارة} {المديرية} {العام_الدراسي} {الفصل_الدراسي} {التاريخ} {اليوم}
+   ============================================================ */
+function paperVars(sid, tid){
+  var m = DB.meta || {};
+  var v = {
+    "المدرسة": m.school||"", "الإدارة": m.edara||"", "المديرية": m.moderia||"",
+    "العام_الدراسي": m.year||"", "الفصل_الدراسي": (m.term===1?"الأول":"الثاني"),
+    "التاريخ": fmtDate(today()), "اليوم": DAYS[new Date(today()).getDay()]||""
+  };
+  var st = sid ? studentById(sid) : null;
+  if(st){
+    var c = classById(st.classId);
+    var att = attendStats(st.id, st.classId);
+    v["اسم_الطالب"]   = st.name||"";
+    v["الرقم_القومي"] = st.natId||"";
+    v["الصف"]         = studentLevelOf(st)? levelName(studentLevelOf(st)) : "";
+    v["الفصل"]        = c? c.name : "";
+    v["المسار"]       = st.bacTrack? wishTrackName(st.bacTrack) : (c? trackName(c.system,c.track) : "");
+    v["مادة_التخصص"]  = st.bacSubject||"";
+    v["النوعية"]      = eduName(st.edu||"reg");
+    v["ولي_الأمر"]    = st.guardian||"";
+    v["الهاتف"]       = st.phone||"";
+    v["تاريخ_الميلاد"]= st.birth? fmtDate(st.birth) : "";
+    v["السن"]         = st.age? st.age+" سنة" : "";
+    v["النوع"]        = st.gender||"";
+    v["الديانة"]      = st.religion||"";
+    v["نسبة_الحضور"]  = att.days? att.rate+"٪" : "";
+    v["أيام_الغياب"]  = String(att.abs||0);
+    v["تاريخ_القيد"]  = st.joined? fmtDate(st.joined) : "";
+    xfList("student").forEach(function(f){ v[f.label.replace(/\s+/g,"_")] = xfGet(st,f.id)||""; });
+  }
+  var t = tid ? teacherById(tid) : null;
+  if(t){
+    v["اسم_المعلم"]    = t.name||"";
+    v["كود_المعلم"]    = t.code||"";
+    v["مادة_التدريس"]  = t.subject||"";
+    v["المؤهل"]        = t.qual||"";
+    v["تاريخ_التعيين"] = t.hireDate? fmtDate(t.hireDate) : "";
+    v["الوظيفة"]       = t.cadreJob || t.jobNow || "";
+    v["الرقم_القومي_للمعلم"] = t.natId||"";
+    v["هاتف_المعلم"]   = t.phone||"";
+    xfList("teacher").forEach(function(f){ v[f.label.replace(/\s+/g,"_")] = xfGet(t,f.id)||""; });
+  }
+  return v;
+}
+/* بيبدّل الرموز بالقيم — واللي مالوش قيمة بيفضل نقط للكتابة باليد */
+function fillPaper(body, sid, tid){
+  var v = paperVars(sid, tid);
+  return String(body||"").replace(/\{([^}]+)\}/g, function(all, key){
+    var k = key.trim().replace(/\s+/g,"_");
+    var val = v[k];
+    if(val===undefined) return all;                  /* رمز مش معروف — نسيبه */
+    if(!String(val).trim()) return DOT;              /* فاضي — نقط للكتابة */
+    return '<b style="border-bottom:1px dotted #999;padding:0 4px">'+esc(String(val))+'</b>';
+  });
+}
+/* نافذة اختيار الطالب/المعلم قبل الطباعة */
+function modalPaperFill(key){
+  var t = paperByKey(key);
+  if(!t){ toast("النموذج مش موجود"); return; }
+  var body = t.custom ? esc(t.body).replace(/\n/g,"<br>") : t.body;
+  var needsS = /\{(اسم_الطالب|الرقم_القومي|الصف|الفصل|المسار|مادة_التخصص|النوعية|ولي_الأمر|الهاتف|تاريخ_الميلاد|السن|النوع|الديانة|نسبة_الحضور|أيام_الغياب|تاريخ_القيد)\}/.test(body);
+  var needsT = /\{(اسم_المعلم|كود_المعلم|مادة_التدريس|المؤهل|تاريخ_التعيين|الوظيفة)\}/.test(body);
+  if(!needsS && !needsT){ openPaper(key, "", ""); return; }
+
+  var studs = myStudents().sort(function(a,b){ return sortAr(a.name,b.name); });
+  var tchs  = DB.teachers.filter(function(x){ return x.status!=="left"; }).sort(function(a,b){ return sortAr(a.name,b.name); });
+  openModal(mHead("تعبئة: "+t.title)+
+    '<div class="mb">'+
+    '<div class="note">النموذج ده بيتعبّى تلقائيًا. اختار مين، والباقي هيتملّى من بيانات المدرسة والقاعدة. '+
+    'أي بيان مش موجود هيفضل <b>نقط للكتابة باليد</b>.</div>'+
+    (needsS? '<label class="f"><span>الطالب</span><select id="pf_s">'+
+      '<option value="">— بدون (نقط فاضية) —</option>'+
+      studs.map(function(x){
+        var c = classById(x.classId);
+        return '<option value="'+x.id+'">'+esc(x.name)+(c?' — '+esc(c.name):'')+'</option>';
+      }).join("")+'</select></label>' : '')+
+    (needsT? '<label class="f"><span>المعلم</span><select id="pf_t">'+
+      '<option value="">— بدون (نقط فاضية) —</option>'+
+      tchs.map(function(x){ return '<option value="'+x.id+'">'+esc(x.name)+(x.subject?' — '+esc(x.subject):'')+'</option>'; }).join("")+
+      '</select></label>' : '')+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="doPaperFill" data-k="'+esc(key)+'">فتح للطباعة</button></div>');
+}
+function paperByKey(k){
+  if(!k) return null;
+  if(k.charAt(0)==="b"){
+    var t = PAPER_TEMPLATES[Number(k.slice(1))];
+    return t ? { title:t.title, body:t.body, custom:false } : null;
+  }
+  var p = (DB.papers||[]).filter(function(x){ return x.id===k; })[0];
+  return p ? { title:p.title, body:p.body, custom:true } : null;
+}
+function openPaper(key, sid, tid){
+  var t = paperByKey(key);
+  if(!t) return;
+  var body = t.custom ? esc(t.body).replace(/\n/g,"<br>") : t.body;
+  body = fillPaper(body, sid, tid);
+  UI.sub = { paper: paperDoc(t.title, body) };
+  closeModal();
+  render();
 }
 function modalPaper(){
   openModal(mHead("نموذج ورقي مخصص")+'<div class="mb">'+
@@ -14203,6 +14315,28 @@ function migratedStudentOf(r){
   return null;
 }
 function rowMigrated(r){ return !!migratedStudentOf(r); }
+/* ============================================================
+   آخر عملية ترحيل لكل استمارة — عشان نعرف مين «جديد» بعدها
+   ============================================================ */
+function lastMigInit(){ if(!DB.lastMig || typeof DB.lastMig!=="object") DB.lastMig = {}; return DB.lastMig; }
+function lastMigAt(fid){ lastMigInit(); return num(DB.lastMig[fid], 0); }
+function setLastMig(fid){ lastMigInit(); DB.lastMig[fid] = Date.now(); }
+/* وقت تسجيل الصف — من الختم أو من التاريخ */
+function rowStamp(r){
+  var src = r.src || {};
+  if(src.at) return num(src.at,0);
+  var d = src.date || r.tag || "";
+  var tm = src.time || "";
+  var x = new Date(String(d)+(tm?("T"+tm):"T00:00:00"));
+  return isNaN(x) ? 0 : x.getTime();
+}
+/* الجديد = اللي اتسجّل بعد آخر ترحيل، أو لسه ما اترحّلش خالص */
+function rowIsNew(r, fid){
+  if(!rowMigrated(r)) return true;
+  var last = lastMigAt(fid);
+  if(!last) return false;
+  return rowStamp(r) > last;
+}
 function migrateRowToStudent(r, opt){
   opt = opt || {};
   var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
@@ -14348,8 +14482,9 @@ function modalFormMigrate(fid){
     r._old = migratedStudentOf(r);
   });
   UI.migRows = rows;
-  var isNew = rows.filter(function(r){ return !r._old; }).length;
+  var isNew = rows.filter(function(r){ return rowIsNew(r, f.id); }).length;
   var isOld = rows.length - isNew;
+  var lastT = lastMigAt(f.id);
   var L = formTargetLevel(f);
   /* توزيع المسجّلين على الأقسام حسب نوعية التعليم */
   var cnt = { reg:0, srv:0, home:0 };
@@ -14370,9 +14505,10 @@ function modalFormMigrate(fid){
       var c = classById(o.classId);
       where = " · " + (c ? c.name : (isHomeStudent(o) ? "منازل" : "غير مسكّن"));
     }
-    return '<label class="list-item mgrow" data-new="'+(o?0:1)+'" data-name="'+esc(r.name||"")+'" '+
+    var isN = rowIsNew(r, f.id);
+    return '<label class="list-item mgrow" data-new="'+(isN?1:0)+'" data-name="'+esc(r.name||"")+'" '+
       'data-nat="'+esc(r._nat)+'" style="cursor:pointer">'+
-      '<input type="checkbox" class="mgck" data-i="'+i+'"'+(o?"":" checked")+' style="width:18px;height:18px;flex:0 0 18px">'+
+      '<input type="checkbox" class="mgck" data-i="'+i+'"'+(isN?" checked":"")+' style="width:18px;height:18px;flex:0 0 18px">'+
       '<span class="tx"><b>'+esc(r.name||"—")+'</b><small><span style="direction:ltr">'+esc(r._nat)+'</span>'+
       (r.tag?' · '+esc(r.tag):'')+esc(where)+'</small></span>'+badge+'</label>';
   }).join("");
@@ -14386,10 +14522,16 @@ function modalFormMigrate(fid){
       '<b>'+esc(eduBreak)+'</b>. والمنازل من غير فصول.</div>'+
     '<div class="note">أي بيان في الاستمارة مالوش عمود في ملف الطالب — البرنامج بيعمل له '+
       '<b>عمود جديد بنفس العنوان</b> ويحط تحته إجابات الطلاب.</div>'+
+    '<div class="note '+(isNew?"warn":"ok")+'">'+
+      (lastT
+        ? 'آخر ترحيل كان <b>'+esc(fmtDate(new Date(lastT).toISOString().slice(0,10)))+'</b>. '+
+          (isNew? '<b>'+isNew+'</b> سجّلوا بعده.' : 'مفيش حد سجّل بعده.')
+        : 'لسه ما اتعملش ترحيل لهذه الاستمارة — كل الـ'+rows.length+' جديد.')+
+      '</div>'+
     '<div style="display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap">'+
       '<button class="btn ghost sm" data-act="mgAll">الكل ('+rows.length+')</button>'+
-      '<button class="btn ghost sm" data-act="mgNew">الجديد فقط ('+isNew+')</button>'+
-      '<button class="btn ghost sm" data-act="mgOld">الموجود فقط ('+isOld+')</button>'+
+      '<button class="btn ghost sm" data-act="mgNew">الجديد ('+isNew+')</button>'+
+      '<button class="btn ghost sm" data-act="mgOld">الموجود ('+isOld+')</button>'+
       '<button class="btn ghost sm" data-act="mgNone">إلغاء التحديد</button></div>'+
     '<div class="grid2">'+
       '<label class="f"><span>الصف اللي هيترحّلوا ليه</span><select id="mg_lvl">'+
@@ -14405,7 +14547,9 @@ function modalFormMigrate(fid){
     '<div id="mglist" style="max-height:36vh;overflow:auto">'+body+'</div>'+
     '</div>'+
     '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
-    '<button class="btn" data-act="doFormMigrate" data-id="'+esc(f.id)+'">تنفيذ الترحيل</button></div>');
+    (isNew? '<button class="btn seal" data-act="migNew" data-id="'+esc(f.id)+'">⇪ ترحيل الجديد ('+isNew+')</button>' : '')+
+    '<button class="btn" data-act="migAll" data-id="'+esc(f.id)+'">⇪ ترحيل الجميع ('+rows.length+')</button>'+
+    '<button class="btn ghost" data-act="doFormMigrate" data-id="'+esc(f.id)+'">ترحيل المحدد</button></div>');
 
   var q = document.getElementById("mgq");
   if(q) q.addEventListener("input", function(){
@@ -14436,18 +14580,22 @@ function updateMgCount(){
   var n = document.querySelectorAll("#mglist .mgck:checked").length;
   el.textContent = n+" محدّد للترحيل";
 }
-function doFormMigrate(el){
+function doFormMigrate(el, mode){
   var fid = el && el.dataset ? el.dataset.id : "";
   var f = (fid==="track") ? {id:"track", title:"استمارة المسار"} : formById(fid);
   var rows = UI.migRows || [];
-  var picked = Array.prototype.slice.call(document.querySelectorAll("#mglist .mgck:checked"))
+  var picked;
+  if(mode==="all")      picked = rows.slice();
+  else if(mode==="new") picked = rows.filter(function(r){ return rowIsNew(r, fid); });
+  else picked = Array.prototype.slice.call(document.querySelectorAll("#mglist .mgck:checked"))
     .map(function(cb){ return rows[num(cb.dataset.i,-1)]; }).filter(Boolean);
-  if(!picked.length){ toast("مختارتش أي حد"); return; }
+  if(!picked.length){ toast(mode==="new" ? "مفيش تسجيلات جديدة بعد آخر ترحيل" : "مختارتش أي حد"); return; }
   var lvl = num(val("mg_lvl"), 2);
   var before = xfList("student").length;
   markUndo("ترحيل من استمارة");
   /* نوعية كل طالب هي اللي تحدد قسمه، والتسكين تلقائي للنظامي والخدمات */
   var r = migrateFormRows(f, picked, { level:lvl });
+  setLastMig(fid);                 /* عشان اللي بعدها يبقى «جديد» */
   var newCols = xfList("student").length - before;
   UI.migRows = null;
   saveNow(); closeModal(); render();
@@ -14978,15 +15126,8 @@ Object.assign(ACTS, {
     DB.papers = (DB.papers||[]).filter(function(p){ return p.id!==el.dataset.id; });
     saveNow(); render(); toast("اتحذف");
   },
-  paperOpen: function(el){
-    var k = el.dataset.k, t = null, custom = false;
-    if(k.charAt(0)==="b"){ t = PAPER_TEMPLATES[Number(k.slice(1))]; }
-    else { t = (DB.papers||[]).filter(function(p){ return p.id===k; })[0]; custom = true; }
-    if(!t){ toast("النموذج مش موجود"); return; }
-    var body = custom ? esc(t.body).replace(/\n/g,"<br>") : t.body;
-    UI.sub = { paper: paperDoc(t.title, body) };
-    render();
-  }
+  paperOpen:   function(el){ modalPaperFill(el.dataset.k); },
+  doPaperFill: function(el){ openPaper(el.dataset.k, val("pf_s"), val("pf_t")); }
 });
 
 /* ---------- أكشنات إدارة الاستمارات ---------- */
@@ -14996,6 +15137,11 @@ Object.assign(ACTS, {
   _formsManageOld: function(){ UI.sub = { forms:true }; render(); },
   formMigrate: function(el){ modalFormMigrate(el.dataset.id); },
   doFormMigrate: doFormMigrate,
+  migNew: function(el){ doFormMigrate(el, "new"); },
+  migAll: function(el){
+    if(!confirm("ترحيل كل المسجّلين؟\nالجديد هيتضاف والموجود هتتحدّث بياناته.")) return;
+    doFormMigrate(el, "all");
+  },
   mgAll:  function(){ mgPick(true); },
   mgNew:  function(){ mgPick("new"); },
   mgOld:  function(){ mgPick("old"); },
