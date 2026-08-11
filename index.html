@@ -635,7 +635,7 @@ function blankDB(){
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
     sectors:{}, wishes:[],
-    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[], sessions:[], attLog:{}, attDone:{}
+    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[], trackExtra:[], sessions:[], attLog:{}, attDone:{}
   };
 }
 
@@ -9098,7 +9098,7 @@ var BULK = ["meta","weights","bac","control","absRules","users","teachers","clas
   "holidays","sectors","wishes",
   /* اللي كان ناقص — علشان كده الاستمارات ماكانتش بتوصل للطلاب */
   "forms","papers","activities","curriculum","tracksCustom","trackLevel","trackOpen","trackStrict",
-  "calendar","exams","extraFields","dupOk","msgs","notices"];
+  "calendar","exams","extraFields","dupOk","msgs","notices","trackExtra"];
 /* المجموعات اللي بتتزامن عنصر عنصر (كل معلم بيكتب في خانته) */
 var GRAIN = ["attend","marks","staffAtt","subs","duty",
   /* تسجيلات الاستمارات ودفتر الحصة وسجل الغياب بالحصة */
@@ -12555,6 +12555,22 @@ function wishFormHTML(){
     h += '<div class="note" style="margin-bottom:10px">اختار المسار الأول عشان تظهر لك مواد التخصص.</div>';
   }
 
+  /* حقول إضافية أضافها الوكيل لاستمارة المسار */
+  trackExtra().forEach(function(fd){
+    var v = (f.extra && f.extra[fd.id]) || "";
+    var req = fd.required ? ' <span style="color:var(--danger)">*</span>' : '';
+    if(fd.type==="select"){
+      h += '<label class="f"><span>'+esc(fd.label)+req+'</span><select class="wx" data-fid="'+fd.id+'">'+
+        '<option value="">— اختر —</option>'+
+        (fd.options||[]).map(function(op){ return '<option'+(v===op?" selected":"")+'>'+esc(op)+'</option>'; }).join("")+
+        '</select></label>';
+    }else{
+      var tp = fd.type==="number"?"number":(fd.type==="date"?"date":(fd.type==="tel"?"tel":"text"));
+      h += '<label class="f"><span>'+esc(fd.label)+req+'</span>'+
+        '<input type="'+tp+'" class="wx" data-fid="'+fd.id+'" value="'+esc(v)+'"></label>';
+    }
+  });
+
   h += '<button class="btn block" data-lact="wsave" style="margin-top:4px">تسجيل الرغبة</button>'+
     '<button class="btn ghost block" data-lact="stuBack" style="margin-top:8px">رجوع للاستمارات</button>';
   return h;
@@ -12587,6 +12603,10 @@ function readWishForm(){
   e = document.getElementById("w_edu");  if(e) o.edu = e.value;
   e = document.getElementById("w_trk");  if(e) o.track = e.value;
   e = document.getElementById("w_sub");  if(e) o.subject = e.value;
+  o.extra = o.extra || {};
+  Array.prototype.slice.call(document.querySelectorAll(".wx")).forEach(function(x){
+    o.extra[x.dataset.fid] = x.value;
+  });
   UI.wish = o;
   return o;
 }
@@ -12606,6 +12626,12 @@ function saveWish(){
   var gateW = levelGateCheck({id:"track"}, o.natId);
   if(gateW){ toast(gateW); return; }
 
+  /* الحقول الإضافية الإجبارية */
+  var miss = trackExtra().filter(function(fd){
+    return fd.required && !String((o.extra||{})[fd.id]||"").trim();
+  })[0];
+  if(miss){ toast("لازم تكتب: "+miss.label); return; }
+
   var dup = wishByNat(o.natId, null);
   if(dup){
     toast("الرقم القومي ده مسجّل قبل كده باسم "+dup.name);
@@ -12621,7 +12647,8 @@ function saveWish(){
     track: o.track,
     subject: o.subject,
     date: today(),
-    time: (now.getHours()<10?"0":"")+now.getHours()+":"+(now.getMinutes()<10?"0":"")+now.getMinutes()
+    time: (now.getHours()<10?"0":"")+now.getHours()+":"+(now.getMinutes()<10?"0":"")+now.getMinutes(),
+    extra: o.extra || {}                 /* إجابات الحقول الإضافية */
   };
   DB.wishes.push(w);
   saveNow();
@@ -13276,20 +13303,43 @@ function formToolbar(f, open){
         '<button class="btn ghost sm" data-act="formStrictBtn" data-id="'+esc(f.id)+'">'+
           (formStrict(f)?"السماح بأي رقم قومي":"الالتزام بالمسجّلين")+'</button>'+
         '<button class="btn ghost sm" data-act="formDel" data-id="'+esc(f.id)+'" style="color:var(--danger)">حذف الاستمارة</button>'
-      : '<button class="btn ghost sm" data-act="trkLvlBtn">تغيير الصف المستهدف</button>'+
+      : '<button class="btn ghost sm" data-act="formEdit" data-id="track">تعديل الحقول والصف</button>'+
         '<button class="btn ghost sm" data-act="trkStrictBtn">'+
         (formStrict({id:"track"})?"السماح بأي رقم قومي":"الالتزام بالمسجّلين")+'</button>')+
     (n? '<button class="btn ghost sm" data-act="formClearSubs" data-id="'+esc(f.id)+'" style="color:var(--danger)">مسح كل التسجيلات</button>':'')+
     '</div></div>';
 }
 /* استمارة تحديد المسار — نفس شكل باقي الاستمارات */
+/* استمارة المسار كأنها استمارة عادية — نفس الشكل ونفس الأدوات */
+var TRACK_CORE = [
+  { id:"__name",  label:"الاسم رباعي",        type:"text",   core:true },
+  { id:"__nat",   label:"الرقم القومي",        type:"text",   core:true },
+  { id:"__prev",  label:"الفصل في السنة السابقة", type:"text", core:true },
+  { id:"__edu",   label:"نوعية التعليم",       type:"select", core:true },
+  { id:"__track", label:"المسار",              type:"select", core:true },
+  { id:"__subj",  label:"مادة التخصص",         type:"select", core:true }
+];
+function trackExtra(){ if(!Array.isArray(DB.trackExtra)) DB.trackExtra = []; return DB.trackExtra; }
+function trackFormObj(){
+  return {
+    id:"track", title:"استمارة تحديد المسار", desc:"الطالب يختار مساره ومادة تخصصه",
+    level:num(DB.trackLevel,2), strictNat: DB.trackStrict!==false,
+    status: DB.trackOpen===false?"closed":"open",
+    fields: TRACK_CORE.concat(trackExtra())
+  };
+}
 function viewTrackSubs(){
-  var f = { id:"track", title:"استمارة تحديد المسار", desc:"الطالب يختار مساره ومادة تخصصه",
-            status: DB.trackOpen===false?"closed":"open" };
-  var h = '<button class="btn ghost sm noprint" data-act="formsManage" style="margin-bottom:10px">→ كل الاستمارات</button>';
-  /* نفس شريط الإعدادات بتاع أي استمارة */
-  if(canManageForms()) h += formToolbar(f, DB.trackOpen!==false);
-  return h + viewWishes();
+  var f = trackFormObj();
+  var h = viewWishes();
+  /* نحط الشريط بعد عنوان الصفحة مباشرة عشان يبان في مكانه الصح */
+  var bar = '<button class="btn ghost sm noprint" data-act="formsManage" style="margin-bottom:10px">→ كل الاستمارات</button>'+
+            (canManageForms() ? formToolbar(f, f.status!=="closed") : "");
+  var cut = h.indexOf("</div>", h.indexOf('class="pagehd'));
+  if(cut > 0){
+    cut = h.indexOf("</div>", cut+6) + 6;      /* نهاية كارت العنوان */
+    return h.slice(0,cut) + bar + h.slice(cut);
+  }
+  return bar + h;
 }
 function formCardHTML(o){
   var open = o.status!=="closed";
@@ -13323,6 +13373,8 @@ function formLevelLabel(f){
   return L ? levelName(L) : "كل الصفوف";
 }
 /* صفوف موحّدة من أي استمارة: {name, natId, level, phone, extra} */
+/* أعمدة الحقول الإضافية في كشف تسجيلات المسار */
+function trackExtraCols(){ return trackExtra().map(function(fd){ return fd.label; }); }
 function formRows(f){
   if(!f) return [];
   if(f.id==="track"){
@@ -13687,6 +13739,15 @@ function viewFormSubs(f){
 /* ---------- منشئ الاستمارة ---------- */
 function modalFormBuilder(id){
   formsInit();
+  if(id==="track"){
+    var tf = trackFormObj();
+    UI.formDraft = { id:"track", title:tf.title, desc:tf.desc, level:tf.level,
+                     strictNat:tf.strictNat,
+                     fields: tf.fields.map(function(x){ return Object.assign({},x); }) };
+    UI.fbEdit = null;
+    renderFormBuilder();
+    return;
+  }
   var f = id ? formById(id) : null;
   UI.formDraft = f ? { id:f.id, title:f.title, desc:f.desc||"", level:num(f.level,0),
                        strictNat: f.strictNat!==false,
@@ -13699,8 +13760,10 @@ function modalFormBuilder(id){
 /* كام تسجيل جاوب على الحقل ده — عشان نطمّن المستخدم قبل التعديل */
 /* بنحفظ اللي اتكتب فوق قبل ما نعيد رسم النافذة، عشان ما يضيعش */
 function keepDraftTop(d){
-  var t = val("fb_title"); if(t!==undefined && t!=="") d.title = t;
-  var ds = val("fb_desc"); if(ds!==undefined) d.desc = ds;
+  if(d.id!=="track"){
+    var t = val("fb_title"); if(t!==undefined && t!=="") d.title = t;
+    var ds0 = val("fb_desc"); if(ds0!==undefined) d.desc = ds0;
+  }
   var lv = val("fb_lvl"); if(lv!=="") d.level = num(lv,0);
   var st = val("fb_strict"); if(st!=="") d.strictNat = (st!=="0");
 }
@@ -13716,6 +13779,15 @@ function renderFormBuilder(){
   var fieldsHTML = d.fields.map(function(fd,i){
     var open = (UI.fbEdit===i);
     var used = fieldAnswers(d.id, fd.id);      /* كام تسجيل جاوب على الحقل ده */
+    if(fd.core){
+      /* حقول أساسية في الاستمارة — بتتعرض للتوضيح بس */
+      return '<div style="border:1px dashed var(--line-2);border-radius:9px;padding:9px;margin-bottom:7px;background:#f7f8f7">'+
+        '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+
+        '<b style="flex:1;min-width:110px;color:var(--muted)">'+esc(fd.label)+'</b>'+
+        '<span class="tag">'+esc(fieldTypeName(fd.type))+'</span>'+
+        '<span class="tag info">أساسي</span></div>'+
+        '</div>';
+    }
     if(!open){
       return '<div style="border:1px solid var(--line);border-radius:9px;padding:9px;margin-bottom:7px">'+
         '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+
@@ -13752,8 +13824,12 @@ function renderFormBuilder(){
   }).join("");
   openModal(mHead(d.id?"تعديل الاستمارة":"استمارة جديدة")+
     '<div class="mb">'+
-    '<label class="f"><span>عنوان الاستمارة</span><input type="text" id="fb_title" value="'+esc(d.title)+'" placeholder="مثال: بيانات ولي الأمر"></label>'+
-    '<label class="f"><span>وصف مختصر (اختياري)</span><input type="text" id="fb_desc" value="'+esc(d.desc)+'" placeholder="بيظهر للطالب تحت العنوان"></label>'+
+    (d.id==="track"
+      ? '<div class="note info"><b>استمارة تحديد المسار</b> — استمارة أساسية في البرنامج. '+
+        'حقولها الست ثابتة لأن الترحيل بيعتمد عليها، بس تقدر تغيّر صفها وإعدادها '+
+        'و<b>تضيف حقول زيادة</b> زي أي استمارة.</div>'
+      : '<label class="f"><span>عنوان الاستمارة</span><input type="text" id="fb_title" value="'+esc(d.title)+'" placeholder="مثال: بيانات ولي الأمر"></label>'+
+        '<label class="f"><span>وصف مختصر (اختياري)</span><input type="text" id="fb_desc" value="'+esc(d.desc)+'" placeholder="بيظهر للطالب تحت العنوان"></label>')+
     '<label class="f"><span>الاستمارة دي لأنهي صف؟</span><select id="fb_lvl">'+
       '<option value="0"'+(!d.level?" selected":"")+'>كل الصفوف (الطالب يختار صفه)</option>'+
       LEVELS.map(function(l){ return '<option value="'+l.id+'"'+(num(d.level,0)===l.id?" selected":"")+'>'+esc(l.name)+'</option>'; }).join("")+
@@ -14234,6 +14310,15 @@ Object.assign(ACTS, {
   },
   saveForm: function(){
     var d = UI.formDraft; if(!d) return;
+    /* استمارة المسار: بنحفظ الصف والإعداد والحقول الإضافية بس */
+    if(d.id==="track"){
+      DB.trackLevel = num(val("fb_lvl"), num(DB.trackLevel,2)) || 2;
+      DB.trackStrict = (val("fb_strict")!=="0");
+      DB.trackExtra = d.fields.filter(function(x){ return !x.core; });
+      saveNow(); closeModal(); render();
+      toast("اتحفظت إعدادات استمارة تحديد المسار");
+      return;
+    }
     var title = val("fb_title").trim();
     if(!title){ toast("اكتب عنوان الاستمارة"); return; }
     formsInit();
