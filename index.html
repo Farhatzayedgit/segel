@@ -110,8 +110,16 @@ nav.bottom button.on{color:var(--ink);background:var(--line-2);font-weight:700}
 .pagehd{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:2px 2px 12px}
 .pagehd h2{font-size:20px}
 .pagehd p{margin:0;font-size:12.5px;color:var(--muted)}
-.pagehd .spacer{flex:1}
-.pagehd .btn{margin-bottom:2px}
+.pagehd .spacer{flex:1;min-width:0}
+.pagehd .pghd-t{min-width:0;flex:1 1 220px}
+.pagehd .pghd-t h2{overflow-wrap:anywhere}
+/* الأزرار في مجموعة واحدة بتلف مع بعض من غير ما تتزنق */
+.pagehd .pghd-a{display:flex;gap:7px;flex-wrap:wrap;align-items:center;flex:0 1 auto}
+.pagehd .pghd-a .btn{margin:0}
+@media(max-width:640px){
+  .pagehd .pghd-a{width:100%}
+  .pagehd .pghd-a .btn{flex:1 1 auto;min-width:120px}
+}
 /* رأس الكارت: الأزرار متلفّش على العنوان */
 .card>.hd{flex-wrap:wrap}
 .card>.hd .btn{flex:0 0 auto}
@@ -1779,8 +1787,12 @@ function go(tab, sub){ UI.tab=tab; UI.sub=sub||null; render(); }
 function back(){ UI.sub=null; render(); }
 
 function pageHd(title, sub, actions){
-  return '<div class="pagehd noprint"><div><h2>'+esc(title)+'</h2>'+
-    (sub?'<p>'+esc(sub)+'</p>':'')+'</div><div class="spacer"></div>'+(actions||'')+'</div>';
+  return '<div class="pagehd noprint">'+
+    '<div class="pghd-t"><h2>'+esc(title)+'</h2>'+
+    (sub?'<p>'+esc(sub)+'</p>':'')+'</div>'+
+    '<div class="spacer"></div>'+
+    (actions? '<div class="pghd-a">'+actions+'</div>' : '')+
+    '</div>';
 }
 function backBtn(label){
   return '<button class="btn ghost sm noprint" data-act="back" style="margin-bottom:10px">→ '+esc(label||"رجوع")+'</button>';
@@ -2367,7 +2379,7 @@ function mergeDuplicate(group){
       if(DB.attend[a][best.id]===undefined) DB.attend[a][best.id] = DB.attend[a][s.id];
       delete DB.attend[a][s.id];
     }
-    DB.behavior.forEach(function(b){ if(b.studentId===s.id) b.studentId = best.id; });
+    remapStudentRefs(s.id, best.id);
     DB.students = DB.students.filter(function(x){ return x.id!==s.id; });
   });
   enrichStudent(best);
@@ -2504,6 +2516,7 @@ function doMergePair(){
     DB.msgs.forEach(function(m){ if(m.sid===st.id) m.sid = best.id; });
     /* البيانات الإضافية: نكمّل الناقص */
     if(st.extra) for(var x in st.extra) if(!xfGet(best,x)) xfSet(best, x, st.extra[x]);
+    remapStudentRefs(st.id, best.id);        /* الاستمارات تشاور على السجل الباقي */
     DB.students = DB.students.filter(function(y){ return y.id!==st.id; });
   });
 
@@ -3592,6 +3605,62 @@ function stuColDefs(){
   return defs;
 }
 /* الأعمدة الاختيارية مخفية أول مرة */
+/* ---------- أعمدة كشف المعلمين ---------- */
+function tchColDefs(){
+  var defs = [
+    { k:"idx",   label:"م",              core:true },
+    { k:"code",  label:"كود المعلم" },
+    { k:"name",  label:"الاسم",           core:true },
+    { k:"natId", label:"الرقم القومى" },
+    { k:"subject",label:"مادة التدريس" },
+    { k:"hire",  label:"تاريخ التعيين" },
+    { k:"finG",  label:"الدرجة المالية" },
+    { k:"finD",  label:"تاريخ الدرجة",     off:true },
+    { k:"job",   label:"الوظيفة الحالية" },
+    { k:"qual",  label:"المؤهل" },
+    { k:"qualT", label:"نوع المؤهل",       off:true },
+    { k:"cadre", label:"الوظيفة على الكادر" },
+    { k:"phone", label:"الهاتف" },
+    { k:"nisab", label:"النصاب",           off:true },
+    { k:"load",  label:"الحِمل",            off:true },
+    { k:"cls",   label:"الفصول" },
+    { k:"years", label:"سنوات الخدمة",      off:true },
+    { k:"gender",label:"النوع",            off:true }
+  ];
+  xfList("teacher").forEach(function(f){ defs.push({ k:"xf:"+f.id, label:f.label }); });
+  return defs;
+}
+function tchCell(d, t, n, clsN){
+  switch(d.k){
+    case "idx":    return '<td class="rownum">'+n+'</td>';
+    case "code":   return '<td class="num" style="direction:ltr;text-align:right">'+esc(t.code||"—")+'</td>';
+    case "name":   return '<td><b style="font-weight:600;cursor:pointer" data-act="openTeacher" data-id="'+t.id+'">'+esc(t.name)+'</b>'+
+                     (isNonTeaching(t)?' <span class="tag">'+esc(adminRoleOfTeacher(t.id)||"إداري")+'</span>':'')+'</td>';
+    case "natId":  return '<td class="num" style="direction:ltr;text-align:right">'+esc(t.natId||"—")+'</td>';
+    case "subject":return '<td>'+esc(t.subject||"—")+'</td>';
+    case "hire":   return '<td class="num">'+esc(t.hireDate?fmtDate(t.hireDate):"—")+'</td>';
+    case "finG":   return '<td>'+esc(t.finGrade||"—")+'</td>';
+    case "finD":   return '<td class="num">'+esc(t.finDate?fmtDate(t.finDate):"—")+'</td>';
+    case "job":    return '<td>'+esc(t.jobNow||"—")+'</td>';
+    case "qual":   return '<td><small>'+esc(t.qual||"—")+'</small></td>';
+    case "qualT":  return '<td><small>'+esc(t.qualType||"—")+'</small></td>';
+    case "cadre":  return '<td>'+esc(t.cadreJob||"—")+'</td>';
+    case "phone":  return '<td class="num" style="direction:ltr;text-align:right">'+esc(t.phone||"—")+'</td>';
+    case "nisab":  return '<td class="num">'+nisabOf(t.id)+'</td>';
+    case "load":   return '<td class="num">'+plannedHours(t.id,{})+'</td>';
+    case "cls":    return '<td class="num">'+num(clsN,0)+'</td>';
+    case "years":  return '<td class="num">'+(t.hireDate? serviceYears(t.hireDate) : "—")+'</td>';
+    case "gender": return '<td><small>'+esc(t.gender||"—")+'</small></td>';
+  }
+  if(d.k.indexOf("xf:")===0) return '<td><small>'+esc(xfGet(t, d.k.slice(3))||"—")+'</small></td>';
+  return '<td>—</td>';
+}
+function tchDefaultsOnce(){
+  var c = tblCfg("teachers");
+  if(c._init) return;
+  c._init = 1;
+  tchColDefs().forEach(function(d){ if(d.off) c.hide[d.k] = 1; });
+}
 function stuDefaultsOnce(){
   var c = tblCfg("students");
   if(c._init) return;
@@ -4554,48 +4623,37 @@ function viewTeachers(){
 
   /* كشف واحد بكل البيانات + تحديد وتعديل وحذف — زي كشف الطلاب بالظبط */
   h += printHd("كشف بيانات العاملين");
-  var pgT = pageSlice(regular, "tch");
+  tchDefaultsOnce();
+  var pgT  = pageSlice(regular, "tch");
+  var tRows = UI.printAll ? regular : pgT.rows;
+  var tCols = tblColumns("teachers", tchColDefs());
+  var tCfg  = tblCfg("teachers");
+
   h += '<div class="card"><div class="hd"><h3>المعلمون الأساسيون: '+regular.length+'</h3>'+
     (isDep?'<button class="btn ghost sm noprint" data-act="bulkEditTeachers">✎ تعديل المحددين</button>'+
-      '<button class="btn ghost sm noprint" data-act="bulkDelTeachers" style="color:var(--danger);margin-right:5px">حذف المحددين</button>':'')+
-    '<button class="btn ghost sm noprint" data-act="print" style="margin-right:5px">⎙ طباعة / تصدير</button></div>'+
-    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+      '<button class="btn ghost sm noprint" data-act="bulkDelTeachers" style="color:var(--danger)">حذف المحددين</button>':'')+
+    tblToolbar("teachers","المعلمين",pgT)+'</div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl'+(tCfg.dense?" dense":"")+'"><thead><tr>'+
     (isDep?'<th class="noprint" style="width:34px"><input type="checkbox" id="selAllTch" style="width:17px;height:17px"></th>':'')+
-    '<th>م</th><th>كود المعلم</th><th>الرقم القومى</th><th>الاسم رباعى</th><th>مادة التدريس</th>'+
-    '<th>تاريخ التعيين</th><th>الدرجة المالية</th><th>الوظيفة الحالية</th>'+
-    '<th>المؤهل</th><th>نوع المؤهل</th><th>الوظيفة على الكادر</th><th>الهاتف</th><th>الفصول</th>'+
-    xfList("teacher").map(function(f){ return '<th>'+esc(f.label)+'</th>'; }).join("")+
+    tCols.map(function(d){ return '<th>'+esc(colName("teachers",d))+'</th>'; }).join("")+
     (isDep?'<th class="noprint"></th>':'')+
     '</tr></thead><tbody>';
-  if(!regular.length){
-    h += '<tr><td colspan="'+((isDep?15:13)+xfList("teacher").length)+'"><div class="empty"><div class="big">'+icon("teachers",34)+'</div>'+
+  if(!tRows.length){
+    h += '<tr><td colspan="'+(tCols.length+(isDep?2:0))+'"><div class="empty"><div class="big">'+icon("teachers",34)+'</div>'+
       '<b>مفيش معلمين مطابقين</b><p>جرّب تغيّر الفلاتر أو امسحها.</p></div></td></tr>';
   }
-  pgT.rows.forEach(function(t,i){
-    var a2 = assignsOfTeacher(t.id);
-    var cls2 = {}; a2.forEach(function(x){ cls2[x.classId]=1; });
+  tRows.forEach(function(t,i){
+    var a2 = assignsOfTeacher(t.id), cls2 = {};
+    a2.forEach(function(x){ cls2[x.classId] = 1; });
     h += '<tr>'+
       (isDep?'<td class="noprint"><input type="checkbox" class="tchck" data-id="'+t.id+'" style="width:17px;height:17px"></td>':'')+
-      '<td class="rownum">'+(pgT.from+i)+'</td>'+
-      '<td class="num" style="direction:ltr;text-align:right">'+esc(t.code||"—")+'</td>'+
-      '<td class="num" style="direction:ltr;text-align:right">'+esc(t.natId||"—")+'</td>'+
-      '<td style="min-width:160px"><b style="font-weight:600;cursor:pointer" data-act="openTeacher" data-id="'+t.id+'">'+esc(t.name)+'</b></td>'+
-      '<td>'+esc(t.subject||"—")+'</td>'+
-      '<td class="num">'+esc(t.hireDate?fmtDate(t.hireDate):"—")+'</td>'+
-      '<td>'+esc(t.finGrade||"—")+'</td>'+
-      '<td>'+esc(t.jobNow||"—")+'</td>'+
-      '<td style="min-width:150px"><small>'+esc(t.qual||"—")+'</small></td>'+
-      '<td>'+esc(t.qualType||"—")+'</td>'+
-      '<td>'+esc(t.cadreJob||"—")+'</td>'+
-      '<td class="num" style="direction:ltr;text-align:right">'+esc(t.phone||"—")+'</td>'+
-      '<td class="num">'+Object.keys(cls2).length+'</td>'+
-      xfList("teacher").map(function(f){ return '<td><small>'+esc(xfGet(t,f.id)||"—")+'</small></td>'; }).join("")+
+      tCols.map(function(d){ return tchCell(d, t, (UI.printAll?1:pgT.from)+i, Object.keys(cls2).length); }).join("")+
       (isDep?'<td class="noprint" style="white-space:nowrap">'+
         '<button class="btn ghost sm" data-act="editTeacher" data-id="'+t.id+'">تعديل</button>'+
         '<button class="btn ghost sm" data-act="delTeacher" data-id="'+t.id+'" style="color:var(--danger);margin-right:4px">حذف</button></td>':'')+
       '</tr>';
   });
-  h += '</tbody></table></div>'+pageBar(pgT,"tch")+'</div></div>';
+  h += '</tbody></table></div>'+(UI.printAll?"":pageBar(pgT,"tch"))+'</div></div>';
 
   /* ---------- المعلمون بالأجر ---------- */
   h += '<div class="card"><div class="hd"><div style="flex:1">'+
@@ -6928,6 +6986,7 @@ var ACTS = {
   tblCfg: function(el){
     var id = el.dataset.t;
     if(id==="students") modalTableCfg("students", stuColDefs(), "الطلاب");
+    else if(id==="teachers") modalTableCfg("teachers", tchColDefs(), "المعلمين");
   },
   tcUp: function(el){
     var c = tblCfg(el.dataset.t), defs = UI.tcDefs||[];
@@ -6959,6 +7018,7 @@ var ACTS = {
     tblInit();
     delete DB.tables[id];
     if(id==="students") stuDefaultsOnce();
+    if(id==="teachers") tchDefaultsOnce();
     saveNow(); closeModal(); render(); toast("رجعت الأعمدة الأصلية");
   },
   /* طباعة كل الصفحات */
@@ -7040,6 +7100,7 @@ var ACTS = {
     if(!confirm("حذف «"+st.name+"» ("+(st.natId||"بدون رقم")+")؟"+
       (extra.length? "\nهيتحذف كمان: "+extra.join(" · ") : "\nمفيش بيانات عليه."))) return;
     markUndo("حذف تكرار مشتبه فيه");
+    remapStudentRefs(st.id, "");             /* الرغبة ترجع «جديد» عشان تترحّل تاني */
     DB.students = DB.students.filter(function(x){ return x.id!==st.id; });
     DB.behavior = DB.behavior.filter(function(b){ return b.studentId!==st.id; });
     for(var k in DB.marks) if(k.indexOf(st.id+"|")===0) delete DB.marks[k];
@@ -7320,6 +7381,7 @@ var ACTS = {
     if(!ids.length){ closeModal(); return; }
     markUndo("حذف "+ids.length+" طالب");
     ids.forEach(function(id){
+      remapStudentRefs(id, "");
       DB.students = DB.students.filter(function(s){ return s.id!==id; });
       DB.behavior = DB.behavior.filter(function(b){ return b.studentId!==id; });
       for(var k in DB.marks) if(k.indexOf(id+"|")===0) delete DB.marks[k];
@@ -7377,6 +7439,7 @@ var ACTS = {
     if(!id){ closeModal(); return; }
     markUndo("حذف طالب");
     UI.delIds = null;
+    remapStudentRefs(id, "");        /* أي استمارة مربوطة بيه ترجع «جديد» */
     DB.students = DB.students.filter(function(s){ return s.id!==id; });
     DB.behavior = DB.behavior.filter(function(b){ return b.studentId!==id; });
     for(var k in DB.marks) if(k.indexOf(id+"|")===0) delete DB.marks[k];
@@ -13713,15 +13776,53 @@ function addedOrder(s){
 }
 /* هل الصف ده اترحّل قبل كده؟ الرقم القومي أولًا، والعلامة المحفوظة احتياط.
    كده الاسم اللي اترحّل مرة عمره ما هيظهر تاني في «الجديد فقط». */
-function migratedStudentOf(r){
-  var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
-  if(nat){
-    var byNat = DB.students.filter(function(s){ return s.natId===nat; })[0];
-    if(byNat) return byNat;
+/* ============================================================
+   لما سجل طالب يتدمج أو يتحذف، أي رابط بيشاور عليه لازم يتحوّل
+   للسجل الباقي — عشان الاستمارات ما ترجعش تقول «جديد».
+   ============================================================ */
+function remapStudentRefs(fromId, toId){
+  if(!fromId || fromId===toId) return 0;
+  var n = 0;
+  wishesInit();
+  (DB.wishes||[]).forEach(function(w){
+    if(w.migratedTo===fromId){ w.migratedTo = toId || ""; if(!toId) w.migrated = false; n++; }
+  });
+  formsInit();
+  for(var k in DB.formSubs){
+    (DB.formSubs[k]||[]).forEach(function(sb){
+      if(sb.migratedTo===fromId){ sb.migratedTo = toId || ""; if(!toId) sb.migrated = false; n++; }
+    });
   }
+  msgInit();
+  DB.msgs.forEach(function(m){ if(m.sid===fromId && toId) m.sid = toId; });
+  DB.behavior.forEach(function(b){ if(b.studentId===fromId && toId) b.studentId = toId; });
+  return n;
+}
+/* بيلاقي الطالب اللي الصف ده اترحّل ليه — بكل الطرق الممكنة */
+function migratedStudentOf(r){
+  /* ١) الرابط المحفوظ وقت الترحيل */
   if(r.src && r.src.migratedTo){
     var st = studentById(r.src.migratedTo);
     if(st) return st;
+  }
+  /* ٢) الرقم القومي */
+  var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
+  if(nat){
+    var byNat = DB.students.filter(function(s){ return s.natId===nat; })[0];
+    if(byNat){
+      if(r.src && typeof r.src==="object") r.src.migratedTo = byNat.id;   /* نصلّح الرابط */
+      return byNat;
+    }
+  }
+  /* ٣) الاسم — لو الرقم اتغيّر في دمج، الاسم بيفضل دليل */
+  if(r.src && r.src.migrated && r.name){
+    var byName = DB.students.filter(function(s){
+      return s.status!=="left" && (normAr(s.name)===normAr(r.name) || nameContains(s.name, r.name));
+    })[0];
+    if(byName){
+      if(typeof r.src==="object") r.src.migratedTo = byName.id;
+      return byName;
+    }
   }
   return null;
 }
@@ -13993,7 +14094,7 @@ function viewFormSubs(f){
   var h = '<button class="btn ghost sm noprint" data-act="formsManage" style="margin-bottom:10px">→ كل الاستمارات</button>';
   h += pageHd(f.title, (f.desc||"")+" — "+formLevelLabel(f),
     (can?'<button class="btn seal" data-act="formMigrate" data-id="'+f.id+'">⇪ ترحيل الطلاب</button>':'')+
-    '<button class="btn" data-act="formExcel" data-id="'+f.id+'" style="margin-right:6px">⬇ إكسيل</button>');
+    '<button class="btn" data-act="formExcel" data-id="'+f.id+'">⬇ إكسيل</button>');
   if(can) h += formToolbar(f, open);
   if(can){
     var rowsAll = formRows(f).filter(function(r){
