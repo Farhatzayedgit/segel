@@ -1454,8 +1454,7 @@ var NAV = {
     ["_g","المتابعة اليومية"],
     ["today","لوحة اليوم","today"],
     ["supervise","الإشراف اليومي","duty"],
-    ["kpi","المؤشرات","stats"],
-    ["daily","التقرير اليومي","reports"],
+    ["insight","لوحة المؤشرات","stats"],
 
     ["_g","الطلاب"],
     ["students","الطلاب","students"],
@@ -1521,7 +1520,7 @@ var NAV = {
   admin:[
     ["_g","المتابعة اليومية"],
     ["today","لوحة اليوم","today"],
-    ["staffatt","حضور العاملين","attend"],
+    ["staffAtt","حضور العاملين","attend"],
     ["subs","الاحتياطي","subs"],
 
     ["_g","شؤون العاملين"],
@@ -1531,8 +1530,7 @@ var NAV = {
 
     ["_g","التقارير والمستندات"],
     ["schedule","الجداول","schedule"],
-    ["daily","التقرير اليومي","reports"],
-    ["stats","الإحصائيات","stats"],
+    ["insight","لوحة المؤشرات","stats"],
     ["papers","الورقيات","papers"]
   ],
 
@@ -1821,6 +1819,7 @@ function render(){
     case "curriculum": h = viewCurriculum(); break;
     case "acts":       h = viewActivities(); break;
     case "health":     h = viewHealth(); break;
+    case "insight":    h = viewInsight(); break;
     case "eligib":     h = viewEligibility(); break;
     case "oplog":      h = viewOpLog(); break;
     case "supervise":  h = viewSupervision(); break;
@@ -2997,6 +2996,151 @@ function healthChecks(){
              : "النسخ متابَعة.",
     act:"backupNow", btn:"احفظ نسخة" });
   return out;
+}
+/* ============================================================
+   لوحة المؤشرات — دمج «المؤشرات» و«التقرير اليومي» و«الإحصائيات»
+   كانوا ٣ شاشات فيها نفس الأرقام مكررة. بقوا تبويبات في شاشة واحدة.
+   ============================================================ */
+function viewInsight(){
+  var tab = UI.insTab || "now";
+  var isMgr = roleIs("manager") || roleIs("admin");
+
+  var h = pageHd("لوحة المؤشرات", "كل أرقام المدرسة في مكان واحد");
+
+  h += '<div class="chips noprint">'+
+    '<button class="'+(tab==="now"?"on":"")+'" data-act="insTab" data-t="now">النبض اليومي</button>'+
+    '<button class="'+(tab==="daily"?"on":"")+'" data-act="insTab" data-t="daily">التقرير اليومي</button>'+
+    '<button class="'+(tab==="staff"?"on":"")+'" data-act="insTab" data-t="staff">إحصائيات العاملين</button>'+
+    '<button class="'+(tab==="term"?"on":"")+'" data-act="insTab" data-t="term">مؤشرات الفصل الدراسي</button>'+
+    '</div>';
+
+  if(tab==="daily") return h + viewDailyReport();
+  if(tab==="staff") return h + viewStaffStats();
+  if(tab==="term")  return h + insightTerm();
+  return h + insightNow();
+}
+/* ---------- النبض اليومي: أهم ٨ أرقام النهاردة ---------- */
+function insightNow(){
+  var date = today();
+  var cls = myClasses();
+  var studs = myStudents();
+  var di = new Date(date).getDay();
+  var ds = dayStatus(date);
+
+  /* الحضور النهاردة */
+  var pres=0, abs=0, rec=0;
+  cls.forEach(function(c){
+    var r = DB.attend[attKey(c.id,date)];
+    if(!r) return;
+    rec++;
+    studentsOf(c.id).forEach(function(st){
+      var v = r[st.id];
+      if(v==="A") abs++; else if(v) pres++;
+    });
+  });
+  /* الحصص والإشراف */
+  var slots = DB.schedule.filter(function(x){ return x.day===di && inSector(classById(x.classId)); });
+  var doneP = 0;
+  slots.forEach(function(x){ if(periodDone(x.classId, date, x.period)) doneP++; });
+  /* الدروس المسجّلة */
+  lessonInit();
+  var lesN = 0;
+  slots.forEach(function(x){
+    var L = DB.lessons[lessonKey(x.classId, x.subjectId, date)];
+    if(L && (L.done || L.topic)) lesN++;
+  });
+
+  var h = '';
+  if(ds && ds.off){
+    h += '<div class="note warn"><b>'+esc(ds.why||"إجازة")+'</b> — مفيش دراسة النهاردة.</div>';
+  }
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("الطلاب", studs.length, cls.length+" فصل", "acc")+
+    stat("الحضور النهاردة", pres, rec? "من "+(pres+abs)+" مرصود" : "لسه ما اترصدش", pres?"acc-g":"")+
+    stat("الغياب النهاردة", abs, abs? "محتاج متابعة":"مفيش", abs?"acc-r":"acc-g")+
+    stat("فصول رصدت غيابها", rec, "من "+cls.length, rec<cls.length?"acc-r":"acc-g")+
+    '</div>';
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("حصص اليوم", slots.length, "في الجدول", "acc")+
+    stat("حصص اترصدت", doneP, "من "+slots.length, doneP<slots.length?"acc-r":"acc-g")+
+    stat("دروس مسجّلة", lesN, "في دفتر الحصة", lesN<slots.length?"":"acc-g")+
+    stat("المعلمون", teachingStaff().length, "بيدرّسوا", "acc")+
+    '</div>';
+
+  /* اللي محتاج تدخّل */
+  var t = [];
+  var lateN = 0;
+  supervisionGrid(date).forEach(function(r){ r.cells.forEach(function(x){
+    if(x.st==="late"||x.st==="miss") lateN++;
+  }); });
+  if(lateN) t.push({ n:lateN, txt:"حصة لم يُرصد غيابها", act:"goSupervise", btn:"الإشراف" });
+  var pq = unreadParentQ().length;
+  if(pq) t.push({ n:pq, txt:"سؤال من ولي أمر مستني رد", act:"goParents", btn:"الرد" });
+  var bad = healthChecks().filter(function(c){ return !c.ok && c.level==="bad"; }).length;
+  if(bad) t.push({ n:bad, txt:"مشكلة في البيانات", act:"goHealth", btn:"المراجعة" });
+  var elig = 0;
+  studs.forEach(function(st){ if(eligibilityOf(st.id, st.classId).verdict==="bad") elig++; });
+  if(elig) t.push({ n:elig, txt:"طالب معرّض للحرمان من الامتحان", act:"goEligib", btn:"الكشف" });
+
+  h += '<div class="card"><div class="hd"><h3>محتاج تدخّل ('+t.length+')</h3></div><div class="bd flush">';
+  if(!t.length) h += '<div class="empty"><div class="big">'+icon("attend",34)+'</div><b>كل حاجة تمام</b>'+
+    '<p>مفيش حاجة عاجزة محتاجة تدخّل دلوقتي.</p></div>';
+  t.forEach(function(x){
+    h += '<div class="list-item">'+
+      '<span class="av" style="background:var(--danger)">'+x.n+'</span>'+
+      '<span class="tx"><b>'+esc(x.txt)+'</b></span>'+
+      '<button class="btn ghost sm" data-act="'+x.act+'">'+esc(x.btn)+'</button></div>';
+  });
+  return h + '</div></div>';
+}
+/* ---------- مؤشرات الفصل الدراسي ---------- */
+function insightTerm(){
+  var studs = myStudents();
+  var cls = myClasses();
+  /* الحضور التراكمي */
+  var days=0, absT=0;
+  studs.forEach(function(s){
+    var a = attendStats(s.id, s.classId);
+    days += a.days; absT += a.abs;
+  });
+  var rate = days? Math.round((days-absT)/days*1000)/10 : 0;
+  /* الأهلية */
+  var ok=0, risk=0, danger=0, none=0;
+  studs.forEach(function(s){
+    var v = eligibilityOf(s.id, s.classId).verdict;
+    if(v==="ok") ok++; else if(v==="risk") risk++; else if(v==="bad") danger++; else none++;
+  });
+  /* العجز */
+  var sh = shortageReport(null);
+  var gap = sh.reduce(function(a,r){ return a+r.gap; }, 0);
+  /* الأنشطة */
+  var actUn = actUnassigned("activity").length;
+
+  var h = '<div class="stats" style="margin-bottom:12px">'+
+    stat("نسبة الحضور", days? rate+"٪" : "—", days+" يوم مرصود", rate<85?"acc-r":"acc-g")+
+    stat("أيام الغياب", absT, "إجمالي الفصل الدراسي", absT?"acc-r":"")+
+    stat("الفصول", cls.length, "في القسم الحالي", "acc")+
+    stat("متوسط الفصل", cls.length? Math.round(studs.length/cls.length) : 0, "طالب", "")+
+    '</div>';
+
+  h += '<div class="card"><div class="hd"><h3>الأهلية لدخول الامتحان</h3>'+
+    '<button class="btn ghost sm noprint" data-act="goEligib">التفاصيل ›</button></div><div class="bd">'+
+    '<div class="stats">'+
+    stat("مؤهلون", ok, "فوق الحد", "acc-g")+
+    stat("على الحافة", risk, "قريبين", risk?"acc-r":"")+
+    stat("معرّضون للحرمان", danger, danger?"تدخّل عاجل":"مفيش", danger?"acc-r":"acc-g")+
+    stat("لم يُرصد", none, "مفيش تقييمات", "")+
+    '</div></div></div>';
+
+  h += '<div class="card"><div class="hd"><h3>الجداول والأنصبة</h3>'+
+    '<button class="btn ghost sm noprint" data-act="goLoadTab">التفاصيل ›</button></div><div class="bd">'+
+    '<div class="stats">'+
+    stat("العجز في الحصص", gap, gap?"محتاج معلمين":"مغطّى", gap?"acc-r":"acc-g")+
+    stat("مواد بها عجز", sh.filter(function(r){ return r.gap>0; }).length, "من "+sh.length, "")+
+    stat("معلمون بالأجر", DB.teachers.filter(function(t){ return t.hourly && t.status!=="left"; }).length, "مسجّلين", "")+
+    stat("طلاب بلا نشاط", actUn, actUn?"محتاج توزيع":"تمام", actUn?"acc-r":"acc-g")+
+    '</div></div></div>';
+  return h;
 }
 function viewHealth(){
   var checks = healthChecks();
@@ -7238,6 +7382,10 @@ var ACTS = {
       setTimeout(render, 60);
     }, 120);
   },
+  insTab:      function(el){ UI.insTab = el.dataset.t; render(); },
+  goSupervise: function(){ UI.tab="supervise"; UI.sub=null; render(); },
+  goHealth:    function(){ UI.tab="health"; UI.sub=null; render(); },
+  goEligib:    function(){ UI.tab="eligib"; UI.sub=null; render(); },
   goForms: function(){ UI.tab="wishes"; UI.sub=null; render(); },
   goParents: function(){ UI.tab="parents"; UI.sub=null; render(); },
   pTab:  function(el){ UI.pTab = el.dataset.t; render(); },
