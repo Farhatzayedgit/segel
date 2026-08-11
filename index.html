@@ -1419,76 +1419,152 @@ function icon(name, size){
 }
 /* قائمة ADMIN بتتبني من قوائم المدير والوكيل — أي تبويب جديد بيوصلها تلقائيًا */
 function buildOwnerNav(){
-  var out = [], seen = {};
+  /* بندمج المجموعات بأسمائها — عشان ما يبقاش «الطلاب» مرتين */
+  var order = [], byName = {}, seen = {};
   ["manager","deputy"].forEach(function(r){
+    var cur = null;
     (NAV[r]||[]).forEach(function(it){
-      if(it[0]==="_g"){ out.push(it); return; }
+      if(it[0]==="_g"){
+        cur = it[1];
+        if(!byName[cur]){ byName[cur] = []; order.push(cur); }
+        return;
+      }
       if(seen[it[0]]) return;
       seen[it[0]] = 1;
-      out.push(it);
+      var g = cur || "أخرى";
+      if(!byName[g]){ byName[g] = []; order.push(g); }
+      byName[g].push(it);
     });
   });
-  /* شيل عناوين المجموعات الفاضية */
-  var clean = [];
-  for(var i=0;i<out.length;i++){
-    if(out[i][0]==="_g" && (i+1>=out.length || out[i+1][0]==="_g")) continue;
-    clean.push(out[i]);
-  }
-  return clean;
+  var out = [];
+  order.forEach(function(g){
+    if(!byName[g] || !byName[g].length) return;
+    out.push(["_g", g]);
+    byName[g].forEach(function(it){ out.push(it); });
+  });
+  return out;
 }
 var NAV = {
+  /* ============================================================
+     ترتيب التبويبات بمنطق الشغل:
+     ١) اللي بتفتحه كل صباح  ٢) اللي بتشتغل عليه أغلب اليوم
+     ٣) التجهيز اللي بيتعمل مرة  ٤) الضبط والمراجعة في الآخر
+     ============================================================ */
   manager:[
     ["_g","المتابعة اليومية"],
-    ["today","لوحة اليوم","today"],["dash","المؤشرات","dash"],["dailyRep","التقرير اليومي","print"],
+    ["today","لوحة اليوم","today"],
+    ["supervise","الإشراف اليومي","duty"],
+    ["kpi","المؤشرات","stats"],
+    ["daily","التقرير اليومي","reports"],
+
     ["_g","الطلاب"],
-    ["students","الطلاب","students"],["home","المنازل","home"],
-    ["wishes","استمارات الطلاب","grades"],["absence","غياب الطلاب","absence"],
-    ["_g","الشؤون الأكاديمية"],
-    ["curriculum","الهيكل الدراسي","plan"],["classes","الفصول","classes"],["acts","الأنشطة","art"],["schedule","الجداول","schedule"],
+    ["students","الطلاب","students"],
+    ["home","المنازل","home"],
+    ["absence","غياب الطلاب","absence"],
+    ["eligib","الأهلية للامتحان","attend"],
+    ["wishes","استمارات الطلاب","grades"],
+    ["parents","أولياء الأمور","forms"],
+
     ["_g","العاملون"],
-    ["staff","العاملون","staff"],["duty","توزيع الإشراف","duty"],["subs","الاحتياطي","subs"],
+    ["staff","العاملون","teachers"],
+    ["duty","توزيع الإشراف","duty"],
+    ["subs","الاحتياطي","subs"],
+    ["lessons","متابعة الحصص","plan"],
+
+    ["_g","الشؤون الأكاديمية"],
+    ["classes","الفصول","classes"],
+    ["curriculum","الهيكل الدراسي","plan"],
+    ["acts","الأنشطة","art"],
+    ["schedule","الجداول","schedule"],
+
     ["_g","المدرسة"],
-    ["calendar","التقويم الدراسي","calendar"],["times","أوقات اليوم","times"],
-    ["events","الأحداث","events"],["papers","الورقيات","papers"],
-    ["parents","أولياء الأمور","forms"],["health","صحة البيانات","duty"],["oplog","سجل العمليات","times"],["settings","الإعدادات","settings"]
+    ["calendar","التقويم الدراسي","calendar"],
+    ["times","أوقات اليوم","times"],
+    ["events","الأحداث","events"],
+    ["papers","الورقيات","papers"],
+
+    ["_g","الضبط والمراجعة"],
+    ["health","صحة البيانات","duty"],
+    ["oplog","سجل العمليات","times"],
+    ["settings","الإعدادات","settings"]
   ],
+
   deputy:[
     ["_g","المتابعة اليومية"],
-    ["today","لوحة اليوم","today"],["supervise","الإشراف اليومي","duty"],["abssheet","كشف الغائبين","absence"],
-    ["absence","الغياب والإنذارات","absence"],["lessons","متابعة الحصص","plan"],
+    ["today","لوحة اليوم","today"],
+    ["supervise","الإشراف اليومي","duty"],
+    ["abssheet","كشف الغائبين","absence"],
+    ["absence","الغياب والإنذارات","absence"],
+    ["lessons","متابعة الحصص","plan"],
+
     ["_g","الطلاب"],
-    ["students","الطلاب","students"],["home","المنازل","home"],["eligib","الأهلية للامتحان","attend"],["wishes","استمارات الطلاب","grades"],
+    ["students","الطلاب","students"],
+    ["home","المنازل","home"],
+    ["wishes","استمارات الطلاب","grades"],
+    ["eligib","الأهلية للامتحان","attend"],
+    ["parents","أولياء الأمور","forms"],
+
     ["_g","الشؤون الأكاديمية"],
-    ["curriculum","الهيكل الدراسي","plan"],["classes","الفصول","classes"],
-    ["acts","الأنشطة","art"],["schedule","الجداول","schedule"],["teachers","المعلمون","teachers"],
-    ["_g","المستندات"],
-    ["papers","الورقيات","papers"],["parents","أولياء الأمور","forms"],["health","صحة البيانات","duty"],
-    ["events","الأحداث","events"],["settings","الإعدادات","settings"]
+    ["classes","الفصول","classes"],
+    ["curriculum","الهيكل الدراسي","plan"],
+    ["acts","الأنشطة","art"],
+    ["schedule","الجداول","schedule"],
+    ["teachers","المعلمون","teachers"],
+
+    ["_g","المستندات والضبط"],
+    ["papers","الورقيات","papers"],
+    ["events","الأحداث","events"],
+    ["health","صحة البيانات","duty"],
+    ["settings","الإعدادات","settings"]
   ],
+
   admin:[
     ["_g","المتابعة اليومية"],
-    ["today","لوحة اليوم","today"],["staffAtt","حضور العاملين","attend"],["subs","الاحتياطي","subs"],
+    ["today","لوحة اليوم","today"],
+    ["staffatt","حضور العاملين","attend"],
+    ["subs","الاحتياطي","subs"],
+
     ["_g","شؤون العاملين"],
-    ["staff","العاملون","staff"],["duty","توزيع الإشراف","duty"],["leaves","الإجازات","leaves"],
-    ["_g","المستندات"],
-    ["schedule","الجداول","schedule"],["dailyRep","التقرير اليومي","print"],
-    ["staffStats","الإحصائيات","stats"],["papers","الورقيات","papers"]
+    ["staff","العاملون","teachers"],
+    ["duty","توزيع الإشراف","duty"],
+    ["leaves","الإجازات","leaves"],
+
+    ["_g","التقارير والمستندات"],
+    ["schedule","الجداول","schedule"],
+    ["daily","التقرير اليومي","reports"],
+    ["stats","الإحصائيات","stats"],
+    ["papers","الورقيات","papers"]
   ],
+
   scheduler:[
     ["_g","الجدول المدرسي"],
-    ["schedule","الجداول","schedule"],["acts","الأنشطة","art"],
-    ["curriculum","الهيكل الدراسي","plan"],["classes","الفصول","classes"],
+    ["schedule","الجداول","schedule"],
+    ["classes","الفصول","classes"],
+    ["curriculum","الهيكل الدراسي","plan"],
+    ["acts","الأنشطة","art"],
     ["teachers","المعلمون","teachers"],
-    ["_g","بياناتي"],
-    ["mydata","بياناتي","teachers"],["mylessons","دفتر الحصة","plan"],
-    ["myclasses","فصولي","classes"],["myschedule","جدولي","schedule"],["mystudents","طلابي","students"]
+
+    ["_g","حسابي كمعلم"],
+    ["mylessons","دفتر الحصة","plan"],
+    ["myclasses","فصولي","classes"],
+    ["mystudents","طلابي","students"],
+    ["myschedule","جدولي","schedule"],
+    ["mydata","بياناتي","teachers"]
   ],
+
   teacher:[
-    ["mydata","بياناتي","teachers"],["mylessons","دفتر الحصة","plan"],["myclasses","فصولي","classes"],
-    ["myschedule","جدولي","schedule"],["mystudents","طلابي","students"]
+    ["mylessons","دفتر الحصة","plan"],
+    ["myclasses","فصولي","classes"],
+    ["mystudents","طلابي","students"],
+    ["myschedule","جدولي","schedule"],
+    ["mydata","بياناتي","teachers"]
   ],
+
   student:[
-    ["parent","متابعة الطالب","students"],["mygrades","درجاتي","grades"],["myattend","حضوري","attend"],["mysched","جدولي","schedule"]
+    ["parent","متابعة الطالب","students"],
+    ["myattend","حضوري","attend"],
+    ["mygrades","درجاتي","grades"],
+    ["mysched","جدولي","schedule"]
   ]
 };
 
