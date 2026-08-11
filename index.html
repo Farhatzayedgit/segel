@@ -111,6 +111,11 @@ nav.bottom button.on{color:var(--ink);background:var(--line-2);font-weight:700}
 .pagehd h2{font-size:20px}
 .pagehd p{margin:0;font-size:12.5px;color:var(--muted)}
 .pagehd .spacer{flex:1}
+.pagehd .btn{margin-bottom:2px}
+/* رأس الكارت: الأزرار متلفّش على العنوان */
+.card>.hd{flex-wrap:wrap}
+.card>.hd .btn{flex:0 0 auto}
+.card>.hd h3{min-width:0;overflow-wrap:anywhere}
 
 .eyebrow{font-size:11px;font-weight:700;letter-spacing:.09em;color:var(--gold);text-transform:uppercase;font-family:"Cairo",sans-serif}
 
@@ -118,6 +123,7 @@ nav.bottom button.on{color:var(--ink);background:var(--line-2);font-weight:700}
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 15px;border-radius:9px;
   background:var(--ink);color:#fff;font-weight:600;font-size:13.5px;border:1px solid var(--ink);
+  white-space:nowrap;flex:0 0 auto;line-height:1.35;min-height:36px;
   transition:transform .06s
 }
 .btn:active{transform:scale(.97)}
@@ -14192,7 +14198,7 @@ function viewWishes(){
 
   var h = pageHd("رغبات الطلاب",
     all.length+" طالب سجّل رغبته في قسم "+sectorName(curSector()),
-    (roleIs("deputy")&&all.length?'<button class="btn seal" data-act="formMigrate" data-id="track">⇪ ترحيل لطلاب '+esc(levelName(num(DB.trackLevel,2)))+'</button>':'')+
+    (roleIs("deputy")&&all.length?'<button class="btn seal" data-act="formMigrate" data-id="track">⇪ ترحيل الطلاب</button>':'')+
     '<button class="btn" data-act="wExcel" style="margin-right:6px">⬇ تنزيل إكسيل</button>'+
     '<button class="btn ghost" data-act="wPdf" style="margin-right:6px">⬇ تنزيل PDF</button>');
 
@@ -14719,11 +14725,19 @@ function doParentLogin(){
   var st = DB.students.filter(function(x){ return x.natId===nat && x.status!=="left"; })[0];
   if(!st){ UI.parErr = "مفيش طالب بالرقم ده. تأكد من الرقم أو كلّم المدرسة."; renderLogin(); return; }
   UI.parErr = ""; UI.par = false;
-  UI.user = { id:"parent_"+st.id, role:"student", studentId:st.id, name:"ولي أمر "+st.name, parent:true };
+  var u = { id:"parent_"+st.id, role:"student", studentId:st.id,
+            name:"ولي أمر "+st.name, parent:true, sectors:["reg","srv"] };
+  UI.user = u;
   UI.sector = studentSector(st);
   UI.tab = "parent"; UI.sub = null; UI.pvTab = "today";
-  setHeaderSector();
+  autoBackup();
+  startSession(u);
+  /* نفس خطوات أي دخول: نقفل شاشة الدخول ونفتح التطبيق */
+  document.getElementById("login").classList.add("off");
   document.getElementById("app").classList.add("on");
+  var hu = document.getElementById("hdUser");
+  if(hu) hu.textContent = "ولي أمر · " + st.name;
+  setHeaderSector();
   render();
 }
 /* ============================================================
