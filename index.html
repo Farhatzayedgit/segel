@@ -7434,6 +7434,13 @@ var ACTS = {
     render();
     toastUndo("اتعملت استمارة «تحديد الشعبة» للصف الثالث");
   },
+  formStrictBtn: function(el){
+    var f = formById(el.dataset.id);
+    if(!f) return;
+    f.strictNat = (f.strictNat===false);
+    saveNow(); render();
+    toast(f.strictNat!==false ? "بقت ملزمة بالأرقام المسجّلة في الصف" : "بقت مفتوحة لأي رقم قومي");
+  },
   trkStrictBtn: function(){
     DB.trackStrict = !(DB.trackStrict!==false);
     saveNow(); render();
@@ -13263,8 +13270,11 @@ function formToolbar(f, open){
     '<span style="flex:1"></span>'+
     '<button class="btn '+(open?"ghost":"seal")+' sm" data-act="formToggle" data-id="'+esc(f.id)+'">'+
       (open?"قفل الاستمارة":"فتح الاستمارة")+'</button>'+
+    /* نفس الأدوات للجميع — والفرق الوحيد إن استمارة المسار أساسية فمش بتتحذف */
     (f.id!=="track"
       ? '<button class="btn ghost sm" data-act="formEdit" data-id="'+esc(f.id)+'">تعديل الحقول والصف</button>'+
+        '<button class="btn ghost sm" data-act="formStrictBtn" data-id="'+esc(f.id)+'">'+
+          (formStrict(f)?"السماح بأي رقم قومي":"الالتزام بالمسجّلين")+'</button>'+
         '<button class="btn ghost sm" data-act="formDel" data-id="'+esc(f.id)+'" style="color:var(--danger)">حذف الاستمارة</button>'
       : '<button class="btn ghost sm" data-act="trkLvlBtn">تغيير الصف المستهدف</button>'+
         '<button class="btn ghost sm" data-act="trkStrictBtn">'+
@@ -13277,6 +13287,8 @@ function viewTrackSubs(){
   var f = { id:"track", title:"استمارة تحديد المسار", desc:"الطالب يختار مساره ومادة تخصصه",
             status: DB.trackOpen===false?"closed":"open" };
   var h = '<button class="btn ghost sm noprint" data-act="formsManage" style="margin-bottom:10px">→ كل الاستمارات</button>';
+  /* نفس شريط الإعدادات بتاع أي استمارة */
+  if(canManageForms()) h += formToolbar(f, DB.trackOpen!==false);
   return h + viewWishes();
 }
 function formCardHTML(o){
@@ -13640,12 +13652,11 @@ function viewFormSubs(f){
     });
     var notMig = rowsAll.filter(function(r){ return !rowMigrated(r); }).length;
     h += '<div class="note noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
-      '<span class="tag info">الصف المستهدف: '+esc(formLevelLabel(f))+'</span>'+
       '<span style="flex:1;min-width:160px">'+
         (notMig? '<b>'+notMig+'</b> جديد لسه مترحّلش'+(rowsAll.length-notMig? ' · <b>'+(rowsAll.length-notMig)+'</b> موجود ينفع تحدّث بياناته':'')+'.'
                : (rowsAll.length? 'كل المسجّلين ('+rowsAll.length+') موجودين في كشف الطلاب — تقدر تحدّث بياناتهم من الاستمارة.' : ''))+
       '</span>'+
-      (f.id!=="track"?'<button class="btn ghost sm" data-act="formEdit" data-id="'+f.id+'">تغيير الصف المستهدف</button>':'')+
+      (rowsAll.length? '<button class="btn seal sm" data-act="formMigrate" data-id="'+esc(f.id)+'">⇪ ترحيل</button>':'')+
       '</div>';
   }
   h += '<div class="card noprint"><div class="bd"><label class="f" style="margin:0"><span>بحث بالاسم أو الرقم القومي</span>'+
