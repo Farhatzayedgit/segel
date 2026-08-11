@@ -635,7 +635,7 @@ function blankDB(){
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
     sectors:{}, wishes:[],
-    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[], trackExtra:[], sessions:[], attLog:{}, attDone:{}
+    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[], trackExtra:[], trackEdus:[], sessions:[], attLog:{}, attDone:{}
   };
 }
 
@@ -9098,7 +9098,7 @@ var BULK = ["meta","weights","bac","control","absRules","users","teachers","clas
   "holidays","sectors","wishes",
   /* اللي كان ناقص — علشان كده الاستمارات ماكانتش بتوصل للطلاب */
   "forms","papers","activities","curriculum","tracksCustom","trackLevel","trackOpen","trackStrict",
-  "calendar","exams","extraFields","dupOk","msgs","notices","trackExtra"];
+  "calendar","exams","extraFields","dupOk","msgs","notices","trackExtra","trackEdus"];
 /* المجموعات اللي بتتزامن عنصر عنصر (كل معلم بيكتب في خانته) */
 var GRAIN = ["attend","marks","staffAtt","subs","duty",
   /* تسجيلات الاستمارات ودفتر الحصة وسجل الغياب بالحصة */
@@ -12725,6 +12725,32 @@ function formDoneHTML(o){
    بوابة الصف: الطالب لازم يكون مسجّل في صف الاستمارة
    بترجّع رسالة الخطأ، أو "" لو مسموح.
    ============================================================ */
+/* ============================================================
+   جمهور الاستمارة: موجهة لأنهي نوعيات تعليم؟
+   الافتراضي: الكل (نظامي + خدمات + منازل)
+   ============================================================ */
+var EDU_IDS = ["reg","srv","home"];
+function formAudience(f){
+  if(!f) return EDU_IDS.slice();
+  var a = (f.id==="track") ? DB.trackEdus : f.edus;
+  if(!Array.isArray(a) || !a.length) return EDU_IDS.slice();
+  return a.filter(function(x){ return EDU_IDS.indexOf(x)>=0; });
+}
+function audienceLabel(f){
+  var a = formAudience(f);
+  if(a.length===EDU_IDS.length) return "كل النوعيات";
+  return a.map(function(x){ return eduName(x); }).join(" · ");
+}
+/* طلاب الاستمارة: من كل الأقسام — القسم اللي إنت واقف فيه ملهوش دخل */
+function formEligibleStudents(f){
+  var L = formTargetLevel(f);
+  var aud = formAudience(f);
+  return DB.students.filter(function(s){
+    if(s.status==="left") return false;
+    if(L && studentLevelOf(s)!==L) return false;
+    return aud.indexOf(s.edu||"reg") >= 0;
+  });
+}
 /* هل الاستمارة ملزمة بالأرقام القومية المسجّلة؟ */
 function formStrict(f){
   if(!f) return false;
@@ -12734,15 +12760,21 @@ function formStrict(f){
 function levelGateCheck(f, nat){
   if(!formStrict(f)) return "";           /* مفتوحة لأي رقم قومي */
   var L = formTargetLevel(f);
-  if(!L) return "";                       /* استمارة من غير صف = مفتوحة للكل */
+  var aud = formAudience(f);
+  var allEdu = aud.length===EDU_IDS.length;
+  if(!L && allEdu) return "";             /* من غير صف ولا تخصيص = مفتوحة للكل */
   if(!nat) return "اكتب الرقم القومي";
   var st = DB.students.filter(function(s){ return s.natId===nat && s.status!=="left"; })[0];
   if(!st){
     return "الرقم القومي ده مش مسجّل في المدرسة. راجع شئون الطلاب.";
   }
-  if(studentLevelOf(st) !== L){
+  if(L && studentLevelOf(st) !== L){
     return "الاستمارة دي لطلاب "+levelName(L)+" بس، وإنت مسجّل في "+
       (studentLevelOf(st)? levelName(studentLevelOf(st)) : "صف غير محدد")+".";
+  }
+  if(!allEdu && aud.indexOf(st.edu||"reg") < 0){
+    return "الاستمارة دي لطلاب "+aud.map(function(x){ return eduName(x); }).join(" و")+
+      " بس، وإنت مسجّل "+eduName(st.edu||"reg")+".";
   }
   return "";
 }
@@ -13137,14 +13169,14 @@ function formsCatalog(){
   var out = [{
     id:"track", title:"استمارة تحديد المسار", desc:"الطالب يختار مساره ومادة تخصصه",
     level:num(DB.trackLevel,2), open: DB.trackOpen!==false,
-    strictNat: DB.trackStrict!==false, builtin:true, fields:0
+    strictNat: DB.trackStrict!==false, edus: formAudience({id:"track"}), builtin:true, fields:0
   }];
   (DB.forms||[]).forEach(function(f){
     if(!f || !f.id) return;                       /* سجل تالف — بنتخطاه بدل ما يلخبط */
     out.push({
       id:f.id, title:f.title || "(استمارة بدون عنوان)", desc:f.desc || "",
       level:num(f.level,0), open: f.status!=="closed",
-      strictNat: f.strictNat!==false, builtin:false,
+      strictNat: f.strictNat!==false, edus: formAudience(f), builtin:false,
       fields:(f.fields||[]).length
     });
   });
@@ -13259,7 +13291,7 @@ function formRowHTML(f, can){
     '<span class="tx"><b>'+esc(f.title)+'</b>'+
     '<small>'+(f.desc?esc(f.desc)+' · ':'')+n+' تسجيل'+
     (f.builtin?' · استمارة أساسية':(f.fields?' · '+f.fields+' حقل':''))+
-    ' · '+(formStrict(f)?'المسجّلين فقط':'مفتوحة لأي رقم قومي')+'</small></span>'+
+    ' · '+(formStrict(f)?'المسجّلين فقط':'أي رقم قومي')+' · '+esc(audienceLabel(f))+'</small></span>'+
     '<span class="tag '+(open?"ok":"bad")+'">'+(open?"ظاهرة للطلاب":"مخفية")+'</span>'+
     '<button class="btn ghost sm" data-act="formOpenSubs" data-id="'+esc(f.id)+'">فتح ›</button>'+
     '</div>';
@@ -13268,10 +13300,10 @@ function formRowHTML(f, can){
 function formToolbar(f, open){
   var n = formSubsCount(f.id);
   var L = formTargetLevel(f);
-  var pool = L ? studentsOfLevel(L) : myStudents();
+  var pool = formEligibleStudents(f);      /* من كل الأقسام حسب إعداد الاستمارة */
   var strict = formStrict(f);
   var filled = 0;
-  if(strict && L){
+  if(strict){
     var subs = formRows(f);
     var natSet = {};
     subs.forEach(function(r){ var x=toEnDigits(String(r.natId||"")).replace(/\D/g,""); if(x) natSet[x]=1; });
@@ -13282,9 +13314,9 @@ function formToolbar(f, open){
     (L? ' — لطلاب <b>'+esc(levelName(L))+'</b>' : ' — لكل الصفوف')+
     '<div style="margin-top:5px;font-size:12.5px">'+
       (strict
-        ? 'مربوطة ببيانات القاعدة: <b>'+pool.length+'</b> طالب مسموح لهم، '+
+        ? 'مربوطة ببيانات القاعدة: <b>'+pool.length+'</b> طالب مسموح لهم ('+esc(audienceLabel(f))+')، '+
           'ملّاها <b>'+filled+'</b> — الباقي <b>'+Math.max(0,pool.length-filled)+'</b>.'
-        : 'مفتوحة لأي رقم قومي — مش مربوطة بالقاعدة.')+
+        : 'مفتوحة لأي رقم قومي — موجّهة لـ<b>'+esc(audienceLabel(f))+'</b>.')+
     '</div></div></div></div>';
   return link +
     '<div class="card noprint"><div class="bd" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">'+
@@ -13292,7 +13324,8 @@ function formToolbar(f, open){
       (open?"ظاهرة للطلاب دلوقتي":"مخفية عن الطلاب")+'</span>'+
     '<span class="tag info">'+esc(formLevelLabel(f))+'</span>'+
     '<span class="tag '+(formStrict(f)?"":"warn")+'">'+
-      (formStrict(f)?'المسجّلين في الصف فقط':'أي رقم قومي مقبول')+'</span>'+
+      (formStrict(f)?'المسجّلين فقط':'أي رقم قومي مقبول')+'</span>'+
+    '<span class="tag info">'+esc(audienceLabel(f))+'</span>'+
     '<span class="tag">'+n+' تسجيل</span>'+
     '<span style="flex:1"></span>'+
     '<button class="btn '+(open?"ghost":"seal")+' sm" data-act="formToggle" data-id="'+esc(f.id)+'">'+
@@ -13801,7 +13834,7 @@ function modalFormBuilder(id){
   if(id==="track"){
     var tf = trackFormObj();
     UI.formDraft = { id:"track", title:tf.title, desc:tf.desc, level:tf.level,
-                     strictNat:tf.strictNat,
+                     strictNat:tf.strictNat, edus: formAudience({id:"track"}),
                      fields: tf.fields.map(function(x){ return Object.assign({},x); }) };
     UI.fbEdit = null;
     renderFormBuilder();
@@ -13809,9 +13842,10 @@ function modalFormBuilder(id){
   }
   var f = id ? formById(id) : null;
   UI.formDraft = f ? { id:f.id, title:f.title, desc:f.desc||"", level:num(f.level,0),
-                       strictNat: f.strictNat!==false,
+                       strictNat: f.strictNat!==false, edus: formAudience(f),
                        fields:(f.fields||[]).map(function(x){ return Object.assign({},x); }) }
-                   : { id:null, title:"", desc:"", level:num(UI.newFormLvl,0), strictNat:true, fields:[] };
+                   : { id:null, title:"", desc:"", level:num(UI.newFormLvl,0), strictNat:true,
+                       edus: EDU_IDS.slice(), fields:[] };
   UI.newFormLvl = 0;
   UI.fbEdit = null;
   renderFormBuilder();
@@ -13825,6 +13859,11 @@ function keepDraftTop(d){
   }
   var lv = val("fb_lvl"); if(lv!=="") d.level = num(lv,0);
   var st = val("fb_strict"); if(st!=="") d.strictNat = (st!=="0");
+  var boxes = Array.prototype.slice.call(document.querySelectorAll(".fbEdu"));
+  if(boxes.length){
+    var picked = boxes.filter(function(b){ return b.checked; }).map(function(b){ return b.dataset.e; });
+    d.edus = picked.length ? picked : EDU_IDS.slice();
+  }
 }
 function fieldAnswers(formId, fieldId){
   if(!formId || !fieldId) return 0;
@@ -13894,6 +13933,16 @@ function renderFormBuilder(){
       LEVELS.map(function(l){ return '<option value="'+l.id+'"'+(num(d.level,0)===l.id?" selected":"")+'>'+esc(l.name)+'</option>'; }).join("")+
       '</select>'+
       '<small style="color:var(--muted);font-size:11.5px">مهم: ده الصف اللي المسجّلين هيترحّلوا ليه على طول — حتى لو لسه مش متسكّنين على فصول.</small></label>'+
+    '<label class="f"><span>الاستمارة موجّهة لأنهي نوعية تعليم؟</span>'+
+      '<div style="display:flex;gap:14px;flex-wrap:wrap;padding:9px;border:1px solid var(--line-2);border-radius:9px">'+
+      EDU_IDS.map(function(e){
+        var on = (d.edus||EDU_IDS).indexOf(e)>=0;
+        return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">'+
+          '<input type="checkbox" class="fbEdu" data-e="'+e+'"'+(on?" checked":"")+
+          ' style="width:17px;height:17px">'+esc(eduName(e))+'</label>';
+      }).join("")+'</div>'+
+      '<small style="color:var(--muted);font-size:11.5px">علّم على اللي عايزهم — واحد أو اتنين أو الكل. '+
+      'الاستمارة هتتربط ببيانات النوعيات دي بس، وأي طالب من نوعية تانية هيترفض.</small></label>'+
     '<label class="f"><span>مين يقدر يملا الاستمارة؟</span><select id="fb_strict">'+
       '<option value="1"'+(d.strictNat!==false?" selected":"")+'>الطلاب المسجّلين في الصف ده فقط</option>'+
       '<option value="0"'+(d.strictNat===false?" selected":"")+'>أي رقم قومي — حتى لو مش مسجّل</option>'+
@@ -14370,9 +14419,11 @@ Object.assign(ACTS, {
   saveForm: function(){
     var d = UI.formDraft; if(!d) return;
     /* استمارة المسار: بنحفظ الصف والإعداد والحقول الإضافية بس */
+    keepDraftTop(d);
     if(d.id==="track"){
       DB.trackLevel = num(val("fb_lvl"), num(DB.trackLevel,2)) || 2;
       DB.trackStrict = (val("fb_strict")!=="0");
+      DB.trackEdus = d.edus || EDU_IDS.slice();
       DB.trackExtra = d.fields.filter(function(x){ return !x.core; });
       saveNow(); closeModal(); render();
       toast("اتحفظت إعدادات استمارة تحديد المسار");
@@ -14386,10 +14437,11 @@ Object.assign(ACTS, {
     if(d.id){
       var f = formById(d.id);
       if(f){ f.title = title; f.desc = val("fb_desc").trim(); f.level = lvl;
-             f.strictNat = strict; f.fields = d.fields; }
+             f.strictNat = strict; f.edus = d.edus || EDU_IDS.slice(); f.fields = d.fields; }
     }else{
       DB.forms.push({ id:uid("form"), title:title, desc:val("fb_desc").trim(), level:lvl,
-                      strictNat:strict, status:"open", fields:d.fields, createdAt:today() });
+                      strictNat:strict, edus:(d.edus||EDU_IDS.slice()),
+                      status:"open", fields:d.fields, createdAt:today() });
     }
     UI.formDraft = null; saveNow(); closeModal(); render(); toast("اتحفظت الاستمارة");
   }
