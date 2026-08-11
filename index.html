@@ -13730,6 +13730,23 @@ function viewPapers(){
    {اسم_المعلم} {كود_المعلم} {مادة_التدريس} {المؤهل} {تاريخ_التعيين} {الوظيفة}
    {المدرسة} {الإدارة} {المديرية} {العام_الدراسي} {الفصل_الدراسي} {التاريخ} {اليوم}
    ============================================================ */
+var PAPER_SCHOOL_KEYS = { "المدرسة":1,"الإدارة":1,"المديرية":1,"العام_الدراسي":1,
+                          "الفصل_الدراسي":1,"التاريخ":1,"اليوم":1 };
+/* المفاتيح الثابتة — مستقلة عن وجود بيانات، عشان القائمة تبان دايمًا */
+var PAPER_STU_KEYS = ["اسم_الطالب","الرقم_القومي","الصف","الفصل","المسار","مادة_التخصص","النوعية",
+  "القسم","النظام","ولي_الأمر","الهاتف","تاريخ_الميلاد","السن","النوع","الديانة","محافظة_الميلاد",
+  "الفصل_السابق","رقم_الجلوس","النشاط","التربية_المهنية","تاريخ_القيد","حالة_الطالب",
+  "نسبة_الحضور","أيام_الحضور","أيام_الغياب","الغياب_بعذر","مرات_التأخير",
+  "الموقف_من_الامتحان","مواد_تحت_الحد"];
+var PAPER_TCH_KEYS = ["اسم_المعلم","كود_المعلم","الرقم_القومي_للمعلم","مادة_التدريس","المؤهل",
+  "نوع_المؤهل","تاريخ_التعيين","سنوات_الخدمة","الوظيفة","الدرجة_المالية","هاتف_المعلم",
+  "تاريخ_ميلاد_المعلم","النصاب","الحِمل"];
+function paperStuKeys(){
+  return PAPER_STU_KEYS.concat(xfList("student").map(function(f){ return f.label.replace(/\s+/g,"_"); }));
+}
+function paperTchKeys(){
+  return PAPER_TCH_KEYS.concat(xfList("teacher").map(function(f){ return f.label.replace(/\s+/g,"_"); }));
+}
 function paperVars(sid, tid){
   var m = DB.meta || {};
   var v = {
@@ -13757,6 +13774,22 @@ function paperVars(sid, tid){
     v["نسبة_الحضور"]  = att.days? att.rate+"٪" : "";
     v["أيام_الغياب"]  = String(att.abs||0);
     v["تاريخ_القيد"]  = st.joined? fmtDate(st.joined) : "";
+    v["محافظة_الميلاد"]= st.birthGov||"";
+    v["الفصل_السابق"] = st.prevClass||"";
+    v["النظام"]       = c? systemName(c.system) : "";
+    v["القسم"]        = sectorName(studentSector(st));
+    v["رقم_الجلوس"]   = st.seat||"";
+    v["النشاط"]       = st.actId? actName(st.actId) : "";
+    v["التربية_المهنية"]= st.vocId? actName(st.vocId) : "";
+    v["أيام_الحضور"]  = String(att.present||0);
+    v["الغياب_بعذر"]  = String(att.exc||0);
+    v["مرات_التأخير"] = String(att.late||0);
+    v["حالة_الطالب"]  = st.status==="left"? "خارج المدرسة" : "منتظم";
+    /* الموقف من الامتحان */
+    var e = eligibilityOf(st.id, st.classId);
+    v["الموقف_من_الامتحان"] = e.verdict==="bad" ? "غير مسموح بدخول الامتحان"
+                            : (e.verdict==="none" ? "لم تُرصد تقييمات" : "مسموح بدخول الامتحان");
+    v["مواد_تحت_الحد"] = String(e.bad||0);
     xfList("student").forEach(function(f){ v[f.label.replace(/\s+/g,"_")] = xfGet(st,f.id)||""; });
   }
   var t = tid ? teacherById(tid) : null;
@@ -13769,6 +13802,12 @@ function paperVars(sid, tid){
     v["الوظيفة"]       = t.cadreJob || t.jobNow || "";
     v["الرقم_القومي_للمعلم"] = t.natId||"";
     v["هاتف_المعلم"]   = t.phone||"";
+    v["الدرجة_المالية"]= t.finGrade||"";
+    v["نوع_المؤهل"]    = t.qualType||"";
+    v["سنوات_الخدمة"]  = t.hireDate? String(serviceYears(t.hireDate)) : "";
+    v["النصاب"]        = String(nisabOf(t.id));
+    v["الحِمل"]        = String(plannedHours(t.id,{}));
+    v["تاريخ_ميلاد_المعلم"] = t.birth? fmtDate(t.birth) : "";
     xfList("teacher").forEach(function(f){ v[f.label.replace(/\s+/g,"_")] = xfGet(t,f.id)||""; });
   }
   return v;
@@ -13789,8 +13828,13 @@ function modalPaperFill(key){
   var t = paperByKey(key);
   if(!t){ toast("النموذج مش موجود"); return; }
   var body = t.custom ? esc(t.body).replace(/\n/g,"<br>") : t.body;
-  var needsS = /\{(اسم_الطالب|الرقم_القومي|الصف|الفصل|المسار|مادة_التخصص|النوعية|ولي_الأمر|الهاتف|تاريخ_الميلاد|السن|النوع|الديانة|نسبة_الحضور|أيام_الغياب|تاريخ_القيد)\}/.test(body);
-  var needsT = /\{(اسم_المعلم|كود_المعلم|مادة_التدريس|المؤهل|تاريخ_التعيين|الوظيفة)\}/.test(body);
+  /* الرموز اللي بتحتاج طالب أو معلم — من نفس جدول القيم عشان ما يبقاش فيه اختلاف */
+  var sKeys = paperStuKeys(), tKeys = paperTchKeys();
+  function usesAny(keys){
+    for(var i=0;i<keys.length;i++) if(body.indexOf("{"+keys[i]+"}")>=0) return true;
+    return false;
+  }
+  var needsS = usesAny(sKeys), needsT = usesAny(tKeys);
   if(!needsS && !needsT){ openPaper(key, "", ""); return; }
 
   var studs = myStudents().sort(function(a,b){ return sortAr(a.name,b.name); });
@@ -13831,13 +13875,36 @@ function openPaper(key, sid, tid){
   closeModal();
   render();
 }
+/* قائمة الرموز المتاحة — بتتبني من نفس جدول القيم فما تختلفش أبدًا */
+function paperVarsHelp(){
+  var groups = {
+    "بيانات المدرسة": Object.keys(PAPER_SCHOOL_KEYS),
+    "بيانات الطالب":  paperStuKeys(),
+    "بيانات المعلم":  paperTchKeys()
+  };
+  return '<div style="max-height:150px;overflow:auto;border:1px solid var(--line-2);border-radius:9px;padding:8px">'+
+    Object.keys(groups).map(function(g){
+      if(!groups[g].length) return "";
+      return '<div style="font-size:11.5px;color:var(--muted);font-weight:700;margin:4px 0 3px">'+esc(g)+'</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:4px">'+
+        groups[g].map(function(k){
+          return '<button class="btn ghost" data-act="ppVar" data-v="'+esc(k)+'" '+
+            'style="padding:3px 7px;font-size:11.5px;border-radius:6px">{'+esc(k)+'}</button>';
+        }).join("")+'</div>';
+    }).join("")+'</div>';
+}
 function modalPaper(){
   openModal(mHead("نموذج ورقي مخصص")+'<div class="mb">'+
     '<label class="f"><span>عنوان النموذج</span><input type="text" id="pp_title" placeholder="مثال: إقرار متابعة"></label>'+
     '<label class="f"><span>التصنيف</span><select id="pp_cat">'+
       PAPER_CATS.map(function(c){ return '<option value="'+c.id+'">'+esc(c.name)+'</option>'; }).join("")+'</select></label>'+
     '<label class="f"><span>نص النموذج</span><textarea id="pp_body" style="min-height:190px" '+
-      'placeholder="اكتب نص الورقة. سيبها فراغات (……) في الأماكن اللي هتتملى بخط اليد."></textarea></label>'+
+      'placeholder="اكتب نص الورقة، وحط الرموز في أماكن البيانات — مثال: الطالب / {اسم_الطالب} بالصف {الصف}"></textarea></label>'+
+    '<div class="note ok"><b>التعبئة التلقائية:</b> حط الرمز في نصك والبرنامج هيملاه من القاعدة. '+
+      'أي بيان مش موجود هيبقى نقط للكتابة باليد.</div>'+
+    '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:9px 0 5px;font-size:12.5px">'+
+      'الرموز المتاحة — اضغط على أي واحد عشان ينسخ</div>'+
+    paperVarsHelp()+
     '<div class="note">بيتطبع تلقائيًا بترويسة المدرسة (المديرية، الإدارة، اسم المدرسة، العام الدراسي) فوق، وخانة التاريخ والتوقيع تحت.</div>'+
     '</div>'+mFoot("حفظ النموذج","savePaper"));
 }
@@ -14057,10 +14124,30 @@ function formRowHTML(f, can){
     (f.builtin?' · استمارة أساسية':(f.fields?' · '+f.fields+' حقل':''))+
     ' · '+(formStrict(f)?'المسجّلين فقط':'أي رقم قومي')+' · '+esc(audienceLabel(f))+'</small></span>'+
     '<span class="tag '+(open?"ok":"bad")+'">'+(open?"ظاهرة للطلاب":"مخفية")+'</span>'+
+    (canManageForms() && n ? migButtons(f, true) : '')+
     '<button class="btn ghost sm" data-act="formOpenSubs" data-id="'+esc(f.id)+'">فتح ›</button>'+
     '</div>';
 }
 /* شريط التحكم الكامل لأي استمارة */
+/* زرّي الترحيل — بيظهروا في كل استمارة، الموجودة والجديدة */
+function migButtons(f, small){
+  var fid = f && f.id;
+  if(!fid) return "";
+  /* دايمًا بنجيب الاستمارة الحقيقية — عشان الفهرس بيمرّر نسخة مختصرة */
+  var real = (fid==="track") ? trackFormObj() : formById(fid);
+  if(!real) return "";
+  var rows = formRows(real);
+  if(!rows.length) return "";
+  var nNew = rows.filter(function(r){ return rowIsNew(r, fid); }).length;
+  f = real;
+  var sm = small ? " sm" : "";
+  return (nNew
+      ? '<button class="btn seal'+sm+'" data-act="formMigrate" data-id="'+esc(f.id)+'" data-mode="new">'+
+        '⇪ ترحيل المستجدين ('+nNew+')</button>'
+      : '')+
+    '<button class="btn'+(nNew?" ghost":" seal")+sm+'" data-act="formMigrate" data-id="'+esc(f.id)+'" data-mode="all">'+
+    '⇪ ترحيل الجميع ('+rows.length+')</button>';
+}
 function formToolbar(f, open){
   var n = formSubsCount(f.id);
   var L = formTargetLevel(f);
@@ -14177,11 +14264,12 @@ function formRows(f){
     });
   }
   var defL = formTargetLevel(f);
+  var flds = Array.isArray(f.fields) ? f.fields : [];
   return formSubsOf(f.id).map(function(sub){
     var vals = sub.values||sub.vals||{};
     var lvl = 0, phone = "", edu = "", guardian = "", trk = "", subj = "", prev = "", rel = "";
     var extra = {};                       /* الحقول اللي مالهاش مكان في بيانات الطالب */
-    (f.fields||[]).forEach(function(fd){
+    flds.forEach(function(fd){
       var v = vals[fd.id];
       if(v==null || String(v).trim()==="") return;
       var lb = normAr(fd.label||"");
@@ -14461,18 +14549,26 @@ function autoClassFor(s){
   return null;
 }
 /* نافذة الترحيل من أي استمارة */
-function modalFormMigrate(fid){
+function modalFormMigrate(fid, mode){
   formsInit();
+  UI.migMode = (mode==="new") ? "new" : "all";
   var f = (fid==="track") ? {id:"track", title:"استمارة تحديد المسار", level:num(DB.trackLevel,2)} : formById(fid);
   if(!f){ toast("الاستمارة مش موجودة"); return; }
-  var rows = formRows(f).filter(function(r){
+  var allRows = formRows(f).filter(function(r){
     var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
     return nat && nat.length===14;
   });
+  /* «المستجدون» = اللي سجّلوا بعد آخر ترحيل */
+  var onlyNew = (UI.migMode==="new");
+  var rows = onlyNew ? allRows.filter(function(r){ return rowIsNew(r, f.id); }) : allRows;
   if(!rows.length){
-    openModal(mHead("ترحيل من: "+f.title)+
-      '<div class="mb"><div class="empty"><b>مفيش تسجيلات صالحة</b>'+
-      '<p>لازم يكون فيه اسم ورقم قومي صحيح (١٤ رقم) في التسجيل.</p></div></div>'+mFoot("تمام","close"));
+    openModal(mHead((onlyNew?"ترحيل المستجدين من: ":"ترحيل من: ")+f.title)+
+      '<div class="mb"><div class="empty"><b>'+
+      (onlyNew? "مفيش مستجدين" : "مفيش تسجيلات صالحة")+'</b>'+
+      '<p>'+(onlyNew
+        ? "محدش سجّل بعد آخر عملية ترحيل. استخدم «ترحيل الجميع» لو عايز تحدّث بيانات الكل."
+        : "لازم يكون فيه اسم ورقم قومي صحيح (١٤ رقم) في التسجيل.")+'</p></div></div>'+
+      mFoot("تمام","close"));
     return;
   }
   /* مين جديد ومين موجود بالفعل */
@@ -14506,14 +14602,15 @@ function modalFormMigrate(fid){
       where = " · " + (c ? c.name : (isHomeStudent(o) ? "منازل" : "غير مسكّن"));
     }
     var isN = rowIsNew(r, f.id);
+    var chk = onlyNew ? true : isN;      /* في وضع المستجدين الكل متعلّم */
     return '<label class="list-item mgrow" data-new="'+(isN?1:0)+'" data-name="'+esc(r.name||"")+'" '+
       'data-nat="'+esc(r._nat)+'" style="cursor:pointer">'+
-      '<input type="checkbox" class="mgck" data-i="'+i+'"'+(isN?" checked":"")+' style="width:18px;height:18px;flex:0 0 18px">'+
+      '<input type="checkbox" class="mgck" data-i="'+i+'"'+(chk?" checked":"")+' style="width:18px;height:18px;flex:0 0 18px">'+
       '<span class="tx"><b>'+esc(r.name||"—")+'</b><small><span style="direction:ltr">'+esc(r._nat)+'</span>'+
       (r.tag?' · '+esc(r.tag):'')+esc(where)+'</small></span>'+badge+'</label>';
   }).join("");
 
-  openModal(mHead("ترحيل من: "+f.title)+
+  openModal(mHead((onlyNew? "ترحيل المستجدين من: " : "ترحيل الجميع من: ")+f.title)+
     '<div class="mb">'+
     '<div class="note"><b>'+isNew+' جديد</b> · <b>'+isOld+' موجود بالفعل</b>. '+
       'الأساس هو <b>الرقم القومي</b>: اللي موجود <u>مش هيتكرر</u> — هتتحدّث بياناته بس، '+
@@ -14522,16 +14619,18 @@ function modalFormMigrate(fid){
       '<b>'+esc(eduBreak)+'</b>. والمنازل من غير فصول.</div>'+
     '<div class="note">أي بيان في الاستمارة مالوش عمود في ملف الطالب — البرنامج بيعمل له '+
       '<b>عمود جديد بنفس العنوان</b> ويحط تحته إجابات الطلاب.</div>'+
-    '<div class="note '+(isNew?"warn":"ok")+'">'+
-      (lastT
-        ? 'آخر ترحيل كان <b>'+esc(fmtDate(new Date(lastT).toISOString().slice(0,10)))+'</b>. '+
-          (isNew? '<b>'+isNew+'</b> سجّلوا بعده.' : 'مفيش حد سجّل بعده.')
-        : 'لسه ما اتعملش ترحيل لهذه الاستمارة — كل الـ'+rows.length+' جديد.')+
+    '<div class="note '+(onlyNew?"warn":"ok")+'">'+
+      (onlyNew
+        ? '<b>المستجدون فقط ('+rows.length+')</b> — دول اللي سجّلوا '+
+          (lastT? 'بعد آخر ترحيل يوم <b>'+esc(fmtDate(new Date(lastT).toISOString().slice(0,10)))+'</b>'
+                : 'ولسه ما اتعملش ترحيل قبل كده')+'.'
+        : '<b>كل المسجّلين ('+rows.length+')</b>'+
+          (lastT? ' — آخر ترحيل كان يوم <b>'+esc(fmtDate(new Date(lastT).toISOString().slice(0,10)))+'</b>' : '')+'.')+
       '</div>'+
     '<div style="display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap">'+
-      '<button class="btn ghost sm" data-act="mgAll">الكل ('+rows.length+')</button>'+
-      '<button class="btn ghost sm" data-act="mgNew">الجديد ('+isNew+')</button>'+
-      '<button class="btn ghost sm" data-act="mgOld">الموجود ('+isOld+')</button>'+
+      '<button class="btn ghost sm" data-act="mgAll">تحديد الكل ('+rows.length+')</button>'+
+      (onlyNew? '' : '<button class="btn ghost sm" data-act="mgNew">المستجدون ('+isNew+')</button>'+
+                     '<button class="btn ghost sm" data-act="mgOld">الموجود ('+isOld+')</button>')+
       '<button class="btn ghost sm" data-act="mgNone">إلغاء التحديد</button></div>'+
     '<div class="grid2">'+
       '<label class="f"><span>الصف اللي هيترحّلوا ليه</span><select id="mg_lvl">'+
@@ -14547,9 +14646,8 @@ function modalFormMigrate(fid){
     '<div id="mglist" style="max-height:36vh;overflow:auto">'+body+'</div>'+
     '</div>'+
     '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
-    (isNew? '<button class="btn seal" data-act="migNew" data-id="'+esc(f.id)+'">⇪ ترحيل الجديد ('+isNew+')</button>' : '')+
-    '<button class="btn" data-act="migAll" data-id="'+esc(f.id)+'">⇪ ترحيل الجميع ('+rows.length+')</button>'+
-    '<button class="btn ghost" data-act="doFormMigrate" data-id="'+esc(f.id)+'">ترحيل المحدد</button></div>');
+    '<button class="btn" data-act="doFormMigrate" data-id="'+esc(f.id)+'">'+
+    (onlyNew? '⇪ ترحيل المستجدين المحددين' : '⇪ تنفيذ الترحيل')+'</button></div>');
 
   var q = document.getElementById("mgq");
   if(q) q.addEventListener("input", function(){
@@ -14617,7 +14715,7 @@ function viewFormSubs(f){
   var open = f.status!=="closed";
   var h = '<button class="btn ghost sm noprint" data-act="formsManage" style="margin-bottom:10px">→ كل الاستمارات</button>';
   h += pageHd(f.title, (f.desc||"")+" — "+formLevelLabel(f),
-    (can?'<button class="btn seal" data-act="formMigrate" data-id="'+f.id+'">⇪ ترحيل الطلاب</button>':'')+
+    (can? migButtons(f) : '')+
     '<button class="btn" data-act="formExcel" data-id="'+f.id+'">⬇ إكسيل</button>');
   if(can) h += formToolbar(f, open);
   if(can){
@@ -14634,7 +14732,7 @@ function viewFormSubs(f){
         (rowsAll.length-notMig? '<b>'+(rowsAll.length-notMig)+'</b> موجود بالفعل (هتتحدّث بياناته)' : '')+
         '. الاستمارة بوابة تحديث: كل المسجّلين بيترحّلوا، الجديد يتضاف والموجود تتحدّث بياناته.'+
       '</span>'+
-      (rowsAll.length? '<button class="btn seal sm" data-act="formMigrate" data-id="'+esc(f.id)+'">⇪ ترحيل</button>':'')+
+      (rowsAll.length? migButtons(f, true) : '')+
       '</div>';
   }
   h += '<div class="card noprint"><div class="bd"><label class="f" style="margin:0"><span>بحث بالاسم أو الرقم القومي</span>'+
@@ -14826,7 +14924,7 @@ function viewWishes(){
 
   var h = pageHd("رغبات الطلاب",
     all.length+" طالب سجّل رغبته في قسم "+sectorName(curSector()),
-    (roleIs("deputy")&&all.length?'<button class="btn seal" data-act="formMigrate" data-id="track">⇪ ترحيل الطلاب</button>':'')+
+    (roleIs("deputy")&&all.length? migButtons({id:"track"}) : '')+
     '<button class="btn" data-act="wExcel" style="margin-right:6px">⬇ تنزيل إكسيل</button>'+
     '<button class="btn ghost" data-act="wPdf" style="margin-right:6px">⬇ تنزيل PDF</button>');
 
@@ -15126,6 +15224,12 @@ Object.assign(ACTS, {
     DB.papers = (DB.papers||[]).filter(function(p){ return p.id!==el.dataset.id; });
     saveNow(); render(); toast("اتحذف");
   },
+  ppVar: function(el){
+    var ta = document.getElementById("pp_body");
+    if(!ta) return;
+    ta.value = (ta.value||"") + "{"+el.dataset.v+"}";
+    ta.focus();
+  },
   paperOpen:   function(el){ modalPaperFill(el.dataset.k); },
   doPaperFill: function(el){ openPaper(el.dataset.k, val("pf_s"), val("pf_t")); }
 });
@@ -15135,7 +15239,7 @@ Object.assign(ACTS, {
   formHub: function(){ UI.sub = null; render(); },
   formsManage: function(){ UI.sub = null; render(); },
   _formsManageOld: function(){ UI.sub = { forms:true }; render(); },
-  formMigrate: function(el){ modalFormMigrate(el.dataset.id); },
+  formMigrate: function(el){ modalFormMigrate(el.dataset.id, el.dataset.mode || "all"); },
   doFormMigrate: doFormMigrate,
   migNew: function(el){ doFormMigrate(el, "new"); },
   migAll: function(el){
