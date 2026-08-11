@@ -13389,19 +13389,44 @@ function formRows(f){
   var defL = formTargetLevel(f);
   return formSubsOf(f.id).map(function(sub){
     var vals = sub.values||sub.vals||{};
-    var lvl = 0, phone = "", edu = "";
+    var lvl = 0, phone = "", edu = "", guardian = "", trk = "", subj = "", prev = "", rel = "";
+    var extra = {};                       /* الحقول اللي مالهاش مكان في بيانات الطالب */
     (f.fields||[]).forEach(function(fd){
       var v = vals[fd.id];
-      if(v==null || v==="") return;
+      if(v==null || String(v).trim()==="") return;
       var lb = normAr(fd.label||"");
-      if(!lvl && /صف|مستوى|سنه|سنة|مرحل/.test(lb)) lvl = parseLevel(v)||0;
-      if(!phone && /هاتف|تليفون|موبايل|رقم ولي/.test(lb)) phone = toEnDigits(String(v)).replace(/[^\d+]/g,"");
-      if(!edu && /نوعيه|نوعية|منازل|انتساب/.test(lb)) edu = /منازل|انتساب/.test(normAr(String(v))) ? "home" : "";
+      /* الحقول اللي ليها مكان معروف في ملف الطالب */
+      if(!lvl && /^صف|الصف|مستوي|سنه دراسيه|مرحله/.test(lb)){ lvl = parseLevel(v)||0; if(lvl) return; }
+      if(!edu && /نوعيه التعليم|نوعية التعليم|نظام الدراسه|نظام الدراسة/.test(lb)){
+        edu = parseEdu(v); if(edu) return;
+      }
+      if(!phone && /هاتف|تليفون|موبايل/.test(lb)){ phone = toEnDigits(String(v)).replace(/[^\d+]/g,""); return; }
+      if(!guardian && /ولي الامر|ولي الأمر/.test(lb) && !/هاتف|تليفون|موبايل|رقم/.test(lb)){ guardian = cleanName(v); return; }
+      if(!trk && /^المسار$|^مسار$/.test(lb)){ trk = parseWishTrack(v); if(trk) return; }
+      if(!subj && /ماده التخصص|مادة التخصص/.test(lb)){ subj = String(v).trim(); return; }
+      if(!prev && /الفصل السابق|فصل سابق/.test(lb)){ prev = String(v).trim(); return; }
+      if(!rel && /الديانه|الديانة/.test(lb)){ rel = /مسيح|قبط/.test(normAr(String(v)))?"مسيحي":"مسلم"; return; }
+      /* أي حاجة تانية = بيان إضافي بعنوانه زي ما هو */
+      extra[fd.label] = String(v);
     });
     return { key:sub.natId, name:sub.name, natId:sub.natId,
-             level: defL || lvl || 0, phone:phone, edu:edu,
-             tag:fmtDate(sub.date), src:sub };
+             level: defL || lvl || 0, phone:phone, edu:edu, guardian:guardian,
+             bacTrack:trk, bacSubject:subj, prevClass:prev, religion:rel,
+             extra:extra, tag:fmtDate(sub.date), src:sub };
   });
+}
+/* ============================================================
+   الأعمدة الإضافية: أي بيان في الاستمارة مالوش مكان في ملف الطالب
+   بيتعمل له عمود جديد بنفس عنوانه، وبيتحط تحته إجابات الطلاب.
+   ============================================================ */
+function ensureExtraField(label){
+  xfInit();
+  var list = xfList("student");
+  var found = list.filter(function(x){ return normAr(x.label)===normAr(label); })[0];
+  if(found) return found;
+  var fd = { id:uid("xf"), label:String(label), type:"text", options:[] };
+  list.push(fd);
+  return fd;
 }
 /* بيرحّل صف واحد لطالب. mode: "reg" عادي أو "home" منازل */
 /* القسم المستنتج من نوعية التعليم — فاضي لو النوعية مش محددة */
@@ -13469,73 +13494,90 @@ function migrateRowToStudent(r, opt){
   if(!name) return {ok:false, reason:"بدون اسم"};
   if(!nat || nat.length!==14 || !parseNationalId(nat)) return {ok:false, reason:"رقم قومي غير صحيح"};
 
-  var exists = DB.students.filter(function(s){ return s.natId===nat; })[0];
-  if(exists){
-    /* الطالب موجود بالفعل — بنحدّث بياناته من الاستمارة، من غير ما نلمس
-       الاسم ولا الرقم القومي، ومن غير ما نمسح بيان قديم ببيان فاضي. */
-    if(opt.updateExisting){
-      var ch = 0;
-      function put(k, v){
-        if(v===undefined || v===null || v==="") return;      /* الفاضي مبيمسحش */
-        if(String(exists[k]||"") === String(v)) return;       /* اتغيّرش */
-        exists[k] = v; ch++;
-      }
-      var lvl = num(opt.level,0) || num(r.level,0);
-      if(lvl && studentLevelOf(exists)!==lvl){ setStudentLevel(exists, lvl); ch++; }
-      put("bacTrack",   r.bacTrack);
-      put("bacSubject", r.bacSubject);
-      put("prevClass",  r.prevClass);
-      put("phone",      r.phone);
-      put("guardian",   r.guardian);
-      if(opt.asHome===true && exists.edu!=="home"){ exists.edu="home"; exists.classId=""; ch++; }
-      else if(opt.asHome===false && r.edu && r.edu!=="home"){ put("edu", r.edu); }
-      else put("edu", r.edu);
-      var wantSec = eduSector(r.edu) || opt.sector;
-      if(wantSec && exists.sector!==wantSec && !classById(exists.classId)){ exists.sector = wantSec; ch++; }
-      /* تسكين تلقائي لو لسه من غير فصل */
-      if(opt.autoPlace && !isHomeStudent(exists) && !classById(exists.classId)){
-        var c0 = autoClassFor(exists);
-        if(c0){ assignStudentToClass(exists, c0.id); ch++; }
-      }
-      enrichStudent(exists);
-      return {ok:false, upd:true, changed:ch, sid:exists.id, s:exists};
+  /* نوعية الطالب هي اللي بتحدد قسمه — مش القسم اللي الوكيل واقف فيه */
+  var edu = r.edu || "reg";
+  var isHome = (edu === "home");
+  var sec = isHome ? (r.sector || "reg") : (eduSector(edu) || r.sector || curSector());
+  var lvl = num(opt.level,0) || num(r.level,0);
+
+  /* أي بيان في الاستمارة مالوش عمود — بنعمل له عمود */
+  function applyExtra(st){
+    if(!r.extra) return 0;
+    var n = 0;
+    for(var label in r.extra){
+      var v = r.extra[label];
+      if(v===undefined || v===null || String(v).trim()==="") continue;
+      var fd = ensureExtraField(label);
+      if(String(xfGet(st, fd.id)) !== String(v)){ xfSet(st, fd.id, v); n++; }
     }
-    return {ok:false, dup:true, sid:exists.id, reason:"مسجّل بالفعل"};
+    return n;
   }
 
-  var isHome = (opt.asHome!==undefined) ? opt.asHome : (r.edu==="home");
+  var exists = nat ? DB.students.filter(function(s){ return s.natId===nat; })[0] : null;
+
+  /* ---------- الرقم القومي موجود: تحديث بس، من غير تكرار ---------- */
+  if(exists){
+    var ch = 0;
+    function put(k, v){
+      if(v===undefined || v===null || v==="") return;   /* الفاضي مبيمسحش المليان */
+      if(String(exists[k]||"") === String(v)) return;
+      exists[k] = v; ch++;
+    }
+    /* الرقم القومي والاسم الأساسي مبيتغيّروش */
+    if(lvl && studentLevelOf(exists)!==lvl){ setStudentLevel(exists, lvl); ch++; }
+    put("bacTrack",   r.bacTrack);
+    put("bacSubject", r.bacSubject);
+    put("prevClass",  r.prevClass);
+    put("phone",      r.phone);
+    put("guardian",   r.guardian);
+    put("religion",   r.religion);
+    if(r.edu && exists.edu !== r.edu){
+      exists.edu = r.edu;
+      exists.sector = isHome ? (exists.sector||"reg") : sec;
+      if(isHome) exists.classId = "";
+      ch++;
+    }
+    ch += applyExtra(exists);
+    /* تسكين تلقائي لو لسه من غير فصل */
+    if(opt.autoPlace && !isHomeStudent(exists) && !classById(exists.classId)){
+      var c0 = autoClassFor(exists);
+      if(c0){ assignStudentToClass(exists, c0.id); ch++; }
+    }
+    enrichStudent(exists);
+    if(r.src && typeof r.src==="object"){ r.src.migrated = true; r.src.migratedTo = exists.id; }
+    return {ok:false, upd:true, changed:ch, sid:exists.id, s:exists};
+  }
+
+  /* ---------- رقم جديد: طالب جديد بكل بياناته ---------- */
   var s = {
     id: uid("s"), status:"active", joined: today(),
     name: name, natId: nat, classId: "",
-    edu: isHome ? "home" : (r.edu||"reg"),
-    /* نوعية الطالب هي اللي بتحدد قسمه — مش القسم اللي الوكيل واقف فيه.
-       من غير كده طالب خدمات يترحّل وإنت في نظامي فيروح نظامي بالغلط. */
-    sector: (isHome ? "reg" : (eduSector(r.edu) || r.sector || opt.sector || curSector())),
-    phone: r.phone || "", guardian: r.guardian || "",
+    edu: edu, sector: sec,
+    phone: r.phone || "", guardian: r.guardian || "", religion: r.religion || "",
     prevClass: r.prevClass || "", bacTrack: r.bacTrack || "", bacSubject: r.bacSubject || "",
     fromForm: opt.formId || ""
   };
+  setStudentLevel(s, lvl);
   stampSrc(s, opt.formId ? ("form:"+opt.formId) : "form");
-  setStudentLevel(s, opt.level || r.level || 0);
+  applyExtra(s);
   enrichStudent(s);
   DB.students.push(s);
   if(r.src && typeof r.src==="object"){ r.src.migrated = true; r.src.migratedTo = s.id; }
   return {ok:true, sid:s.id, s:s};
 }
-/* ترحيل جماعي من استمارة: بيسكّن أوتوماتيك لو لقى فصل مناسب لنفس الصف */
 function migrateFormRows(f, rows, opt){
   opt = opt || {};
   var res = { add:0, upd:0, same:0, bad:0, placed:0 };
   rows.forEach(function(r){
     var out = migrateRowToStudent(r, {
       level: opt.level || formTargetLevel(f) || r.level,
-      sector: opt.sector, asHome: opt.asHome, formId: f?f.id:"",
-      autoPlace: opt.autoPlace,
+      formId: f?f.id:"",
+      autoPlace: opt.autoPlace!==false,       /* التسكين التلقائي هو الأصل */
       updateExisting: true
     });
     if(out.ok){
       res.add++;
-      if(opt.autoPlace && !isHomeStudent(out.s)){
+      if(opt.autoPlace!==false && !isHomeStudent(out.s)){
         var c = autoClassFor(out.s);
         if(c){ assignStudentToClass(out.s, c.id); res.placed++; }
       }
@@ -13557,8 +13599,16 @@ function autoClassFor(s){
   if(s.bacTrack){
     var m = pool.filter(function(c){ return c.track===s.bacTrack; })[0];
     if(m) return m;
+    return null;               /* له مسار ومفيش فصل مطابق — سيبه بدل ما نحطه غلط */
   }
-  return null;   /* من غير مسار مطابق سيبه غير مسكّن بدل ما نحطه غلط */
+  /* من غير مسار (زي الصف الأول أو النظام العام): نسكّنه لو فيه فصل واحد بس */
+  if(pool.length===1) return pool[0];
+  /* أو أقل فصل عددًا لو كلهم من غير مسار — توزيع متوازن */
+  var generic = pool.filter(function(c){ return !c.track || c.track==="none"; });
+  if(generic.length){
+    return generic.sort(function(a,b){ return studentsOf(a.id).length - studentsOf(b.id).length; })[0];
+  }
+  return null;
 }
 /* نافذة الترحيل من أي استمارة */
 function modalFormMigrate(fid){
@@ -13585,6 +13635,14 @@ function modalFormMigrate(fid){
   var isNew = rows.filter(function(r){ return !r._old; }).length;
   var isOld = rows.length - isNew;
   var L = formTargetLevel(f);
+  /* توزيع المسجّلين على الأقسام حسب نوعية التعليم */
+  var cnt = { reg:0, srv:0, home:0 };
+  rows.forEach(function(r){ var e = r.edu||"reg"; if(cnt[e]!==undefined) cnt[e]++; else cnt.reg++; });
+  var eduBreak = [];
+  if(cnt.reg)  eduBreak.push(cnt.reg+" نظامي");
+  if(cnt.srv)  eduBreak.push(cnt.srv+" خدمات");
+  if(cnt.home) eduBreak.push(cnt.home+" منازل");
+  eduBreak = eduBreak.join(" · ") || "—";
 
   var body = rows.map(function(r,i){
     var o = r._old;
@@ -13606,8 +13664,12 @@ function modalFormMigrate(fid){
   openModal(mHead("ترحيل من: "+f.title)+
     '<div class="mb">'+
     '<div class="note"><b>'+isNew+' جديد</b> · <b>'+isOld+' موجود بالفعل</b>. '+
-      'الموجود <u>مش هيتكرر</u> — هتتحدّث بياناته من الاستمارة (المسار، المادة، الفصل السابق، الهاتف، الصف) '+
-      'ما عدا <b>الاسم والرقم القومي</b> فمش بيتغيّروا.</div>'+
+      'الأساس هو <b>الرقم القومي</b>: اللي موجود <u>مش هيتكرر</u> — هتتحدّث بياناته بس، '+
+      'و<b>رقمه القومي واسمه مش بيتغيّروا</b>. واللي جديد هيترحّل بكل بياناته.</div>'+
+    '<div class="note ok">كل طالب بيروح قسمه لوحده حسب نوعية تعليمه: '+
+      '<b>'+esc(eduBreak)+'</b>. والمنازل من غير فصول.</div>'+
+    '<div class="note">أي بيان في الاستمارة مالوش عمود في ملف الطالب — البرنامج بيعمل له '+
+      '<b>عمود جديد بنفس العنوان</b> ويحط تحته إجابات الطلاب.</div>'+
     '<div style="display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap">'+
       '<button class="btn ghost sm" data-act="mgAll">الكل ('+rows.length+')</button>'+
       '<button class="btn ghost sm" data-act="mgNew">الجديد فقط ('+isNew+')</button>'+
@@ -13617,14 +13679,10 @@ function modalFormMigrate(fid){
       '<label class="f"><span>الصف اللي هيترحّلوا ليه</span><select id="mg_lvl">'+
         LEVELS.map(function(l){ return '<option value="'+l.id+'"'+(l.id===(L||2)?" selected":"")+'>'+esc(l.name)+'</option>'; }).join("")+
         '</select></label>'+
-      '<label class="f"><span>يتسجّلوا كـ</span><select id="mg_kind">'+
-        '<option value="reg">طلاب نظاميين (يتسكّنوا على فصول)</option>'+
-        '<option value="home">طلاب منازل (بدون فصول)</option>'+
-        '</select></label>'+
+      '<label class="f"><span>التوزيع على الأقسام</span>'+
+        '<input type="text" value="'+esc(eduBreak)+'" readonly style="background:#f6f7f6">'+
+        '<small style="color:var(--muted);font-size:11.5px">كل طالب بيروح قسمه حسب نوعية تعليمه — تلقائي.</small></label>'+
     '</div>'+
-    '<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer">'+
-      '<input type="checkbox" id="mg_place" checked style="width:18px;height:18px">'+
-      '<span>تسكين تلقائي على فصل مطابق للصف والمسار لو موجود</span></label>'+
     '<input type="text" id="mgq" placeholder="بحث بالاسم أو الرقم القومي…" autocomplete="off" style="width:100%;padding:9px;border:1px solid var(--line-2);border-radius:8px;margin-bottom:8px">'+
     '<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">'+
       '<span style="flex:1"></span><span id="mgcount" style="font-size:12px;color:var(--muted)"></span></div>'+
@@ -13670,11 +13728,11 @@ function doFormMigrate(el){
     .map(function(cb){ return rows[num(cb.dataset.i,-1)]; }).filter(Boolean);
   if(!picked.length){ toast("مختارتش أي حد"); return; }
   var lvl = num(val("mg_lvl"), 2);
-  var asHome = val("mg_kind")==="home";
-  var place = !!(document.getElementById("mg_place")||{}).checked;
+  var before = xfList("student").length;
   markUndo("ترحيل من استمارة");
-  /* مبنبعتش sector عشان نوعية كل طالب هي اللي تحدد قسمه */
-  var r = migrateFormRows(f, picked, { level:lvl, asHome:asHome, autoPlace:place && !asHome });
+  /* نوعية كل طالب هي اللي تحدد قسمه، والتسكين تلقائي للنظامي والخدمات */
+  var r = migrateFormRows(f, picked, { level:lvl });
+  var newCols = xfList("student").length - before;
   UI.migRows = null;
   saveNow(); closeModal(); render();
   var parts = [];
@@ -13682,6 +13740,7 @@ function doFormMigrate(el){
   if(r.upd)  parts.push("اتحدّث "+r.upd);
   if(r.same) parts.push(r.same+" من غير تغيير");
   if(r.placed) parts.push("اتسكّن "+r.placed+" على فصول");
+  if(newCols) parts.push("اتعمل "+newCols+" عمود جديد");
   if(r.bad)  parts.push(r.bad+" بيانات ناقصة");
   toastUndo(parts.length ? parts.join(" · ") : "مفيش تغيير");
 }
