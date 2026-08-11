@@ -8013,7 +8013,11 @@ var ACTS = {
     var n = formSubsCount(fid);
     if(!confirm("مسح كل تسجيلات «"+f.title+"» ("+n+" تسجيل)؟\nالطلاب اللي اترحّلوا بالفعل مش هيتأثروا.")) return;
     markUndo("مسح تسجيلات استمارة");
-    if(fid==="track"){ wishesInit(); DB.wishes = DB.wishes.filter(function(w){ return studentSector({edu:wishEdu(w)})!==curSector(); }); }
+    if(fid==="track"){
+      wishesInit();
+      var aud = formAudience({id:"track"});
+      DB.wishes = DB.wishes.filter(function(w){ return aud.indexOf(wishEdu(w)) < 0; });
+    }
     else { formsInit(); DB.formSubs[fid] = []; }
     saveNow(); render(); toastUndo("اتمسحت التسجيلات");
   },
@@ -13087,10 +13091,12 @@ function eduType(id){
 function eduName(id){ return eduType(id).name; }
 function wishEdu(w){ return (w && w.edu) ? w.edu : "reg"; }
 /* الرغبات اللي تخص الفترة الحالية */
+/* تسجيلات استمارة المسار — كل النوعيات المسموح لها، مش القسم اللي واقف فيه.
+   من غير كده طلاب المنازل والخدمات بيختفوا من الكشف رغم إنهم سجّلوا. */
 function wishesOfSector(){
   wishesInit();
-  var sec = curSector();
-  return DB.wishes.filter(function(w){ return eduType(wishEdu(w)).sector === sec; });
+  var aud = formAudience({id:"track"});
+  return DB.wishes.filter(function(w){ return aud.indexOf(wishEdu(w)) >= 0; });
 }
 function wishTrack(id){
   var wt = wishTracks();
@@ -13443,7 +13449,8 @@ function saveCustomForm(fid){
 }
 /* تصدير تسجيلات استمارة مخصصة لإكسيل */
 function formExcel(fid){
-  var f = formById(fid); if(!f){ toast("الاستمارة مش موجودة"); return; }
+  var f = (fid==="track") ? trackFormObj() : formById(fid);
+  if(!f){ toast("الاستمارة مش موجودة"); return; }
   var subs = formSubsOf(fid);
   if(!subs.length){ toast("مفيش تسجيلات للتصدير"); return; }
   var head = ["م","الاسم رباعي","الرقم القومي"].concat((f.fields||[]).map(function(fd){ return fd.label; })).concat(["تاريخ التسجيل","وقت التسجيل"]);
@@ -13752,7 +13759,23 @@ var FIELD_TYPES = [
 function fieldTypeName(t){ for(var i=0;i<FIELD_TYPES.length;i++) if(FIELD_TYPES[i].id===t) return FIELD_TYPES[i].name; return t; }
 function formsInit(){ if(!Array.isArray(DB.forms)) DB.forms=[]; if(!DB.formSubs||typeof DB.formSubs!=="object") DB.formSubs={}; if(DB.trackOpen===undefined) DB.trackOpen=true; }
 function formById(id){ formsInit(); for(var i=0;i<DB.forms.length;i++) if(DB.forms[i].id===id) return DB.forms[i]; return null; }
-function formSubsOf(id){ formsInit(); return Array.isArray(DB.formSubs[id]) ? DB.formSubs[id] : []; }
+function formSubsOf(id){
+  if(id==="track"){
+    /* الرغبات بشكل تسجيلات: نفس الحقول الأساسية + الإضافية */
+    return wishesOfSector().map(function(w){
+      var vals = {};
+      vals["__prev"]  = w.prevClass||"";
+      vals["__edu"]   = eduName(wishEdu(w));
+      vals["__track"] = w.track? wishTrackName(w.track) : "";
+      vals["__subj"]  = w.subject||"";
+      trackExtra().forEach(function(fd){ vals[fd.id] = (w.extra||{})[fd.id] || ""; });
+      return { id:w.id, name:w.name, natId:w.natId, date:w.date, time:w.time||"",
+               values:vals, migrated:w.migrated, migratedTo:w.migratedTo, _w:w };
+    });
+  }
+  formsInit();
+  return Array.isArray(DB.formSubs[id]) ? DB.formSubs[id] : [];
+}
 function subByNat(formId, nat, exceptId){
   var n = toEnDigits(String(nat||"")).replace(/\D/g,"");
   var list = formSubsOf(formId);
@@ -13993,18 +14016,9 @@ function trackFormObj(){
     fields: TRACK_CORE.concat(trackExtra())
   };
 }
+/* استمارة المسار بنفس شاشة أي استمارة — نفس الشكل ونفس الأدوات */
 function viewTrackSubs(){
-  var f = trackFormObj();
-  var h = viewWishes();
-  /* نحط الشريط بعد عنوان الصفحة مباشرة عشان يبان في مكانه الصح */
-  var bar = '<button class="btn ghost sm noprint" data-act="formsManage" style="margin-bottom:10px">→ كل الاستمارات</button>'+
-            (canManageForms() ? formToolbar(f, f.status!=="closed") : "");
-  var cut = h.indexOf("</div>", h.indexOf('class="pagehd'));
-  if(cut > 0){
-    cut = h.indexOf("</div>", cut+6) + 6;      /* نهاية كارت العنوان */
-    return h.slice(0,cut) + bar + h.slice(cut);
-  }
-  return bar + h;
+  return viewFormSubs(trackFormObj());
 }
 function formCardHTML(o){
   var open = o.status!=="closed";
@@ -14044,7 +14058,9 @@ function formRows(f){
   if(!f) return [];
   if(f.id==="track"){
     wishesInit();
-    return (DB.wishes||[]).map(function(w){
+    /* كل النوعيات المسموح لها — مش القسم اللي واقف فيه */
+    var aud = formAudience({id:"track"});
+    return (DB.wishes||[]).filter(function(w){ return aud.indexOf(wishEdu(w))>=0; }).map(function(w){
       return { key:w.id, name:w.name, natId:w.natId, level:num(DB.trackLevel,2),
                edu:wishEdu(w), sector:eduType(wishEdu(w)).sector,
                bacTrack:w.track, bacSubject:w.subject, prevClass:w.prevClass,
@@ -15008,10 +15024,16 @@ Object.assign(ACTS, {
   },
   formSubDel: function(el){
     if(!confirm("حذف تسجيل الطالب ده؟")) return;
-    formsInit();
-    var fid = el.dataset.fid;
-    if(Array.isArray(DB.formSubs[fid])) DB.formSubs[fid] = DB.formSubs[fid].filter(function(s){ return s.id!==el.dataset.id; });
-    saveNow(); render(); toast("اتحذف");
+    var fid = el.dataset.fid, sid = el.dataset.id;
+    markUndo("حذف تسجيل");
+    if(fid==="track"){
+      wishesInit();
+      DB.wishes = DB.wishes.filter(function(w){ return w.id!==sid; });
+    }else{
+      formsInit();
+      if(Array.isArray(DB.formSubs[fid])) DB.formSubs[fid] = DB.formSubs[fid].filter(function(s){ return s.id!==sid; });
+    }
+    saveNow(); render(); toastUndo("اتحذف");
   },
   formExcel: function(el){ formExcel(el.dataset.id); },
   fbAddField: function(){
