@@ -668,6 +668,7 @@ function load(){
     migrateSubjectHours();
     actInit();
     calCfg(); examsInit(); xfInit(); logInit(); lessonInit(); msgInit(); dupOkInit(); sessInit(); attLogInit();
+    formsResetOnce();
     idxBump();
   }catch(e){ DB = seed(); }
 }
@@ -9085,9 +9086,16 @@ function embeddedCfg(){
 }
 
 /* المجموعات اللي بتتزامن كوحدة واحدة (نادرًا ما تتعدّل من جهازين مع بعض) */
-var BULK = ["meta","weights","bac","control","absRules","users","teachers","classes","subjects","students","assign","schedule","behavior","staff","leaves","locations","dutyPlan","events","holidays","sectors","wishes"];
+var BULK = ["meta","weights","bac","control","absRules","users","teachers","classes","subjects",
+  "students","assign","schedule","behavior","staff","leaves","locations","dutyPlan","events",
+  "holidays","sectors","wishes",
+  /* اللي كان ناقص — علشان كده الاستمارات ماكانتش بتوصل للطلاب */
+  "forms","papers","activities","curriculum","tracksCustom","trackLevel","trackOpen","trackStrict",
+  "calendar","exams","extraFields","dupOk","msgs","notices"];
 /* المجموعات اللي بتتزامن عنصر عنصر (كل معلم بيكتب في خانته) */
-var GRAIN = ["attend","marks","staffAtt","subs","duty"];
+var GRAIN = ["attend","marks","staffAtt","subs","duty",
+  /* تسجيلات الاستمارات ودفتر الحصة وسجل الغياب بالحصة */
+  "formSubs","lessons","attLog","attDone"];
 
 var SYNC = {
   on:false, cfg:null, code:"", dev:"", status:"off", msg:"",
@@ -13075,6 +13083,21 @@ function viewFormsHub(){
    قائمة الاستمارات — المصدر الوحيد للحقيقة
    الوكيل والطالب بيقروا من هنا بالظبط، فمستحيل يختلفوا.
    ============================================================ */
+/* ============================================================
+   تنظيف لمرة واحدة: مسح الاستمارات القديمة اللي اتعملت قبل ما
+   المزامنة تشمل forms — لأنها موجودة على أجهزة متفرقة وبتلخبط.
+   استمارة تحديد المسار وتسجيلاتها متتلمسش.
+   ============================================================ */
+function formsResetOnce(){
+  if(DB.formsReset) return false;
+  DB.formsReset = 1;
+  if(Array.isArray(DB.forms) && DB.forms.length){
+    DB.forms.forEach(function(f){ if(f && f.id) delete DB.formSubs[f.id]; });
+    DB.forms = [];
+    return true;
+  }
+  return false;
+}
 function formsCatalog(){
   formsInit();
   var out = [{
@@ -13210,7 +13233,27 @@ function formRowHTML(f, can){
 /* شريط التحكم الكامل لأي استمارة */
 function formToolbar(f, open){
   var n = formSubsCount(f.id);
-  return '<div class="card noprint"><div class="bd" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">'+
+  var L = formTargetLevel(f);
+  var pool = L ? studentsOfLevel(L) : myStudents();
+  var strict = formStrict(f);
+  var filled = 0;
+  if(strict && L){
+    var subs = formRows(f);
+    var natSet = {};
+    subs.forEach(function(r){ var x=toEnDigits(String(r.natId||"")).replace(/\D/g,""); if(x) natSet[x]=1; });
+    filled = pool.filter(function(st){ return natSet[st.natId]; }).length;
+  }
+  var link = '<div class="card noprint"><div class="bd">'+
+    '<div class="note '+(open?"ok":"warn")+'"><b>'+(open?"ظاهرة دلوقتي في «الدخول كطالب»":"مخفية — مش هتظهر للطلاب")+'</b>'+
+    (L? ' — لطلاب <b>'+esc(levelName(L))+'</b>' : ' — لكل الصفوف')+
+    '<div style="margin-top:5px;font-size:12.5px">'+
+      (strict
+        ? 'مربوطة ببيانات القاعدة: <b>'+pool.length+'</b> طالب مسموح لهم، '+
+          'ملّاها <b>'+filled+'</b> — الباقي <b>'+Math.max(0,pool.length-filled)+'</b>.'
+        : 'مفتوحة لأي رقم قومي — مش مربوطة بالقاعدة.')+
+    '</div></div></div></div>';
+  return link +
+    '<div class="card noprint"><div class="bd" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">'+
     '<span class="tag '+(open?"ok":"bad")+'">'+
       (open?"ظاهرة للطلاب دلوقتي":"مخفية عن الطلاب")+'</span>'+
     '<span class="tag info">'+esc(formLevelLabel(f))+'</span>'+
