@@ -6549,6 +6549,118 @@ function saveAssign(){
 }
 
 /* ---------- نافذة الحصة ---------- */
+/* ============================================================
+   إضافة/تعديل حصة من جدول المعلم
+   بتربط: المعلم + الفصل + المادة، وبتسجّل التكليف عشان يقدر
+   يرصد الغياب والدرجات للفصل ده من حسابه.
+   ============================================================ */
+function modalTeacherSlot(tid, day, period){
+  var t = teacherById(tid);
+  if(!t){ toast("المعلم مش موجود"); return; }
+  var cell = DB.schedule.filter(function(x){
+    return x.teacherId===tid && x.day===day && x.period===period && inSector(classById(x.classId)); })[0];
+  var curC = cell ? cell.classId : "";
+  var curS = cell ? cell.subjectId : "";
+  var classes = myClasses().sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); });
+  var w = periodWindow(period);
+  var n = nisabOf(tid), l = plannedHours(tid,{});
+
+  openModal(mHead((cell?"تعديل":"إضافة")+" حصة — "+t.name)+
+    '<div class="mb" data-tid="'+tid+'" data-day="'+day+'" data-per="'+period+'" id="slotBox">'+
+    '<div class="note"><b>'+esc(DAYS[day])+' — الحصة '+period+'</b>'+(w?' ('+esc(w.from)+' – '+esc(w.to)+')':'')+
+      ' · النصاب '+n+' · الحِمل '+l+' · المتبقّي '+(n-l)+'</div>'+
+    '<label class="f"><span>الفصل *</span><select id="sl_c">'+
+      '<option value="">— اختر الفصل —</option>'+
+      classes.map(function(c){
+        var busy = DB.schedule.filter(function(x){
+          return x.classId===c.id && x.day===day && x.period===period; })[0];
+        var tag = "";
+        if(busy && busy.teacherId!==tid) tag = " — مشغول: "+subjName(busy.subjectId)+
+          (busy.teacherId? " / "+teacherName(busy.teacherId) : "");
+        return '<option value="'+c.id+'"'+(curC===c.id?" selected":"")+'>'+
+          esc(c.name)+' ('+studentsOf(c.id).length+' طالب)'+esc(tag)+'</option>';
+      }).join("")+
+      '</select></label>'+
+    '<label class="f"><span>المادة *</span><select id="sl_s"></select></label>'+
+    '<div id="sl_warn"></div>'+
+    '<div class="note ok">لما تحفظ، الفصل ده هيظهر للمعلم في <b>«فصولي»</b> و<b>«طلابي»</b>، '+
+      'ويقدر يرصد منه الغياب والدرجات.</div>'+
+    (cell?'<button class="btn ghost block" data-act="delTchSlot" data-t="'+tid+'" data-d="'+day+'" data-p="'+period+'" style="color:var(--danger)">تفريغ الحصة</button>':'')+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="saveTchSlot">حفظ</button></div>');
+  fillSlotSubjects(curS);
+  var sel = document.getElementById("sl_c");
+  if(sel) sel.onchange = function(){ fillSlotSubjects(""); };
+}
+/* مواد الفصل المختار — مرتّبة: تخصص المعلم الأول */
+function fillSlotSubjects(sel){
+  var box = document.getElementById("slotBox");
+  var el = document.getElementById("sl_s");
+  var warn = document.getElementById("sl_warn");
+  if(!el || !box) return;
+  var tid = box.dataset.tid, day = num(box.dataset.day,0), per = num(box.dataset.per,1);
+  var cid = val("sl_c");
+  var t = teacherById(tid);
+  if(!cid){ el.innerHTML = '<option value="">— اختر الفصل الأول —</option>'; if(warn) warn.innerHTML=""; return; }
+
+  var subs = DB.subjects.filter(function(su){ return su.classId===cid; });
+  var mine = [], near = [], other = [];
+  subs.forEach(function(su){
+    if(isActivitySubj(su)){ other.push(su); return; }
+    var f = teacherFitsSubject(t, su.name);
+    if(f >= SUBJ_MATCH_MIN) mine.push(su); else if(f>0) near.push(su); else other.push(su);
+  });
+  function opt(su){
+    var a = DB.assign.filter(function(x){ return x.classId===cid && x.subjectId===su.id; })[0];
+    var who = (a && a.teacherId && a.teacherId!==tid) ? " — مسندة لـ"+teacherName(a.teacherId) : "";
+    return '<option value="'+su.id+'"'+(sel===su.id?" selected":"")+'>'+
+      esc(su.name)+' ('+subjHours(su)+' حصص)'+esc(who)+'</option>';
+  }
+  var o = '<option value="">— اختر المادة —</option>';
+  if(mine.length)  o += '<optgroup label="تخصصه">'+mine.map(opt).join("")+'</optgroup>';
+  if(near.length)  o += '<optgroup label="تخصص قريب">'+near.map(opt).join("")+'</optgroup>';
+  if(other.length) o += '<optgroup label="مواد أخرى">'+other.map(opt).join("")+'</optgroup>';
+  el.innerHTML = o;
+
+  /* تنبيهات */
+  var msgs = [];
+  var busy = DB.schedule.filter(function(x){
+    return x.classId===cid && x.day===day && x.period===per && x.teacherId!==tid; })[0];
+  if(busy) msgs.push('<div class="note warn"><b>الفصل مشغول في الحصة دي</b> — '+
+    esc(subjName(busy.subjectId))+(busy.teacherId? ' مع '+esc(teacherName(busy.teacherId)) : '')+
+    '. لو حفظت هتستبدلها.</div>');
+  if(!mine.length) msgs.push('<div class="note">مفيش مادة في الفصل ده من تخصص المعلم '+
+    '('+esc(t.subject||"غير محدد")+') — تقدر تختار من المواد التانية لو محتاج.</div>');
+  var nis = nisabOf(tid), ld = plannedHours(tid,{});
+  if(ld >= nis) msgs.push('<div class="note warn">المعلم وصل نصابه ('+ld+'/'+nis+') — الحصة دي هتزوّده.</div>');
+  if(warn) warn.innerHTML = msgs.join("");
+}
+function saveTeacherSlot(){
+  var box = document.getElementById("slotBox");
+  if(!box) return;
+  var tid = box.dataset.tid, day = num(box.dataset.day,0), per = num(box.dataset.per,1);
+  var cid = val("sl_c"), sid = val("sl_s");
+  if(!cid){ toast("اختار الفصل"); return; }
+  if(!sid){ toast("اختار المادة"); return; }
+
+  markUndo("تعديل حصة في جدول معلم");
+  /* نشيل حصة المعلم القديمة في نفس الخانة */
+  DB.schedule = DB.schedule.filter(function(x){
+    return !(x.teacherId===tid && x.day===day && x.period===per && inSector(classById(x.classId)));
+  });
+  /* ونشيل أي حصة تانية في نفس خانة الفصل */
+  DB.schedule = DB.schedule.filter(function(x){
+    return !(x.classId===cid && x.day===day && x.period===per);
+  });
+  DB.schedule.push({ id:uid("h"), classId:cid, day:day, period:per, subjectId:sid, teacherId:tid });
+
+  /* الربط: التكليف بيخلّي الفصل يظهر للمعلم ويقدر يرصد منه */
+  syncAssignFromSchedule(cid, sid, tid);
+
+  saveNow(); closeModal(); render();
+  toastUndo("اتسجّلت الحصة — الفصل بقى في «فصولي» عند المعلم");
+}
 function modalSched(cid, day, period){
   if(period > periodsCount()){ toast("عدّل عدد الحصص من أوقات اليوم الدراسي"); return; }
   var cur = schedCell(cid, day, period);
@@ -6982,6 +7094,18 @@ var ACTS = {
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
   goPage: function(el){ setPage(el.dataset.k, num(el.dataset.p,1)); render(); },
+  tchSlot: function(el){
+    modalTeacherSlot(el.dataset.t, num(el.dataset.d,0), num(el.dataset.p,1));
+  },
+  saveTchSlot: saveTeacherSlot,
+  delTchSlot: function(el){
+    var tid = el.dataset.t, day = num(el.dataset.d,0), per = num(el.dataset.p,1);
+    markUndo("تفريغ حصة");
+    DB.schedule = DB.schedule.filter(function(x){
+      return !(x.teacherId===tid && x.day===day && x.period===per && inSector(classById(x.classId)));
+    });
+    saveNow(); closeModal(); render(); toastUndo("اتفرّغت الحصة");
+  },
   schTch:     function(el){ UI.sub = { st:"byteacher", tid: el.dataset.id }; render(); },
   schTchBack: function(){ UI.sub = { st:"byteacher" }; render(); },
   openSchedCls: function(el){
@@ -15188,21 +15312,22 @@ function viewSchedByTeacher(){
     for(var p=1;p<=P;p++){
       var cell = DB.schedule.filter(function(x){
         return x.teacherId===tid && x.day===di && x.period===p && inSector(classById(x.classId)); })[0];
-      var clk = isDep ? ' data-act="editSched" data-c="'+(cell?cell.classId:"")+'" data-d="'+di+'" data-p="'+p+'"' : '';
+      var clk = isDep ? ' data-act="tchSlot" data-t="'+tid+'" data-d="'+di+'" data-p="'+p+'" style="cursor:pointer"' : '';
       if(cell){
         var c = classById(cell.classId);
         h += '<td class="has"'+clk+'><b>'+esc(subjName(cell.subjectId))+'</b>'+
           '<small>'+esc(c?c.name:"—")+'</small></td>';
       }else{
-        h += '<td class="free">'+(isDep?'<small style="color:var(--muted)">فاضية</small>':'')+'</td>';
+        h += '<td class="free"'+clk+'>'+(isDep?'<small style="color:var(--muted)">+ إضافة</small>':'')+'</td>';
       }
     }
     h += '</tr>';
   });
   h += '</tbody></table></div></div></div>';
 
-  h += '<div class="note noprint">الخانة الفاضية معناها المعلم متاح فيها. للتعديل، افتح جدول الفصل من '+
-    '<b>«بالفصول»</b> واختار المعلم في الحصة — الجدولين مربوطين ببعض.</div>';
+  h += '<div class="note noprint">اضغط على أي خانة عشان تضيف حصة أو تعدّلها — تختار الفصل والمادة، '+
+    'والبرنامج بيربطها بالفصل وطلابه وبالمعلم، فيقدر يرصد الغياب والدرجات منها. '+
+    'والتعديل بيبان فورًا في <b>«بالفصول»</b> لأن الجدولين مربوطين.</div>';
 
   /* توزيع حصصه على الفصول */
   var byCls = {};
