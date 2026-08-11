@@ -148,7 +148,10 @@ table.tbl th{
   background:#f4f6f3;font-size:11.5px;font-weight:700;color:var(--muted);text-align:right;
   padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0
 }
-table.tbl td{padding:9px 10px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+table.tbl.dense th,.tbl.dense td{padding:4px 7px;font-size:12px}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+.tbl.dense th,.tbl.dense td{padding:4px 7px;font-size:12px}
+.tbl.dense small{font-size:11px}
 table.tbl tr:last-child td{border-bottom:0}
 table.tbl tbody tr:hover{background:#fafbf9}
 table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -635,7 +638,7 @@ function blankDB(){
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
     sectors:{}, wishes:[],
-    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[], trackExtra:[], trackEdus:[], sessions:[], attLog:{}, attDone:{}
+    forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[], trackExtra:[], trackEdus:[], tables:{}, sessions:[], attLog:{}, attDone:{}
   };
 }
 
@@ -3462,7 +3465,161 @@ function viewAbsentSheets(){
   h += '</tbody></table></div></div></div>';
   return h;
 }
+/* ============================================================
+   تخصيص الجداول — عناوين الأعمدة، إظهارها، ترتيبها، والطباعة
+   بيتحفظ لكل جدول باسمه، وبيتزامن مع باقي الأجهزة.
+   ============================================================ */
+function tblInit(){ if(!DB.tables || typeof DB.tables!=="object") DB.tables = {}; return DB.tables; }
+function tblCfg(id){
+  tblInit();
+  if(!DB.tables[id]) DB.tables[id] = { hide:{}, label:{}, order:[], dense:false };
+  var c = DB.tables[id];
+  if(!c.hide)  c.hide = {};
+  if(!c.label) c.label = {};
+  if(!Array.isArray(c.order)) c.order = [];
+  return c;
+}
+/* اسم العمود بعد التعديل */
+function colName(id, def){
+  var c = tblCfg(id);
+  return c.label[def.k] || def.label;
+}
+function colHidden(id, def){
+  if(def.core) return false;                 /* أعمدة أساسية مبتتخفيش */
+  return !!tblCfg(id).hide[def.k];
+}
+/* الأعمدة بترتيبها وبعد إخفاء المخفي */
+function tblColumns(id, defs){
+  var c = tblCfg(id);
+  var byKey = {};
+  defs.forEach(function(d){ byKey[d.k] = d; });
+  var out = [];
+  c.order.forEach(function(k){ if(byKey[k]){ out.push(byKey[k]); byKey[k] = null; } });
+  defs.forEach(function(d){ if(byKey[d.k]) out.push(d); });
+  return out.filter(function(d){ return !colHidden(id, d); });
+}
+/* بيقرا الاختيارات من النافذة قبل ما تتعاد رسمتها */
+function tcKeep(id){
+  var c = tblCfg(id);
+  Array.prototype.slice.call(document.querySelectorAll(".tcShow")).forEach(function(b){
+    if(b.disabled) return;
+    if(b.checked) delete c.hide[b.dataset.k];
+    else c.hide[b.dataset.k] = 1;
+  });
+  Array.prototype.slice.call(document.querySelectorAll(".tcName")).forEach(function(inp){
+    var def = (UI.tcDefs||[]).filter(function(d){ return d.k===inp.dataset.k; })[0];
+    var v = String(inp.value||"").trim();
+    if(!v || (def && v===def.label)) delete c.label[inp.dataset.k];
+    else c.label[inp.dataset.k] = v;
+  });
+}
+function modalTableCfg(id, defs, title){
+  var c = tblCfg(id);
+  var ordered = (function(){
+    var byKey = {}; defs.forEach(function(d){ byKey[d.k]=d; });
+    var out = [];
+    c.order.forEach(function(k){ if(byKey[k]){ out.push(byKey[k]); byKey[k]=null; } });
+    defs.forEach(function(d){ if(byKey[d.k]) out.push(d); });
+    return out;
+  })();
+  var shown = ordered.filter(function(d){ return !colHidden(id,d); }).length;
+  openModal(mHead("إعدادات جدول "+(title||""))+
+    '<div class="mb">'+
+    '<div class="note">اختار الأعمدة اللي تظهر، وغيّر عنوان أي عمود للي يناسبك، ورتّبهم زي ما تحب. '+
+    '<b>الإعدادات بتتحفظ</b> وبتتطبق على العرض والطباعة والتصدير.</div>'+
+    '<div class="note ok">ظاهر دلوقتي <b>'+shown+'</b> عمود من <b>'+ordered.length+'</b>.</div>'+
+    '<div style="max-height:46vh;overflow:auto">'+
+    ordered.map(function(d,i){
+      var hid = colHidden(id,d);
+      return '<div class="list-item" style="gap:6px">'+
+        '<label style="display:flex;align-items:center;cursor:'+(d.core?"not-allowed":"pointer")+'">'+
+          '<input type="checkbox" class="tcShow" data-k="'+esc(d.k)+'"'+(hid?"":" checked")+
+          (d.core?" disabled":"")+' style="width:18px;height:18px"></label>'+
+        '<span class="tx" style="flex:1">'+
+          '<input type="text" class="tcName" data-k="'+esc(d.k)+'" value="'+esc(colName(id,d))+'" '+
+          'style="width:100%;padding:5px 7px;border:1px solid var(--line-2);border-radius:7px;font:inherit;font-size:13px">'+
+          '<small style="color:var(--muted)">الأصل: '+esc(d.label)+(d.core?" · أساسي":"")+'</small></span>'+
+        '<button class="btn ghost sm" data-act="tcUp" data-t="'+esc(id)+'" data-k="'+esc(d.k)+'"'+(i===0?" disabled":"")+'>▲</button>'+
+        '<button class="btn ghost sm" data-act="tcDown" data-t="'+esc(id)+'" data-k="'+esc(d.k)+'"'+(i===ordered.length-1?" disabled":"")+'>▼</button>'+
+        '</div>';
+    }).join("")+'</div>'+
+    '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer">'+
+      '<input type="checkbox" id="tc_dense"'+(c.dense?" checked":"")+' style="width:18px;height:18px">'+
+      '<span>عرض مضغوط (صفوف أقصر — بيوفّر مساحة)</span></label>'+
+    '<button class="btn ghost block" data-act="tcReset" data-t="'+esc(id)+'" style="margin-top:8px;color:var(--danger)">↻ رجّع الأعمدة الأصلية</button>'+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="tcSave" data-t="'+esc(id)+'">حفظ</button></div>');
+  UI.tcDefs = defs; UI.tcTitle = title;
+}
+/* شريط أدوات الجدول: إعدادات + طباعة */
+function tblToolbar(id, title, pg){
+  var many = pg && pg.pages > 1;
+  return '<button class="btn ghost sm noprint" data-act="tblCfg" data-t="'+esc(id)+'">⚙ الأعمدة</button>'+
+    (many
+      ? '<button class="btn ghost sm noprint" data-act="print" style="margin-right:5px">⎙ الصفحة دي</button>'+
+        '<button class="btn ghost sm noprint" data-act="printAll" style="margin-right:5px">⎙ كل الصفحات ('+pg.total+')</button>'
+      : '<button class="btn ghost sm noprint" data-act="print" style="margin-right:5px">⎙ طباعة / تصدير</button>');
+}
+/* أعمدة كشف الطلاب — الأساسي والاختياري والبيانات الإضافية */
+function stuColDefs(){
+  var defs = [
+    { k:"idx",   label:"م",             core:true },
+    { k:"name",  label:"الاسم",          core:true },
+    { k:"natId", label:"الرقم القومي" },
+    { k:"level", label:"الصف" },
+    { k:"cls",   label:"الفصل" },
+    { k:"edu",   label:"النوعية" },
+    { k:"track", label:"المسار" },
+    { k:"subj",  label:"مادة التخصص" },
+    { k:"phone", label:"الهاتف",        off:true },
+    { k:"guard", label:"ولي الأمر",      off:true },
+    { k:"gender",label:"النوع",          off:true },
+    { k:"birth", label:"تاريخ الميلاد",   off:true },
+    { k:"gov",   label:"محافظة الميلاد",  off:true },
+    { k:"act",   label:"النشاط التربوي",  off:true },
+    { k:"voc",   label:"التربية المهنية", off:true },
+    { k:"abs",   label:"أيام الغياب",     off:true },
+    { k:"joined",label:"تاريخ القيد",     off:true }
+  ];
+  xfList("student").forEach(function(f){ defs.push({ k:"xf:"+f.id, label:f.label }); });
+  return defs;
+}
+/* الأعمدة الاختيارية مخفية أول مرة */
+function stuDefaultsOnce(){
+  var c = tblCfg("students");
+  if(c._init) return;
+  c._init = 1;
+  stuColDefs().forEach(function(d){ if(d.off) c.hide[d.k] = 1; });
+}
+function stuCell(d, s, n, can){
+  var c = classById(s.classId);
+  switch(d.k){
+    case "idx":   return '<td class="rownum">'+n+'</td>';
+    case "name":  return '<td'+(can?' data-act="openStudent" data-id="'+s.id+'" style="cursor:pointer"':'')+
+                    '><b style="font-weight:600">'+esc(s.name)+'</b></td>';
+    case "natId": return '<td class="num" style="direction:ltr;text-align:right">'+esc(s.natId||"—")+'</td>';
+    case "level": return '<td><small>'+esc(studentLevelOf(s)?levelName(studentLevelOf(s)):"—")+'</small></td>';
+    case "cls":   return '<td>'+esc(c?c.name:"—")+'</td>';
+    case "edu":   return '<td><small>'+esc(eduName(s.edu||"reg"))+'</small></td>';
+    case "track": return '<td><small>'+esc(s.bacTrack?wishTrackName(s.bacTrack):(c?trackName(c.system,c.track):"—"))+'</small></td>';
+    case "subj":  return '<td><small>'+esc(s.bacSubject||"—")+'</small></td>';
+    case "phone": return '<td class="num" style="direction:ltr;text-align:right">'+esc(s.phone||"—")+'</td>';
+    case "guard": return '<td><small>'+esc(s.guardian||"—")+'</small></td>';
+    case "gender":return '<td><small>'+esc(s.gender||"—")+'</small></td>';
+    case "birth": return '<td class="num">'+esc(s.birth?fmtDate(s.birth):"—")+'</td>';
+    case "gov":   return '<td><small>'+esc(s.birthGov||"—")+'</small></td>';
+    case "act":   return '<td><small>'+esc(s.actId?actName(s.actId):"—")+'</small></td>';
+    case "voc":   return '<td><small>'+esc(s.vocId?actName(s.vocId):"—")+'</small></td>';
+    case "abs":   var st = attendStats(s.id, s.classId);
+                  return '<td class="num">'+(st.days? st.abs : "—")+'</td>';
+    case "joined":return '<td class="num">'+esc(s.joined?fmtDate(s.joined):"—")+'</td>';
+  }
+  if(d.k.indexOf("xf:")===0) return '<td><small>'+esc(xfGet(s, d.k.slice(3))||"—")+'</small></td>';
+  return '<td>—</td>';
+}
 function viewStudents(){
+  stuDefaultsOnce();
   var f = UI.filters;
   var mine = myClassIds();
   /* الوعاء الكامل لطلاب القسم الحالي — الفلاتر بتتحسب منه */
@@ -3523,39 +3680,35 @@ function viewStudents(){
   h += printHd("كشف بأسماء الطلاب");
   var canBulk = roleIs("deputy");
   var pg = pageSlice(list, "stu");
+  var rows = UI.printAll ? list : pg.rows;      /* الطباعة الكاملة بترسم الكل */
+  var defs = stuColDefs();
+  var cols = tblColumns("students", defs);
+  var cfg  = tblCfg("students");
+
   h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' طالب</h3>'+
     (canBulk?'<button class="btn ghost sm noprint" data-act="bulkEditStudents">✎ تعديل المحددين</button>'+
       '<button class="btn ghost sm noprint" data-act="bulkDelStudents" style="color:var(--danger);margin-right:5px">حذف المحددين</button>':'')+
-    '<button class="btn ghost sm noprint" data-act="print" style="margin-right:5px">⎙ طباعة / تصدير</button></div>'+
-    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    tblToolbar("students","الطلاب",pg)+'</div>'+
+    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl'+(cfg.dense?" dense":"")+'"><thead><tr>'+
     (canBulk?'<th class="noprint" style="width:34px"><input type="checkbox" id="selAllStu" style="width:17px;height:17px"></th>':'')+
-    '<th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الصف</th><th>الفصل</th><th>النوعية</th><th>المسار</th><th>مادة التخصص</th>'+
-    xfList("student").map(function(f){ return '<th>'+esc(f.label)+'</th>'; }).join("")+
+    cols.map(function(d){ return '<th>'+esc(colName("students",d))+'</th>'; }).join("")+
     (canBulk?'<th class="noprint"></th>':'')+
     '</tr></thead><tbody>';
-  if(!list.length){
-    h += '<tr><td colspan="'+((canBulk?9:8)+xfList("student").length)+'"><div class="empty"><div class="big">'+icon("students",34)+'</div><b>مفيش طلاب مطابقين</b>'+
-      '<p>'+(DB.students.length?'جرّب تغيّر الفلاتر.':'ابدأ بإضافة الفصول ثم الطلاب.')+'</p></div></td></tr>';
+  if(!rows.length){
+    h += '<tr><td colspan="'+(cols.length+(canBulk?2:0))+'"><div class="empty"><div class="big">'+icon("students",34)+'</div>'+
+      '<b>مفيش طلاب مطابقين</b><p>جرّب تغيّر الفلاتر أو امسحها.</p></div></td></tr>';
   }
-  pg.rows.forEach(function(s,i){
-    var c = classById(s.classId);
+  var can = roleIs("deputy") || roleIs("manager") || roleIs("admin");
+  rows.forEach(function(s,i){
     h += '<tr>'+
       (canBulk?'<td class="noprint"><input type="checkbox" class="stuck" data-id="'+s.id+'" style="width:17px;height:17px"></td>':'')+
-      '<td class="rownum">'+(pg.from+i)+'</td>'+
-      '<td'+(can?' data-act="openStudent" data-id="'+s.id+'" style="cursor:pointer"':'')+'><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
-      '<td class="num" style="direction:ltr;text-align:right">'+esc(s.natId||"—")+'</td>'+
-      '<td><small>'+(studentLevelOf(s)?esc(levelName(studentLevelOf(s))):"—")+'</small></td>'+
-      '<td>'+esc(c?c.name:"— غير مسكّن —")+'</td>'+
-      '<td><small>'+esc(eduName(s.edu||"reg"))+'</small></td>'+
-      '<td><small>'+(s.bacTrack?esc(wishTrackName(s.bacTrack)):(c?esc(trackName(c.system,c.track)):"—"))+'</small></td>'+
-      '<td><small>'+esc(s.bacSubject||"—")+'</small></td>'+
-      xfList("student").map(function(f){ return '<td><small>'+esc(xfGet(s,f.id)||"—")+'</small></td>'; }).join("")+
+      cols.map(function(d){ return stuCell(d, s, (UI.printAll?1:pg.from)+i, can); }).join("")+
       (canBulk?'<td class="noprint" style="white-space:nowrap">'+
         '<button class="btn ghost sm" data-act="editStudent" data-id="'+s.id+'">تعديل</button>'+
         '<button class="btn ghost sm" data-act="delStudent" data-id="'+s.id+'" style="color:var(--danger);margin-right:4px">حذف</button></td>':'')+
       '</tr>';
   });
-  h += '</tbody></table></div>'+pageBar(pg,"stu")+'</div></div>';
+  h += '</tbody></table></div>'+(UI.printAll?"":pageBar(pg,"stu"))+'</div></div>';
   return h;
 }
 function optLevels(sel){
@@ -6765,6 +6918,53 @@ var ACTS = {
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   autoAssign: function(){ modalAutoAssign(); },
   goPage: function(el){ setPage(el.dataset.k, num(el.dataset.p,1)); render(); },
+  /* ---------- تخصيص الجداول ---------- */
+  tblCfg: function(el){
+    var id = el.dataset.t;
+    if(id==="students") modalTableCfg("students", stuColDefs(), "الطلاب");
+  },
+  tcUp: function(el){
+    var c = tblCfg(el.dataset.t), defs = UI.tcDefs||[];
+    if(!c.order.length) c.order = defs.map(function(d){ return d.k; });
+    var i = c.order.indexOf(el.dataset.k);
+    if(i<1) return;
+    var t0 = c.order[i-1]; c.order[i-1] = c.order[i]; c.order[i] = t0;
+    tcKeep(el.dataset.t);
+    save(); modalTableCfg(el.dataset.t, defs, UI.tcTitle);
+  },
+  tcDown: function(el){
+    var c = tblCfg(el.dataset.t), defs = UI.tcDefs||[];
+    if(!c.order.length) c.order = defs.map(function(d){ return d.k; });
+    var i = c.order.indexOf(el.dataset.k);
+    if(i<0 || i>=c.order.length-1) return;
+    var t1 = c.order[i+1]; c.order[i+1] = c.order[i]; c.order[i] = t1;
+    tcKeep(el.dataset.t);
+    save(); modalTableCfg(el.dataset.t, defs, UI.tcTitle);
+  },
+  tcSave: function(el){
+    tcKeep(el.dataset.t);
+    var c = tblCfg(el.dataset.t);
+    c.dense = !!(document.getElementById("tc_dense")||{}).checked;
+    saveNow(); closeModal(); render(); toast("اتحفظت إعدادات الجدول");
+  },
+  tcReset: function(el){
+    if(!confirm("رجوع الأعمدة لشكلها الأصلي؟")) return;
+    var id = el.dataset.t;
+    tblInit();
+    delete DB.tables[id];
+    if(id==="students") stuDefaultsOnce();
+    saveNow(); closeModal(); render(); toast("رجعت الأعمدة الأصلية");
+  },
+  /* طباعة كل الصفحات */
+  printAll: function(){
+    UI.printAll = true;
+    render();
+    setTimeout(function(){
+      window.print();
+      UI.printAll = false;
+      setTimeout(render, 60);
+    }, 120);
+  },
   goForms: function(){ UI.tab="wishes"; UI.sub=null; render(); },
   goParents: function(){ UI.tab="parents"; UI.sub=null; render(); },
   pTab:  function(el){ UI.pTab = el.dataset.t; render(); },
@@ -9098,7 +9298,7 @@ var BULK = ["meta","weights","bac","control","absRules","users","teachers","clas
   "holidays","sectors","wishes",
   /* اللي كان ناقص — علشان كده الاستمارات ماكانتش بتوصل للطلاب */
   "forms","papers","activities","curriculum","tracksCustom","trackLevel","trackOpen","trackStrict",
-  "calendar","exams","extraFields","dupOk","msgs","notices","trackExtra","trackEdus"];
+  "calendar","exams","extraFields","dupOk","msgs","notices","trackExtra","trackEdus","tables"];
 /* المجموعات اللي بتتزامن عنصر عنصر (كل معلم بيكتب في خانته) */
 var GRAIN = ["attend","marks","staffAtt","subs","duty",
   /* تسجيلات الاستمارات ودفتر الحصة وسجل الغياب بالحصة */
