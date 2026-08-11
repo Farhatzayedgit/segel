@@ -567,6 +567,7 @@ var WEEKLY_COUNT = 12;              /* عدد التقييمات الأسبوع�
 var ATT = {P:"حاضر", A:"غائب", E:"غياب بعذر", L:"متأخر"};
 
 var ROLES = {
+  owner:  {name:"ADMIN — المسؤول الأعلى", av:"AD"},
   manager:{name:"مدير المدرسة",       av:"مد"},
   deputy: {name:"وكيل شئون الطلاب",   av:"طل"},
   admin:  {name:"وكيل شئون العاملين", av:"عا"},
@@ -892,7 +893,7 @@ function viewOpLog(){
   });
   var h = pageHd("سجل العمليات", DB.oplog.length+" عملية مسجّلة — آخر ٤٠٠",
     '<button class="btn ghost" data-act="print">⎙ طباعة</button>'+
-    (UI.user.role==="manager"?'<button class="btn ghost" data-act="clearLog" style="margin-right:6px;color:var(--danger)">مسح السجل</button>':''));
+    (roleIs("manager")?'<button class="btn ghost" data-act="clearLog" style="margin-right:6px;color:var(--danger)">مسح السجل</button>':''));
 
   h += '<div class="note">بيتسجّل تلقائيًا لكل عملية كبيرة: حذف، تعديل جماعي، ترحيل، توليد جداول، دمج مكرر… '+
     'ده بيحميك لو حد عمل حاجة بالغلط ومحدش عارف مين.</div>';
@@ -1214,8 +1215,7 @@ function attLocked(cid, date, sid){
   return !!absEntry(cid, date, sid);
 }
 function canEditAtt(){
-  var r = UI.user && UI.user.role;
-  return r==="deputy" || r==="manager" || r==="admin";
+  return roleIs("deputy") || roleIs("manager") || roleIs("admin");
 }
 /* الحصة اللي المفروض شغالة دلوقتي */
 function currentPeriod(nowM){
@@ -1399,6 +1399,25 @@ function icon(name, size){
     'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" '+
     'aria-hidden="true">'+p+'</svg>';
 }
+/* قائمة ADMIN بتتبني من قوائم المدير والوكيل — أي تبويب جديد بيوصلها تلقائيًا */
+function buildOwnerNav(){
+  var out = [], seen = {};
+  ["manager","deputy"].forEach(function(r){
+    (NAV[r]||[]).forEach(function(it){
+      if(it[0]==="_g"){ out.push(it); return; }
+      if(seen[it[0]]) return;
+      seen[it[0]] = 1;
+      out.push(it);
+    });
+  });
+  /* شيل عناوين المجموعات الفاضية */
+  var clean = [];
+  for(var i=0;i<out.length;i++){
+    if(out[i][0]==="_g" && (i+1>=out.length || out[i+1][0]==="_g")) continue;
+    clean.push(out[i]);
+  }
+  return clean;
+}
 var NAV = {
   manager:[
     ["_g","المتابعة اليومية"],
@@ -1470,8 +1489,8 @@ function navFor(u){
 function renderLogin(){
   document.getElementById("loginYear").textContent = DB.meta.school + " · " + DB.meta.year;
   var box = document.getElementById("loginCard");
-  var users = DB.users.slice().sort(function(a,b){
-    var o = {manager:0,deputy:1,admin:2,teacher:3,student:4};
+  var users = visibleUsers().sort(function(a,b){
+    var o = {owner:0,manager:1,deputy:2,admin:3,teacher:4,student:5};
     return (o[a.role]-o[b.role]) || sortAr(a.name,b.name);
   });
   if(!users.length){
@@ -1735,7 +1754,7 @@ function render(){
     default:           h = '<div class="empty"><b>الشاشة دي لسه فاضية</b></div>';
   }
   /* تذكير أسبوعي بحفظ نسخة برّه البرنامج */
-  if(backupReminderDue() && (UI.user.role==="deputy"||UI.user.role==="manager"||UI.user.role==="admin")){
+  if(backupReminderDue() && (roleIs("deputy")||roleIs("manager")||roleIs("admin"))){
     h = '<div class="note warn noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">'+
       '<span style="flex:1;min-width:200px"><b>عدّى أسبوع من غير نسخة احتياطية.</b> '+
       'بيانات البرنامج متخزّنة في المتصفح — لو اتمسح، تروح. احفظ نسخة على الجهاز دلوقتي.</span>'+
@@ -3448,18 +3467,18 @@ function viewStudents(){
   var can = UI.user.role!=="student";
   var g0 = gate("classes");
   if(g0) return pageHd("الطلاب","")+g0;
-  var unassigned = (UI.user.role==="deputy") ? unassignedStudents() : [];
+  var unassigned = (roleIs("deputy")) ? unassignedStudents() : [];
   var sub = myStudents().length+" طالب في قسم "+sectorName(curSector())+
     (unassigned.length ? " · "+unassigned.length+" غير مسكّن" : "");
   var h = pageHd("الطلاب", sub,
-    (UI.user.role==="deputy"?'<button class="btn" data-act="addStudent">+ إضافة طالب</button>'+
+    (roleIs("deputy")?'<button class="btn" data-act="addStudent">+ إضافة طالب</button>'+
       impBtn("students",{},"استيراد من إكسيل")+
       '<button class="btn ghost sm noprint" data-act="xfManage" data-s="student" style="margin-right:6px">+ بيان إضافي</button>'+
       '<button class="btn ghost sm noprint" data-act="enrichAll" style="margin-right:6px">⟳ استخراج البيانات للكل</button>'+
       '<button class="btn ghost sm noprint" data-act="impTpl" data-tg="students" style="margin-right:6px">نموذج جاهز</button>':''));
 
   /* تنبيه: طلاب في القسم الغلط */
-  if(UI.user.role==="deputy"){
+  if(roleIs("deputy")){
     var mis = sectorMismatch();
     if(mis.length){
       h += '<div class="note bad noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
@@ -3469,7 +3488,7 @@ function viewStudents(){
     }
   }
   /* تنبيه التكرار — أخطر من التسكين لأنه بيخرب الإحصائيات والدرجات */
-  if(UI.user.role==="deputy"){
+  if(roleIs("deputy")){
     var dupN = findDuplicates().length;
     if(dupN){
       h += '<div class="note bad noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
@@ -3491,7 +3510,7 @@ function viewStudents(){
   h += stuFilterBar(pool, f, ["lvl","track","sub","cls","edu"]);
 
   h += printHd("كشف بأسماء الطلاب");
-  var canBulk = UI.user.role==="deputy";
+  var canBulk = roleIs("deputy");
   var pg = pageSlice(list, "stu");
   h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' طالب</h3>'+
     (canBulk?'<button class="btn ghost sm noprint" data-act="bulkEditStudents">✎ تعديل المحددين</button>'+
@@ -3547,7 +3566,7 @@ function viewStudent(id){
   var c = classById(s.classId);
   var st = attendStats(s.id, s.classId);
   var a = absState(st.abs);
-  var isDep = UI.user.role==="deputy";
+  var isDep = roleIs("deputy");
 
   var h = backBtn("كل الطلاب");
   h += printHd("بيان حالة طالب");
@@ -3687,7 +3706,7 @@ function dash(v){ return (v===null||v===undefined||v==="") ? "—" : String(v); 
 /* ============================================================
    الهيكل الدراسي — المراحل والأنظمة والمسارات والمواد
    ============================================================ */
-function curCanEdit(){ return UI.user.role==="deputy" || UI.user.role==="manager"; }
+function curCanEdit(){ return roleIs("deputy") || roleIs("manager"); }
 /* الصف المفتوح حاليًا في الشاشة */
 function curView(){
   var v = UI.curv || {};
@@ -3863,7 +3882,7 @@ function curTrackSave(el){
   saveNow(); closeModal(); render(); toast(tid?"اتحفظ المسار":"اتضاف المسار");
 }
 function viewClasses(){
-  var isDep = UI.user.role==="deputy";
+  var isDep = roleIs("deputy");
   var mc = myClasses();
   var h = pageHd("الفصول", mc.length+" فصل في قسم "+sectorName(curSector()),
     isDep?'<button class="btn" data-act="addClass">+ إضافة فصل</button>'+impBtn("classes",{},"استيراد من إكسيل"):'');
@@ -3894,7 +3913,7 @@ function viewClasses(){
 function viewClass(id){
   var c = classById(id);
   if(!c) return '<div class="empty"><b>الفصل مش موجود</b></div>';
-  var isDep = UI.user.role==="deputy";
+  var isDep = roleIs("deputy");
   var studs = studentsOf(c.id);
   var subs = DB.subjects.filter(function(s){ return s.classId===c.id; });
   var asg  = assignsOfClass(c.id);
@@ -3968,7 +3987,7 @@ function viewHome(){
 
   var list = stuApply(all, f);
 
-  var isDep = UI.user.role==="deputy" || UI.user.role==="manager";
+  var isDep = roleIs("deputy") || roleIs("manager");
   var h = pageHd("المنازل", all.length+" طالب منازل في قسم "+sectorName(curSector())+" — انتساب، امتحانات فقط",
     (isDep?'<button class="btn" data-act="addHome">+ إضافة طالب منازل</button>'+
       '<button class="btn ghost" data-act="homeFromForm" style="margin-right:6px">⇪ ترحيل من استمارة</button>'+
@@ -4315,7 +4334,7 @@ function doClassTransfer(el){
    المعلمون والتكليفات
    ============================================================ */
 function viewTeachers(){
-  var isDep = UI.user.role==="deputy" || UI.user.role==="admin";
+  var isDep = roleIs("deputy") || roleIs("admin");
   var h = pageHd("المعلمون", DB.teachers.length+" معلم",
     isDep?'<button class="btn" data-act="addTeacher">+ إضافة معلم</button>'+
       '<button class="btn ghost" data-act="bulkEditTeachers" style="margin-right:6px">✎ تعديل المحددين</button>'+
@@ -4488,7 +4507,7 @@ function teacherDataCards(t){
 function viewTeacher(id){
   var t = teacherById(id);
   if(!t) return '<div class="empty"><b>المعلم مش موجود</b></div>';
-  var isDep = UI.user.role==="deputy" || UI.user.role==="admin";
+  var isDep = roleIs("deputy") || roleIs("admin");
   var a = assignsOfTeacher(t.id);
   var u = DB.users.filter(function(x){ return x.teacherId===t.id; })[0];
 
@@ -4500,7 +4519,7 @@ function viewTeacher(id){
     (t.jobNow?' · '+esc(t.jobNow):'')+'</small></div>'+
     (isDep?'<button class="btn ghost sm" data-act="editTeacher" data-id="'+t.id+'">تعديل</button>':'')+'</div>';
   if(u){
-    var canSee = UI.user.role==="manager" || UI.user.role==="admin" || UI.user.role==="deputy";
+    var canSee = roleIs("manager") || roleIs("admin") || roleIs("deputy");
     h += '<div class="bd"><div class="note">حساب الدخول جاهز. المعلم بيفتح اللينك ويكتب رقمه السري على طول، '+
       'ويشوف فصوله ومواده بس.'+
       (canSee? ' كلمة السر: <b style="letter-spacing:.12em;direction:ltr;display:inline-block">'+esc(u.pin)+'</b>' : '')+'</div></div>';
@@ -4668,7 +4687,7 @@ function teacherFitsSubject(t, subName){
 
 /* ---------- جدول الفصل ---------- */
 function viewSchedule(){
-  var isDep = UI.user.role==="deputy" || UI.user.role==="admin" || UI.user.role==="scheduler";
+  var isDep = roleIs("deputy") || roleIs("admin") || UI.user.role==="scheduler";
   var _mc = myClasses();
   var cid = UI.filters.schedCls;
   if(!cid || !classById(cid) || !inSector(classById(cid))) cid = _mc[0] && _mc[0].id;
@@ -4924,14 +4943,27 @@ function viewSettings(){
 
   h += '<div class="card"><div class="hd"><h3>حسابات الدخول</h3>'+
     '<button class="btn ghost sm" data-act="addUser">+ حساب</button></div><div class="bd flush">';
-  DB.users.forEach(function(u){
-    h += '<div class="list-item"><span class="av">'+esc(ROLES[u.role]?ROLES[u.role].av:"؟")+'</span>'+
+  visibleUsers().forEach(function(u){
+    var own = isOwner(u);
+    h += '<div class="list-item"'+(own?' style="background:#f4faf4"':'')+'>'+
+      '<span class="av"'+(own?' style="background:var(--ok)"':'')+'>'+esc(ROLES[u.role]?ROLES[u.role].av:"؟")+'</span>'+
       '<span class="tx"><b>'+esc(u.name)+'</b><small>'+esc(ROLES[u.role]?ROLES[u.role].name:u.role)+
-        ' · كلمة سر من '+String(u.pin||"").length+' خانات'+(pinCheck(u.pin,u.id)?' · <span style="color:var(--danger)">يحتاج تغيير</span>':'')+'</small></span>'+
-      '<button class="btn ghost sm" data-act="editUser" data-id="'+u.id+'">تعديل</button></div>';
+        (own?' · حسابك · مخفي عن الجميع'
+            :' · كلمة سر من '+String(u.pin||"").length+' خانات'+
+              (pinCheck(u.pin,u.id)?' · <span style="color:var(--danger)">يحتاج تغيير</span>':''))+'</small></span>'+
+      (own?'<button class="btn ghost sm" data-act="ownerPin">تغيير كلمة السر</button>'
+          :'<button class="btn ghost sm" data-act="editUser" data-id="'+u.id+'">تعديل</button>')+'</div>';
   });
   h += '</div></div>';
 
+  if(!ownerUser() && (roleIs("manager") || roleIs("deputy"))){
+    h += '<div class="card"><div class="hd"><h3>حساب ADMIN — المسؤول الأعلى</h3></div><div class="bd">'+
+      '<div class="note warn"><b>لسه ما اتعملش.</b> حساب بكل صلاحيات المدير والوكيل، '+
+      'وبعد ما يتعمل: <b>كلمة سره مخفية عن الجميع</b> (حتى عنك)، ومحدش يقدر يعدّله أو يحذفه غيره هو.</div>'+
+      '<div class="note bad">مهم: احفظ كلمة السر في مكان آمن. لو ضاعت، <b>مفيش طريقة لاسترجاعها</b> '+
+      'من داخل البرنامج — هتحتاج ترجع نسخة احتياطية قديمة.</div>'+
+      '<button class="btn block" data-act="makeOwner">إنشاء حساب ADMIN</button></div></div>';
+  }
   h += '<div class="card"><div class="hd"><h3>النسخ الاحتياطي</h3></div><div class="bd">'+
     '<div class="note '+(STORAGE_OK?"":"bad")+'">'+(STORAGE_OK
       ? 'البيانات محفوظة على الجهاز ده تلقائيًا. خد نسخة احتياطية كل فترة — لو مسحت بيانات المتصفح هتضيع.'
@@ -6083,6 +6115,29 @@ function modalLinkAccounts(){
     '<div style="max-height:46vh;overflow:auto">'+body+'</div>'+
     '</div>'+mFoot("تمام","close"));
 }
+/* ============================================================
+   ADMIN — المسؤول الأعلى
+   حساب واحد بكل صلاحيات المدير والوكيل، محمي بالكامل:
+   • كلمة سره مخفية عن الجميع (حتى عن المدير)
+   • محدش يقدر يعدّله أو يحذفه غيره هو
+   • مش بيظهر في كشف كلمات السر ولا في سجل الحسابات
+   ============================================================ */
+/* فحص الصلاحية: ADMIN بيعدّي على كل صلاحيات المدير والوكيل ووكيل العاملين */
+function roleIs(r){
+  var me = UI.user && UI.user.role;
+  if(me === r) return true;
+  if(me === "owner") return (r==="manager" || r==="deputy" || r==="admin");
+  return false;
+}
+function ownerUser(){ return DB.users.filter(function(u){ return u.role==="owner"; })[0] || null; }
+function isOwner(u){ return !!(u && u.role==="owner"); }
+function iAmOwner(){ return isOwner(UI.user); }
+/* أي حساب محمي من العرض والتعديل بالنسبة للمستخدم الحالي؟ */
+function isProtectedUser(u){ return isOwner(u) && !iAmOwner(); }
+/* الحسابات اللي المستخدم الحالي مسموح يشوفها */
+function visibleUsers(){
+  return DB.users.filter(function(u){ return !isProtectedUser(u); });
+}
 /* حساب الدخول المرتبط بالمعلم */
 function userOfTeacher(tid){
   if(!tid) return null;
@@ -6417,7 +6472,13 @@ function saveBehavior(){
 /* ---------- نافذة الحساب ---------- */
 function modalUser(id){
   var u = id? byId(DB.users,id) : null;
-  var roleOpts = Object.keys(ROLES).map(function(r){
+  /* حساب ADMIN محمي: محدش يفتحه غيره */
+  if(isProtectedUser(u)){ toast("الحساب ده محمي — مش مسموح بتعديله"); return; }
+  var roleOpts = Object.keys(ROLES).filter(function(r){
+    /* دور ADMIN مش بيظهر في القائمة إلا لصاحبه، وحساب واحد بس */
+    if(r!=="owner") return true;
+    return iAmOwner() && (!u || u.role==="owner");
+  }).map(function(r){
     return '<option value="'+r+'"'+((u?u.role:"admin")===r?" selected":"")+'>'+esc(ROLES[r].name)+'</option>';
   }).join("");
   var stOpts = DB.students.slice().sort(function(a,b){return sortAr(a.name,b.name);})
@@ -6431,7 +6492,8 @@ function modalUser(id){
     '</div>'+
     sectorsField("u_sec", u? userSectors(u) : [curSector()])+
     '<label class="f"><span>مربوط بملف طالب (لحساب طالب / ولي أمر)</span><select id="u_s"><option value="">— لا يوجد —</option>'+stOpts+'</select></label>'+
-    (u && DB.users.length>1 ?'<button class="btn ghost block" data-act="delUser" data-id="'+u.id+'" style="color:var(--danger)">حذف الحساب</button>':'')+
+    (u && DB.users.length>1 && !isOwner(u) ?'<button class="btn ghost block" data-act="delUser" data-id="'+u.id+'" style="color:var(--danger)">حذف الحساب</button>':'')+
+    (isOwner(u)?'<div class="note warn">ده حساب ADMIN — مش بيتحذف من النظام.</div>':'')+
     '</div>'+mFoot("حفظ","saveUser"));
   MODAL.dataset.uid = u? u.id : "";
 }
@@ -7240,11 +7302,63 @@ var ACTS = {
     DB.bac.target = num(val("b_tg"),600);
     saveNow(); render(); toast("اتحفظت إعدادات البكالوريا");
   },
+  makeOwner: function(){
+    if(ownerUser()){ toast("حساب ADMIN موجود بالفعل"); return; }
+    openModal(mHead("إنشاء حساب ADMIN")+
+      '<div class="mb">'+
+      '<div class="note bad"><b>القرار ده مش بيترجع.</b> بعد الإنشاء، الحساب ده هيبقى مخفي عنك تمامًا — '+
+      'مش هتشوف كلمة سره ولا تقدر تعدّله أو تحذفه.</div>'+
+      '<label class="f"><span>اسم الحساب</span><input type="text" id="ow_n" value="ADMIN"></label>'+
+      '<label class="f"><span>كلمة السر</span><input type="text" id="ow_p" placeholder="٨ خانات على الأقل" '+
+        'style="letter-spacing:.12em;direction:ltr;text-align:center"></label>'+
+      '<label class="f"><span>تأكيد كلمة السر</span><input type="text" id="ow_p2" '+
+        'style="letter-spacing:.12em;direction:ltr;text-align:center"></label>'+
+      '<div class="note">اكتبها في ورقة واحفظها في مكان آمن قبل ما تكمّل.</div>'+
+      '</div>'+
+      '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+      '<button class="btn" data-act="doMakeOwner">إنشاء الحساب</button></div>');
+  },
+  doMakeOwner: function(){
+    if(ownerUser()){ toast("موجود بالفعل"); return; }
+    var n = val("ow_n").trim() || "ADMIN";
+    var p1 = normPin(val("ow_p")), p2 = normPin(val("ow_p2"));
+    if(p1.length < 8){ toast("كلمة السر لازم ٨ خانات على الأقل"); return; }
+    if(p1 !== p2){ toast("التأكيد مش مطابق"); return; }
+    if(DB.users.some(function(u){ return normPin(u.pin)===p1; })){ toast("كلمة السر دي مستخدمة لحساب تاني"); return; }
+    markUndo("إنشاء حساب ADMIN");
+    DB.users.push({ id:uid("u"), role:"owner", name:n, pin:p1, sectors:["reg","srv"] });
+    saveNow(); closeModal(); render();
+    toast("اتعمل حساب ADMIN — احفظ كلمة السر في مكان آمن");
+  },
+  ownerPin: function(){
+    if(!iAmOwner()){ toast("مش مسموح"); return; }
+    openModal(mHead("تغيير كلمة سر ADMIN")+
+      '<div class="mb">'+
+      '<label class="f"><span>كلمة السر الجديدة</span><input type="text" id="ow_np" '+
+        'style="letter-spacing:.12em;direction:ltr;text-align:center"></label>'+
+      '<label class="f"><span>التأكيد</span><input type="text" id="ow_np2" '+
+        'style="letter-spacing:.12em;direction:ltr;text-align:center"></label>'+
+      '<div class="note bad">لو ضاعت مفيش طريقة لاسترجاعها.</div>'+
+      '</div>'+mFoot("حفظ","doOwnerPin"));
+  },
+  doOwnerPin: function(){
+    if(!iAmOwner()){ toast("مش مسموح"); return; }
+    var p1 = normPin(val("ow_np")), p2 = normPin(val("ow_np2"));
+    if(p1.length < 8){ toast("لازم ٨ خانات على الأقل"); return; }
+    if(p1 !== p2){ toast("التأكيد مش مطابق"); return; }
+    if(DB.users.some(function(u){ return u.id!==UI.user.id && normPin(u.pin)===p1; })){ toast("مستخدمة لحساب تاني"); return; }
+    UI.user.pin = p1;
+    var me = byId(DB.users, UI.user.id);
+    if(me) me.pin = p1;
+    saveNow(); closeModal(); render(); toast("اتغيّرت كلمة السر");
+  },
   addUser: function(){ modalUser(null); },
   editUser: function(el){ modalUser(el.dataset.id); },
   saveUser: saveUser,
   delUser: function(el){
     var id = el.dataset.id;
+    var target = byId(DB.users, id);
+    if(isOwner(target)){ toast("حساب ADMIN مش بيتحذف من النظام"); return; }
     if(UI.user && UI.user.id===id){ toast("مش هينفع تحذف حسابك وأنت داخل بيه"); return; }
     DB.users = DB.users.filter(function(u){ return u.id!==id; });
     save(); closeModal(); render(); toast("اتحذف");
@@ -9244,7 +9358,7 @@ function schoolLabel(c){
   if(DB && DB.meta && DB.meta.school && DB.meta.school.indexOf(".......")<0) return DB.meta.school;
   return (c && c.code) ? c.code : "—";
 }
-function canSeeSync(){ return !!UI.user && UI.user.role==="deputy"; }
+function canSeeSync(){ return !!UI.user && roleIs("deputy"); }
 
 function syncCard(){
   var c = syncCfgLoad() || {};
@@ -10461,6 +10575,7 @@ function startLockTimer(){
   }, 1000);
 }
 /* أول تبويب حقيقي في القائمة (عناوين المجموعات مش تبويبات) */
+NAV.owner = buildOwnerNav();
 function firstTabOf(role){
   var a = NAV[role] || [];
   for(var i=0;i<a.length;i++) if(a[i][0]!=="_g") return a[i][0];
@@ -10559,8 +10674,8 @@ function pinsCard(){
 }
 /* كشف الأرقام — يشوفه المدير ووكيل شئون العاملين بس */
 function pinSheet(){
-  var rows = DB.users.slice().sort(function(a,b){
-    var o = {manager:0,deputy:1,admin:2,teacher:3,student:4};
+  var rows = visibleUsers().sort(function(a,b){
+    var o = {owner:0,manager:1,deputy:2,admin:3,teacher:4,student:5};
     return (o[a.role]-o[b.role]) || sortAr(a.name,b.name);
   });
   var t = '<table class="tbl"><thead><tr><th>م</th><th>الاسم</th><th>الصفة</th>'+
@@ -10581,7 +10696,7 @@ function pinSheet(){
 /* قصاصات منفصلة تقصها وتوزعها */
 function pinSlips(){
   var h = '<div class="note noprint">اطبع الصفحة واقص كل قصاصة وسلّمها لصاحبها.</div><div style="margin-top:10px">';
-  DB.users.forEach(function(u){
+  visibleUsers().forEach(function(u){
     h += '<div class="card" style="break-inside:avoid;margin-bottom:8px"><div class="bd" style="text-align:center">'+
       '<div style="font-size:11px;color:var(--muted)">'+esc(DB.meta.school)+'</div>'+
       '<div style="font-weight:700;font-size:15px;margin:3px 0">'+esc(u.name)+'</div>'+
@@ -10830,7 +10945,7 @@ function dayPulse(date){
 function pendingTasks(){
   var t = [];
   var role = UI.user.role;
-  if(role!=="deputy" && role!=="manager") return t;
+  if(!roleIs("deputy") && !roleIs("manager")) return t;
 
   /* طلاب مترحّلين بدون فصل */
   var un = unassignedStudents();
@@ -10927,7 +11042,7 @@ function viewToday(){
   var dw = p.day;
   var gen = p.general ? staffById(p.general) : null;
   var role = UI.user.role;
-  var canRun = role==="manager" || role==="supervisor" || role==="admin";
+  var canRun = roleIs("manager") || role==="supervisor" || roleIs("admin");
 
   var h = pageHd("لوحة اليوم",
     (dw>=0&&dw<6? DAYS[dw]+" ":"")+fmtDate(date)+" · "+sectorFull(curSector())+" · "+sectorTimeLine(curSector()));
@@ -10945,7 +11060,7 @@ function viewToday(){
 
   h += setupCard();
   h += tasksCard();
-  if(UI.user.role==="manager" || UI.user.role==="deputy") h += sessionsCard();
+  if(roleIs("manager") || roleIs("deputy")) h += sessionsCard();
 
   /* المشرف العام */
   h += '<div class="card"><div class="hd"><div style="flex:1"><span class="eyebrow">المناوبة</span>'+
@@ -11614,7 +11729,7 @@ function examLevels(e){
 function viewExamPlan(){
   var term = UI.examTerm || "1";
   var list = examsOf(term);
-  var isMgr = UI.user.role==="manager" || UI.user.role==="deputy";
+  var isMgr = roleIs("manager") || roleIs("deputy");
   var c = calCfg();
   var win = term==="1" ? [c.ex1From, c.ex1To] : (term==="2" ? [c.ex2From, c.ex2To] : [c.finFrom, c.finTo]);
 
@@ -11729,7 +11844,7 @@ function viewCalendar(){
   var t = today();
   var upcoming = hs.filter(function(h){ return (h.to||h.from) >= t; });
 
-  var isMgr = UI.user.role==="manager" || UI.user.role==="deputy";
+  var isMgr = roleIs("manager") || roleIs("deputy");
   var tab = UI.calTab==="exams" ? "exams" : "plan";
   var c = calCfg(), ph = currentPhase();
 
@@ -12152,7 +12267,7 @@ var GATES = {
 function iAmResponsible(role){
   if(!UI.user) return false;
   if(UI.user.role === role) return true;
-  if(UI.user.role === "manager") return true;
+  if(roleIs("manager")) return true;
   return false;
 }
 function gate(){
@@ -12928,7 +13043,7 @@ function subByNat(formId, nat, exceptId){
   for(var i=0;i<list.length;i++){ if(list[i].id===exceptId) continue; if(String(list[i].natId)===n) return list[i]; }
   return null;
 }
-function canManageForms(){ return UI.user.role==="deputy" || UI.user.role==="manager"; }
+function canManageForms(){ return roleIs("deputy") || roleIs("manager"); }
 
 /* ---------- الـ hub: كل الاستمارات ---------- */
 function viewFormsHub(){
@@ -13538,7 +13653,7 @@ function viewWishes(){
 
   var h = pageHd("رغبات الطلاب",
     all.length+" طالب سجّل رغبته في قسم "+sectorName(curSector()),
-    (UI.user.role==="deputy"&&all.length?'<button class="btn seal" data-act="formMigrate" data-id="track">⇪ ترحيل لطلاب '+esc(levelName(num(DB.trackLevel,2)))+'</button>':'')+
+    (roleIs("deputy")&&all.length?'<button class="btn seal" data-act="formMigrate" data-id="track">⇪ ترحيل لطلاب '+esc(levelName(num(DB.trackLevel,2)))+'</button>':'')+
     '<button class="btn" data-act="wExcel" style="margin-right:6px">⬇ تنزيل إكسيل</button>'+
     '<button class="btn ghost" data-act="wPdf" style="margin-right:6px">⬇ تنزيل PDF</button>');
 
@@ -14201,7 +14316,7 @@ function generateSchedule(respectNisab, tries){
    ============================================================ */
 function schedTab(){ return (UI.sub && UI.sub.st) || "classes"; }
 function viewScheduleHub(){
-  var isDep = UI.user.role==="deputy" || UI.user.role==="manager" || UI.user.role==="admin";
+  var isDep = roleIs("deputy") || roleIs("manager") || roleIs("admin");
   var t = schedTab();
   var h = '<div class="chips noprint">'+
     stBtn("classes","جداول الفصول",t)+
@@ -14624,7 +14739,7 @@ function actGroupsCount(){
 function viewActivities(){
   actInit();
   var kind = UI.actKind==="voc" ? "voc" : "activity";
-  var isDep = UI.user.role==="deputy" || UI.user.role==="manager";
+  var isDep = roleIs("deputy") || roleIs("manager");
   var list = actsOf(kind);
   var elig = actEligible(kind);
   var un = actUnassigned(kind);
