@@ -13693,18 +13693,62 @@ function modalFormBuilder(id){
                        fields:(f.fields||[]).map(function(x){ return Object.assign({},x); }) }
                    : { id:null, title:"", desc:"", level:num(UI.newFormLvl,0), strictNat:true, fields:[] };
   UI.newFormLvl = 0;
+  UI.fbEdit = null;
   renderFormBuilder();
+}
+/* كام تسجيل جاوب على الحقل ده — عشان نطمّن المستخدم قبل التعديل */
+/* بنحفظ اللي اتكتب فوق قبل ما نعيد رسم النافذة، عشان ما يضيعش */
+function keepDraftTop(d){
+  var t = val("fb_title"); if(t!==undefined && t!=="") d.title = t;
+  var ds = val("fb_desc"); if(ds!==undefined) d.desc = ds;
+  var lv = val("fb_lvl"); if(lv!=="") d.level = num(lv,0);
+  var st = val("fb_strict"); if(st!=="") d.strictNat = (st!=="0");
+}
+function fieldAnswers(formId, fieldId){
+  if(!formId || !fieldId) return 0;
+  return formSubsOf(formId).filter(function(sb){
+    var v = sb.values && sb.values[fieldId];
+    return v!==undefined && v!==null && String(v).trim()!=="";
+  }).length;
 }
 function renderFormBuilder(){
   var d = UI.formDraft; if(!d) return;
   var fieldsHTML = d.fields.map(function(fd,i){
-    return '<div style="border:1px solid var(--line);border-radius:9px;padding:9px;margin-bottom:7px">'+
-      '<div style="display:flex;gap:8px;align-items:center">'+
-      '<b style="flex:1">'+esc(fd.label||"(بدون عنوان)")+'</b>'+
-      '<span class="tag">'+esc(fieldTypeName(fd.type))+(fd.required?" · إجباري":"")+'</span>'+
-      '<button class="btn ghost sm" data-act="fbDelField" data-i="'+i+'" style="color:var(--danger)">حذف</button></div>'+
-      (fd.type==="select"&&fd.options&&fd.options.length?'<small style="color:var(--muted)">خيارات: '+esc(fd.options.join("، "))+'</small>':'')+
-      '</div>';
+    var open = (UI.fbEdit===i);
+    var used = fieldAnswers(d.id, fd.id);      /* كام تسجيل جاوب على الحقل ده */
+    if(!open){
+      return '<div style="border:1px solid var(--line);border-radius:9px;padding:9px;margin-bottom:7px">'+
+        '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+
+        '<b style="flex:1;min-width:110px">'+esc(fd.label||"(بدون عنوان)")+'</b>'+
+        '<span class="tag">'+esc(fieldTypeName(fd.type))+(fd.required?" · إجباري":"")+'</span>'+
+        (used?'<span class="tag info">'+used+' إجابة</span>':'')+
+        '<button class="btn ghost sm" data-act="fbUpField" data-i="'+i+'"'+(i===0?" disabled":"")+'>▲</button>'+
+        '<button class="btn ghost sm" data-act="fbDownField" data-i="'+i+'"'+(i===d.fields.length-1?" disabled":"")+'>▼</button>'+
+        '<button class="btn ghost sm" data-act="fbEditField" data-i="'+i+'">تعديل</button>'+
+        '<button class="btn ghost sm" data-act="fbDelField" data-i="'+i+'" style="color:var(--danger)">حذف</button></div>'+
+        (fd.type==="select"&&fd.options&&fd.options.length?'<small style="color:var(--muted)">خيارات: '+esc(fd.options.join("، "))+'</small>':'')+
+        '</div>';
+    }
+    /* وضع التعديل — نفس الحقل بمعرّفه، فالإجابات القديمة بتفضل مربوطة */
+    return '<div style="border:2px solid var(--acc);border-radius:9px;padding:10px;margin-bottom:7px;background:#f7faff">'+
+      '<div style="font-size:12px;font-weight:700;color:var(--acc);margin-bottom:7px">تعديل الحقل</div>'+
+      (used?'<div class="note" style="margin:0 0 8px">فيه <b>'+used+'</b> طالب جاوبوا على الحقل ده. '+
+        'التعديل <b>مش هيمس إجاباتهم</b> — هيتطبق على اللي هيسجّلوا بعد كده.</div>':'')+
+      '<div class="grid2">'+
+        '<label class="f"><span>اسم الحقل</span><input type="text" id="fe_l" value="'+esc(fd.label||"")+'"></label>'+
+        '<label class="f"><span>النوع</span><select id="fe_t">'+
+          FIELD_TYPES.map(function(t){ return '<option value="'+t.id+'"'+(fd.type===t.id?" selected":"")+'>'+esc(t.name)+'</option>'; }).join("")+
+        '</select></label>'+
+      '</div>'+
+      '<label class="f"><span>الخيارات (افصل بينها بفاصلة)</span>'+
+        '<input type="text" id="fe_o" value="'+esc((fd.options||[]).join("، "))+'" placeholder="خيار ١، خيار ٢"></label>'+
+      '<label style="display:flex;align-items:center;gap:8px;margin-bottom:9px;cursor:pointer">'+
+        '<input type="checkbox" id="fe_r"'+(fd.required?" checked":"")+' style="width:18px;height:18px">'+
+        '<span>حقل إجباري</span></label>'+
+      '<div style="display:flex;gap:6px">'+
+        '<button class="btn sm" data-act="fbSaveField" data-i="'+i+'" style="flex:1">حفظ التعديل</button>'+
+        '<button class="btn ghost sm" data-act="fbCancelField" style="flex:1">إلغاء</button>'+
+      '</div></div>';
   }).join("");
   openModal(mHead(d.id?"تعديل الاستمارة":"استمارة جديدة")+
     '<div class="mb">'+
@@ -14117,6 +14161,7 @@ Object.assign(ACTS, {
   },
   formExcel: function(el){ formExcel(el.dataset.id); },
   fbAddField: function(){
+    UI.fbEdit = null;
     var d = UI.formDraft; if(!d) return;
     d.title = val("fb_title"); d.desc = val("fb_desc");
     var label = val("fb_fl").trim();
@@ -14134,9 +14179,58 @@ Object.assign(ACTS, {
   },
   fbDelField: function(el){
     var d = UI.formDraft; if(!d) return;
-    d.title = val("fb_title"); d.desc = val("fb_desc");
-    d.fields.splice(Number(el.dataset.i), 1);
+    var i = Number(el.dataset.i);
+    var fd = d.fields[i];
+    var used = fd ? fieldAnswers(d.id, fd.id) : 0;
+    if(used && !confirm("الحقل ده جاوب عليه "+used+" طالب.\nلو حذفته هتختفي إجاباتهم من الكشف.\nتكمّل؟")) return;
+    keepDraftTop(d);
+    d.fields.splice(i, 1);
+    UI.fbEdit = null;
     renderFormBuilder();
+  },
+  /* فتح وضع تعديل الحقل */
+  fbEditField: function(el){
+    var d = UI.formDraft; if(!d) return;
+    keepDraftTop(d);
+    UI.fbEdit = Number(el.dataset.i);
+    renderFormBuilder();
+  },
+  fbCancelField: function(){ UI.fbEdit = null; renderFormBuilder(); },
+  /* حفظ التعديل — المعرّف بيفضل زي ما هو فالإجابات القديمة متتأثرش */
+  fbSaveField: function(el){
+    var d = UI.formDraft; if(!d) return;
+    var i = Number(el.dataset.i), fd = d.fields[i];
+    if(!fd) return;
+    var lbl = val("fe_l").trim();
+    if(!lbl){ toast("اكتب اسم الحقل"); return; }
+    var tp = val("fe_t") || "text";
+    var opts = val("fe_o").split(/[,،]/).map(function(x){ return x.trim(); }).filter(Boolean);
+    if(tp==="select" && !opts.length){ toast("اكتب خيارات القائمة"); return; }
+    keepDraftTop(d);
+    /* fd.id مبيتغيّرش أبدًا — ده اللي بيحافظ على الإجابات */
+    fd.label = lbl;
+    fd.type = tp;
+    fd.options = opts;
+    fd.required = !!(document.getElementById("fe_r")||{}).checked;
+    UI.fbEdit = null;
+    renderFormBuilder();
+    toast("اتعدّل الحقل — الإجابات القديمة زي ما هي");
+  },
+  fbUpField: function(el){
+    var d = UI.formDraft; if(!d) return;
+    var i = Number(el.dataset.i);
+    if(i<1) return;
+    keepDraftTop(d);
+    var t0 = d.fields[i-1]; d.fields[i-1] = d.fields[i]; d.fields[i] = t0;
+    UI.fbEdit = null; renderFormBuilder();
+  },
+  fbDownField: function(el){
+    var d = UI.formDraft; if(!d) return;
+    var i = Number(el.dataset.i);
+    if(i >= d.fields.length-1) return;
+    keepDraftTop(d);
+    var t1 = d.fields[i+1]; d.fields[i+1] = d.fields[i]; d.fields[i] = t1;
+    UI.fbEdit = null; renderFormBuilder();
   },
   saveForm: function(){
     var d = UI.formDraft; if(!d) return;
