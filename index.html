@@ -685,6 +685,7 @@ function load(){
     actInit();
     calCfg(); examsInit(); xfInit(); logInit(); lessonInit(); msgInit(); dupOkInit(); sessInit(); attLogInit();
     formsResetOnce();
+    dedupeWishes();
     idxBump();
   }catch(e){ DB = seed(); }
 }
@@ -9475,11 +9476,28 @@ var GRAIN = ["attend","marks","staffAtt","subs","duty",
      من غير ما حد يدهس حد. لو اترفعت كمصفوفة، آخر واحد يكتب يمسح اللي قبله. */
   "wishes"];
 var GRAIN_ARRAYS = { wishes:1 };
+/* مفتاح التسجيل في المزامنة = الرقم القومي.
+   كده لو نفس الطالب سجّل من جهازين، الاتنين بيكتبوا في نفس الخانة
+   فالأحدث بيحدّث الأقدم بدل ما يتعمل صف مكرر. */
+function grainKeyOf(k, x){
+  if(k==="wishes"){
+    var n = toEnDigits(String(x.natId||"")).replace(/[^0-9]/g,"");
+    if(n.length===14) return "n"+n;
+  }
+  return x.id;
+}
 function grainMap(k){
   var v = DB[k];
   if(!GRAIN_ARRAYS[k]) return v || {};
   var o = {};
-  (Array.isArray(v)?v:[]).forEach(function(x){ if(x && x.id) o[x.id] = x; });
+  (Array.isArray(v)?v:[]).forEach(function(x){
+    if(!x) return;
+    var key = grainKeyOf(k, x);
+    if(!key) return;
+    /* لو فيه اتنين بنفس المفتاح، الأحدث يكسب */
+    var old = o[key];
+    if(!old || num(x.at,0) >= num(old.at,0)) o[key] = x;
+  });
   return o;
 }
 function grainUnmap(k, obj){
@@ -9675,7 +9693,14 @@ function snapshotOf(db){
   GRAIN.forEach(function(k){
     s.g[k] = {};
     var o = GRAIN_ARRAYS[k] ? (function(){
-      var m = {}; (Array.isArray(db[k])?db[k]:[]).forEach(function(x){ if(x && x.id) m[x.id]=x; }); return m;
+      var m = {};
+      (Array.isArray(db[k])?db[k]:[]).forEach(function(x){
+        if(!x) return;
+        var key = grainKeyOf(k, x);
+        if(!key) return;
+        if(!m[key] || num(x.at,0) >= num(m[key].at,0)) m[key] = x;
+      });
+      return m;
     })() : (db[k] || {});
     for(var x in o) s.g[k][x] = JSON.stringify(o[x]);
   });
@@ -12717,6 +12742,27 @@ function wishSubjects(id){ var t = wishTrack(id); return t ? t.subjects : []; }
 /* تنضيف خفيف: مسافات بس — من غير تحويل الأرقام العربية
    عشان اسم الفصل يفضل زي ما الطالب كتبه */
 function tidy(v){ return String(v==null?"":v).replace(/\s+/g," ").trim(); }
+/* ============================================================
+   تنظيف تسجيلات المسار المكررة — الرقم القومي واحد لواحد.
+   بيشتغل مرة عند الفتح، وبيسيب الأحدث ويشيل الباقي.
+   ============================================================ */
+function dedupeWishes(){
+  if(!Array.isArray(DB.wishes)) return 0;
+  var seen = {}, out = [], removed = 0;
+  /* الأحدث الأول عشان يكسب */
+  DB.wishes.slice().sort(function(a,b){ return num(b.at,0) - num(a.at,0); }).forEach(function(w){
+    var n = toEnDigits(String(w.natId||"")).replace(/[^0-9]/g,"");
+    var key = (n.length===14) ? "n"+n : ("i"+w.id);
+    if(seen[key]){ removed++; return; }
+    seen[key] = 1;
+    out.push(w);
+  });
+  if(removed){
+    /* نرجّع الترتيب الأصلي بالتاريخ */
+    DB.wishes = out.sort(function(a,b){ return num(a.at,0) - num(b.at,0); });
+  }
+  return removed;
+}
 function wishesInit(){ if(!Array.isArray(DB.wishes)) DB.wishes = []; }
 function wishByNat(nat, exceptId){
   wishesInit();
@@ -12825,8 +12871,10 @@ function wishDoneHTML(w){
   return '<div style="text-align:center">'+
     '<div style="width:52px;height:52px;margin:0 auto 11px;border-radius:14px;display:grid;place-items:center;'+
     'background:#e2f0e9;color:#146a4e;font-size:26px">✓</div>'+
-    '<div style="font-family:Cairo,sans-serif;font-weight:700;font-size:17px">اتسجّلت رغبتك</div>'+
-    '<div style="font-size:12px;color:var(--muted);margin-top:4px">احتفظ بالبيانات دي</div>'+
+    '<div style="font-family:Cairo,sans-serif;font-weight:700;font-size:17px">'+
+      (UI.wishUpd? "اتحدّثت بياناتك" : "اتسجّلت رغبتك")+'</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-top:4px">'+
+      (UI.wishUpd? "كنت مسجّل قبل كده — البيانات الجديدة حلّت محل القديمة" : "احتفظ بالبيانات دي")+'</div>'+
     '</div>'+
     '<div style="background:#fbfcfa;border:1px solid var(--line);border-radius:11px;padding:12px;margin-top:13px;font-size:13.5px;line-height:2">'+
     '<div><b>الاسم:</b> '+esc(w.name)+'</div>'+
@@ -12878,9 +12926,24 @@ function saveWish(){
   })[0];
   if(miss){ toast("لازم تكتب: "+miss.label); return; }
 
+  /* الرقم القومي مسجّل قبل كده = تحديث بياناته، مش تسجيل جديد */
   var dup = wishByNat(o.natId, null);
   if(dup){
-    toast("الرقم القومي ده مسجّل قبل كده باسم "+dup.name);
+    dup.name      = cleanName(o.name);
+    dup.prevClass = tidy(o.prevClass) || dup.prevClass;
+    dup.edu       = o.edu   || dup.edu;
+    dup.track     = o.track || dup.track;
+    dup.subject   = o.subject || dup.subject;
+    dup.extra     = Object.assign({}, dup.extra||{}, o.extra||{});
+    dup.at        = Date.now();
+    dup.date      = today();
+    delete dup.migAt;          /* اتغيّرت بياناته — يرجع مستجد عشان يتحدّث */
+    delete dup.migrated;
+    saveNow();
+    UI.wishDone = dup;
+    UI.wish = null;
+    UI.wishUpd = true;
+    renderLogin();
     return;
   }
   var now = new Date();
@@ -15057,7 +15120,7 @@ document.addEventListener("click", function(e){
   var el = e.target.closest ? e.target.closest("[data-lact]") : null;
   if(!el) return;
   var a = el.dataset.lact;
-  if(a==="stu"){ e.preventDefault(); UI.stu = true; UI.stuForm = null; UI.wishDone = null; UI.formDone = null; UI.wish = UI.wish || {}; renderLogin(); }
+  if(a==="stu"){ e.preventDefault(); UI.stu = true; UI.stuForm = null; UI.wishDone = null; UI.wishUpd = false; UI.formDone = null; UI.wish = UI.wish || {}; renderLogin(); }
   if(a==="stuPick"){
     e.preventDefault();
     var id = el.dataset.id;
