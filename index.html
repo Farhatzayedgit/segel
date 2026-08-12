@@ -3071,6 +3071,38 @@ function healthChecks(){
       ? openN+" استمارة مفتوحة، وكلها ظاهرة للطلاب بالظبط."
       : "فيه اختلاف بين اللي إنت شايفه واللي الطالب شايفه.",
     act:"goForms", btn:"مراجعة" });
+  /* ١ن الرقم القومي محور البيانات — أي تكرار أو نقص خطر */
+  var natDup = {}, natBad = 0;
+  DB.students.forEach(function(x){
+    if(x.status==="left") return;
+    var n = normNat(x.natId);
+    if(n.length!==14){ natBad++; return; }
+    natDup[n] = (natDup[n]||0) + 1;
+  });
+  var dupN = Object.keys(natDup).filter(function(k){ return natDup[k]>1; }).length;
+  out.push({ id:"natdup", ok: dupN===0, level:"bad",
+    title:"أرقام قومية مكررة للطلاب", n:dupN,
+    desc: dupN ? dupN+" رقم قومي مستخدم لأكتر من طالب — ده بيخلط بياناتهم كلها."
+               : "كل رقم قومي لطالب واحد بس.",
+    act:"findSuspects", btn:"مراجعة" });
+  out.push({ id:"natbad", ok: natBad===0, level:"bad",
+    title:"طلاب بدون رقم قومي صحيح", n:natBad,
+    desc: natBad ? natBad+" طالب رقمه ناقص أو غلط — مش هيقدر يدخل استمارة ولا ولي أمره يتابعه."
+                 : "كل الطلاب لهم رقم قومي من ١٤ رقم.",
+    act:"goStudents", btn:"الكشف" });
+  /* كود المعلم محور بياناته */
+  var codeDup = {}, cN = 0;
+  DB.teachers.forEach(function(t){
+    if(t.status==="left") return;
+    var c = String(t.code||"").trim();
+    if(!c) return;
+    codeDup[c] = (codeDup[c]||0) + 1;
+  });
+  cN = Object.keys(codeDup).filter(function(k){ return codeDup[k]>1; }).length;
+  out.push({ id:"codedup", ok: cN===0, level:"bad",
+    title:"أكواد معلمين مكررة", n:cN,
+    desc: cN ? cN+" كود مستخدم لأكتر من معلم." : "كل كود لمعلم واحد.",
+    act:"goTeachers", btn:"الكشف" });
   /* ١أ حسابات إدارية مكررة */
   var accs = accountMatches();
   out.push({ id:"accdup", ok:!accs.length, level:"bad",
@@ -3783,16 +3815,39 @@ function stuColDefs(){
   var L = num(UI.stuLevel, 0);
   /* أعمدة الصف حسب قرارات الوزارة — اللي مش بتاعه بيختفي */
   if(L && LEVEL_COLS[L]){
-    var allow = LEVEL_COLS[L];
+    var allow = LEVEL_COLS[L].filter(function(k){ return k!=="level"; }); /* الصف معروف من التبويب */
     defs = defs.filter(function(d){ return allow.indexOf(d.k) >= 0; });
-    /* نرتّبهم بترتيب القرار */
     defs.sort(function(a,b){ return allow.indexOf(a.k) - allow.indexOf(b.k); });
   }
+  /* البيانات الإضافية — واللي اسمه زي عمود أساسي بيتخفي عشان ما يتكررش */
+  var baseNames = {};
+  defs.forEach(function(d){ baseNames[fieldKey(d.label)] = d.k; });
+  if(L===3) baseNames[fieldKey("الشعبة")] = "track";
+  if(L===2) baseNames[fieldKey("المسار")] = "track";
   xfList("student").forEach(function(f){
-    if(L && !xfInLevel(f, L)) return;          /* الحقل مش بتاع الصف ده */
+    if(L && !xfInLevel(f, L)) return;
+    /* لو الاسم زي عمود أساسي، مش هنعمل عمود تاني — القيمة بتتعرض في الأساسي */
+    if(baseNames[fieldKey(f.label)]) return;
     defs.push({ k:"xf:"+f.id, label:f.label });
   });
   return defs;
+}
+/* قيمة الشعبة/المسار — من الحقل الأساسي أو من عمود إضافي بنفس المعنى */
+function trackValueOf(s, L){
+  if(s.bacTrack) return wishTrackName(s.bacTrack);
+  var c = classById(s.classId);
+  if(c && c.track && c.track!=="none") return trackName(c.system, c.track);
+  /* نبص في الأعمدة الإضافية اللي معناها شعبة */
+  var want = fieldKey(num(L,0)===3 ? "الشعبة" : "المسار");
+  var hit = xfList("student").filter(function(f){
+    var k = fieldKey(f.label);
+    return k===want || synMatch(k, want);
+  })[0];
+  if(hit){
+    var v = xfGet(s, hit.id);
+    if(v && String(v).trim()) return String(v);
+  }
+  return "";
 }
 /* اسم عمود المسار بيتغيّر حسب الصف */
 function trackColLabel(L){
@@ -3863,6 +3918,30 @@ function stuDefaultsOnce(){
   c._init = 1;
   stuColDefs().forEach(function(d){ if(d.off) c.hide[d.k] = 1; });
 }
+/* قيمة الخانة كنص — عشان نعرف العمود فاضي ولا لأ */
+function stuCellValue(d, s){
+  var c = classById(s.classId);
+  switch(d.k){
+    case "natId": return s.natId||"";
+    case "cls":   return c ? c.name : (isHomeStudent(s)?"منازل":"");
+    case "edu":   return eduName(s.edu||"reg");
+    case "track": return trackValueOf(s, studentLevelOf(s));
+    case "subj":  return s.bacSubject||"";
+    case "seat":  return s.seat||"";
+    case "phone": return s.phone||"";
+    case "guard": return s.guardian||"";
+    case "gender":return s.gender||"";
+    case "birth": return s.birth||"";
+    case "gov":   return s.birthGov||"";
+    case "act":   return s.actId||"";
+    case "voc":   return s.vocId||"";
+    case "joined":return s.joined||"";
+    case "abs":   var st = attendStats(s.id, s.classId); return st.days? String(st.abs) : "";
+    case "level": return studentLevelOf(s)?"1":"";
+  }
+  if(d.k.indexOf("xf:")===0) return String(xfGet(s, d.k.slice(3))||"");
+  return "1";
+}
 function stuCell(d, s, n, can){
   var c = classById(s.classId);
   switch(d.k){
@@ -3871,9 +3950,12 @@ function stuCell(d, s, n, can){
                     '><b style="font-weight:600">'+esc(s.name)+'</b></td>';
     case "natId": return '<td class="num" style="direction:ltr;text-align:right">'+esc(s.natId||"—")+'</td>';
     case "level": return '<td><small>'+esc(studentLevelOf(s)?levelName(studentLevelOf(s)):"—")+'</small></td>';
-    case "cls":   return '<td>'+esc(c?c.name:"—")+'</td>';
+    case "cls":   return '<td>'+(c? esc(c.name)
+                    : (isHomeStudent(s)? '<small>منازل</small>'
+                       : '<small style="color:var(--danger)">غير مسكّن</small>'))+'</td>';
     case "edu":   return '<td><small>'+esc(eduName(s.edu||"reg"))+'</small></td>';
-    case "track": return '<td><small>'+esc(s.bacTrack?wishTrackName(s.bacTrack):(c?trackName(c.system,c.track):"—"))+'</small></td>';
+    case "track": var tv = trackValueOf(s, studentLevelOf(s));
+                  return '<td><small>'+(tv? esc(tv) : '<span style="color:var(--danger)">غير محدد</span>')+'</small></td>';
     case "subj":  return '<td><small>'+esc(s.bacSubject||"—")+'</small></td>';
     case "phone": return '<td class="num" style="direction:ltr;text-align:right">'+esc(s.phone||"—")+'</td>';
     case "guard": return '<td><small>'+esc(s.guardian||"—")+'</small></td>';
@@ -4364,10 +4446,60 @@ function viewStudents(){
     }).join("")+'</div>';
   if(_lv){
     list = list.filter(function(x){ return studentLevelOf(x)===_lv; });
+    /* فلتر «الناقص» — بيوريك اللي محتاج استكمال بس */
+    var mw = UI.stuMiss;
+    if(mw){
+      list = list.filter(function(x){
+        if(mw==="بدون فصل")          return !classById(x.classId) && !isHomeStudent(x);
+        if(mw==="بدون شعبة"||mw==="بدون مسار") return !trackValueOf(x,_lv);
+        if(mw==="بدون مادة تخصص")    return !String(x.bacSubject||"").trim();
+        if(mw==="بدون رقم جلوس")     return !String(x.seat||"").trim();
+        if(mw==="رقم قومي ناقص")     return String(x.natId||"").length!==14;
+        return true;
+      });
+    }
     var xn = xfList("student").filter(function(f){ return xfInLevel(f,_lv); }).length;
     var xt = xfList("student").length;
     if(xt>xn) h += '<div class="note">أعمدة '+esc(levelName(_lv))+' بس ظاهرة — '+
       '<b>'+(xt-xn)+'</b> عمود بيخص صفوف تانية اتخفى تلقائيًا.</div>';
+  }
+  /* شريط اكتمال البيانات — بيقولك إيه الناقص فعلًا */
+  if(list.length && _lv){
+    var miss = [];
+    var noCls = list.filter(function(x){ return !classById(x.classId) && !isHomeStudent(x); }).length;
+    if(noCls) miss.push({ n:noCls, t:"بدون فصل", act:"stuNoCls" });
+    if(_lv>=2){
+      var noTrk = list.filter(function(x){ return !trackValueOf(x,_lv); }).length;
+      if(noTrk) miss.push({ n:noTrk, t:(_lv===3?"بدون شعبة":"بدون مسار"), act:"" });
+      var noSub = list.filter(function(x){ return !String(x.bacSubject||"").trim(); }).length;
+      if(noSub) miss.push({ n:noSub, t:"بدون مادة تخصص", act:"" });
+    }
+    if(_lv===3){
+      var noSeat = list.filter(function(x){ return !String(x.seat||"").trim(); }).length;
+      if(noSeat) miss.push({ n:noSeat, t:"بدون رقم جلوس", act:"" });
+    }
+    var noNat = list.filter(function(x){ return String(x.natId||"").length!==14; }).length;
+    if(noNat) miss.push({ n:noNat, t:"رقم قومي ناقص", act:"" });
+    if(miss.length){
+      h += '<div class="note warn noprint"><b>بيانات ناقصة في '+esc(levelName(_lv))+':</b> '+
+        miss.map(function(m){ return '<b>'+m.n+'</b> '+esc(m.t); }).join(" · ")+
+        ' — من إجمالي '+list.length+' طالب.'+
+        (canEditData()? '<div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">'+
+          miss.map(function(m){
+            return '<button class="btn ghost sm" data-act="stuMiss" data-w="'+esc(m.t)+'">'+
+              'اعرض الـ'+m.n+' ('+esc(m.t)+')</button>';
+          }).join("")+'</div>' : '')+
+        '</div>';
+    }else{
+      h += '<div class="note ok noprint">بيانات '+esc(levelName(_lv))+' كاملة — '+list.length+' طالب.</div>';
+    }
+  }
+  if(UI.stuMiss){
+    h += '<div class="note noprint" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+      '<b>معروض: '+esc(UI.stuMiss)+' ('+list.length+')</b>'+
+      '<span style="flex:1"></span>'+
+      (canEditData()?'<button class="btn sm" data-act="stuMissAll">✎ تعديلهم كلهم مع بعض</button>':'')+
+      '<button class="btn ghost sm" data-act="stuMissOff">✕ إلغاء الفلتر</button></div>';
   }
   h += printHd("كشف بأسماء الطلاب");
   var canBulk = canEditData();
@@ -4375,6 +4507,13 @@ function viewStudents(){
   var rows = UI.printAll ? list : pg.rows;      /* الطباعة الكاملة بترسم الكل */
   var defs = stuColDefs();
   var cols = tblColumns("students", defs);
+  /* الأعمدة اللي كل قيمها فاضية بتتخفي لوحدها — مساحة ببلاش */
+  if(list.length){
+    cols = cols.filter(function(d){
+      if(d.core || d.k==="idx" || d.k==="name" || d.k==="natId") return true;
+      return list.some(function(st){ return !!stuCellValue(d, st); });
+    });
+  }
   var cfg  = tblCfg("students");
 
   h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' طالب</h3>'+
@@ -6602,8 +6741,12 @@ function saveStudent(){
   var id = MODAL.dataset.sid;
   var name = val("s_name").trim();
   if(!name){ toast("اكتب اسم الطالب"); return; }
+  /* الرقم القومي محور البيانات — مستحيل يتكرر */
+  var nat0 = toEnDigits(val("s_nat")).replace(/[^0-9]/g,"");
+  var g = natGuard(nat0, "student", id);
+  if(g){ toast(g); return; }
   var s = id? studentById(id) : null;
-  if(!s){ s = {id:uid("s"), status:"active"}; DB.students.push(s); }
+  if(!s){ s = stampSrc({id:uid("s"), status:"active", joined:today()}, "manual"); DB.students.push(s); }
   s.name = name;
   var pickedCls = val("s_cls");
   if(pickedCls) assignStudentToClass(s, pickedCls);   /* التسكين بيساوي الصف مع صف الفصل */
@@ -6968,16 +7111,23 @@ function saveTeacher(){
   var id = MODAL.dataset.tid;
   var name = val("t_name").trim();
   if(!name){ toast("اكتب اسم المعلم"); return; }
-  var t = id? teacherById(id) : null;
-  if(!t){ t = {id:uid("t")}; DB.teachers.push(t); }
-  var nat = toEnDigits(val("t_nat")).replace(/\D/g,"");
+  /* الفحص قبل ما نضيف السجل — عشان ما يتسجّلش ناقص لو الفحص وقع */
+  var nat = toEnDigits(val("t_nat")).replace(/[^0-9]/g,"");
+  var code = toEnDigits(val("t_code")).replace(/[^0-9]/g,"");
   if(nat && nat.length!==14){ toast("الرقم القومى لازم ١٤ رقم"); return; }
   if(nat){
-    var dupT = DB.teachers.filter(function(x){ return x.natId===nat && x.id!==t.id; })[0];
+    var dupT = DB.teachers.filter(function(x){ return normNat(x.natId)===nat && x.id!==id; })[0];
     if(dupT){ toast("الرقم القومى مسجّل بالفعل للمعلم: "+dupT.name); return; }
   }
+  /* كود المعلم محور بياناته زي الرقم القومي */
+  if(code){
+    var dupC = DB.teachers.filter(function(x){ return String(x.code||"")===code && x.id!==id; })[0];
+    if(dupC){ toast("كود المعلم ده مسجّل بالفعل لـ: "+dupC.name); return; }
+  }
+  var t = id? teacherById(id) : null;
+  if(!t){ t = {id:uid("t")}; DB.teachers.push(t); }
   t.name = name;
-  t.code = toEnDigits(val("t_code")).replace(/\D/g,"");
+  t.code = code;
   t.natId = nat;
   t.subject = val("t_sub").trim();
   t.hireDate = val("t_hire");
@@ -7609,7 +7759,25 @@ var ACTS = {
     UI.cellKey = null;
     saveNow(); closeModal(); render(); toastUndo("اتفرّغت");
   },
-  stuLvl: function(el){ UI.stuLevel = num(el.dataset.l,0); setPage("stu",1); render(); },
+  stuLvl: function(el){ UI.stuLevel = num(el.dataset.l,0); UI.stuMiss = null; setPage("stu",1); render(); },
+  goStudents: function(){ UI.tab="students"; UI.sub=null; UI.stuLevel=0; UI.stuMiss=null; render(); },
+  goTeachers: function(){ UI.tab="teachers"; UI.sub=null; render(); },
+  stuMiss:    function(el){ UI.stuMiss = el.dataset.w; setPage("stu",1); render(); },
+  stuMissOff: function(){ UI.stuMiss = null; setPage("stu",1); render(); },
+  stuMissAll: function(){
+    var L = num(UI.stuLevel,0), mw = UI.stuMiss;
+    var ids = myStudents().filter(function(x){
+      if(L && studentLevelOf(x)!==L) return false;
+      if(mw==="بدون فصل")          return !classById(x.classId) && !isHomeStudent(x);
+      if(mw==="بدون شعبة"||mw==="بدون مسار") return !trackValueOf(x,L);
+      if(mw==="بدون مادة تخصص")    return !String(x.bacSubject||"").trim();
+      if(mw==="بدون رقم جلوس")     return !String(x.seat||"").trim();
+      if(mw==="رقم قومي ناقص")     return String(x.natId||"").length!==14;
+      return false;
+    }).map(function(x){ return x.id; });
+    if(!ids.length){ toast("مفيش طلاب"); return; }
+    modalBulkStudents(ids);
+  },
   saveTchSlot: saveTeacherSlot,
   delTchSlot: function(el){
     var tid = el.dataset.t, day = num(el.dataset.d,0), per = num(el.dataset.p,1);
@@ -14645,6 +14813,33 @@ function remapStudentRefs(fromId, toId){
    وكود المعلم + رقمه القومي محور بيانات المعلم.
    ============================================================ */
 function normNat(x){ return toEnDigits(String(x||"")).replace(/[^0-9]/g,""); }
+/* ============================================================
+   الرقم القومي = المحور. أي كتابة بتعدّي من هنا فمستحيل يتكرر.
+   ============================================================ */
+function natOwner(nat, exceptId){
+  var n = normNat(nat);
+  if(n.length!==14) return null;
+  return DB.students.filter(function(s){
+    return s.id!==exceptId && normNat(s.natId)===n;
+  })[0] || null;
+}
+function natOwnerTeacher(nat, exceptId){
+  var n = normNat(nat);
+  if(n.length!==14) return null;
+  return DB.teachers.filter(function(t){
+    return t.id!==exceptId && normNat(t.natId)===n;
+  })[0] || null;
+}
+/* فحص صحة الرقم القومي مع رسالة واضحة */
+function natGuard(nat, kind, exceptId){
+  var n = normNat(nat);
+  if(!n) return "الرقم القومي مطلوب — هو أساس ربط كل البيانات";
+  if(n.length!==14) return "الرقم القومي لازم ١٤ رقم (مكتوب "+n.length+")";
+  if(!parseNationalId(n)) return "الرقم القومي مش صحيح — راجع التاريخ والمحافظة";
+  var own = (kind==="teacher") ? natOwnerTeacher(n, exceptId) : natOwner(n, exceptId);
+  if(own) return "الرقم ده مسجّل بالفعل باسم «"+own.name+"»";
+  return "";
+}
 function findStudent(q){
   var n = normNat(q);
   if(n.length===14){
