@@ -3849,15 +3849,26 @@ function modalMergeCols(scope){
   var arr = isT ? DB.teachers : allSectorStudents();
   var L = num(UI.stuLevel, 0);
   /* الأعمدة المتاحة: الأساسية + الإضافية */
+  var pool = isT ? DB.teachers.filter(function(x){ return x.status!=="left"; })
+                 : allSectorStudents().filter(function(x){ return !L || studentLevelOf(x)===L; });
   var opts = [];
+  function cnt(key){
+    var n = 0;
+    pool.forEach(function(o){ if(colValOf(o, key, scope, L, true)) n++; });
+    return n;
+  }
   (isT ? tchColDefs() : stuColDefs()).forEach(function(d){
     if(d.k==="idx") return;
-    opts.push({ v:"base:"+d.k, label:d.label, base:d.k });
+    var k = "base:"+d.k;
+    opts.push({ v:k, label:d.label, base:d.k, n:cnt(k) });
   });
   xfList(scope).forEach(function(f){
-    if(opts.some(function(o){ return o.v==="xf:"+f.id; })) return;
-    opts.push({ v:"xf:"+f.id, label:f.label+" (إضافي)", xf:f.id });
+    var k = "xf:"+f.id;
+    if(opts.some(function(o){ return o.v===k; })) return;
+    opts.push({ v:k, label:f.label+" (إضافي)", xf:f.id, n:cnt(k) });
   });
+  /* الأعمدة اللي فيها بيانات فوق */
+  opts.sort(function(a,b){ return (b.n||0)-(a.n||0); });
   var from = UI.mgFrom || "", to = UI.mgTo || "", rule = UI.mgRule || "empty";
 
   /* معاينة: كام قيمة هتتنقل */
@@ -3873,11 +3884,17 @@ function modalMergeCols(scope){
     '<div class="grid2">'+
       '<label class="f"><span>من عمود (المصدر)</span><select id="mg_from">'+
         '<option value="">— اختر —</option>'+
-        opts.map(function(o){ return '<option value="'+esc(o.v)+'"'+(from===o.v?" selected":"")+'>'+esc(o.label)+'</option>'; }).join("")+
-        '</select></label>'+
+        opts.map(function(o){
+          return '<option value="'+esc(o.v)+'"'+(from===o.v?" selected":"")+(o.n?"":" disabled")+'>'+
+            esc(o.label)+' — '+(o.n? o.n+' قيمة' : 'فاضي')+'</option>';
+        }).join("")+
+        '</select><small style="color:var(--muted);font-size:11.5px">الأعمدة اللي فيها بيانات فوق</small></label>'+
       '<label class="f"><span>إلى عمود (الهدف)</span><select id="mg_to">'+
         '<option value="">— اختر —</option>'+
-        opts.map(function(o){ return '<option value="'+esc(o.v)+'"'+(to===o.v?" selected":"")+'>'+esc(o.label)+'</option>'; }).join("")+
+        opts.map(function(o){
+          return '<option value="'+esc(o.v)+'"'+(to===o.v?" selected":"")+'>'+
+            esc(o.label)+' — '+(o.n? o.n+' متملّي' : 'فاضي')+'</option>';
+        }).join("")+
         '</select></label>'+
     '</div>'+
     '<label class="f"><span>القاعدة</span><select id="mg_rule">'+
@@ -3887,9 +3904,30 @@ function modalMergeCols(scope){
       '</select></label>'+
     (prev
       ? '<div class="note '+(prev.n?"ok":"warn")+'"><b>المعاينة:</b> '+
-        (prev.n? prev.n+' قيمة هتتنقل' : 'مفيش قيم مطابقة للقاعدة')+
-        (prev.skip? ' · '+prev.skip+' هتتساب زي ما هي' : '')+
-        (prev.bad? ' · <b>'+prev.bad+'</b> قيمة مش صالحة للعمود الهدف وهتتساب' : '')+'</div>'+
+        (prev.n? '<b>'+prev.n+'</b> قيمة هتتنقل' : 'مفيش قيم هتتنقل')+
+        (prev.skip? ' · '+prev.skip+' هتتساب (الهدف عنده قيمة)' : '')+
+        (prev.bad? ' · <b>'+prev.bad+'</b> مش صالحة للهدف' : '')+
+        (prev.srcEmpty? ' · '+prev.srcEmpty+' المصدر عندهم فاضي' : '')+
+        '</div>'+
+        /* لما مفيش حاجة تتنقل، نقول ليه بالظبط */
+        (!prev.n
+          ? '<div class="note warn"><b>السبب:</b> '+
+            (prev.srcEmpty===prev.total
+              ? 'عمود «'+esc(colLabelOf(from,scope,L))+'» <b>فاضي عند كل الطلاب</b> — '+
+                'اتأكد إنك اخترت العمود الصح، القيم ممكن تكون في عمود تاني.'
+              : (prev.bad && !prev.skip
+                ? 'القيم اللي في المصدر <b>مش صالحة</b> لعمود «'+esc(colLabelOf(to,scope,L))+'».'
+                : (prev.skip
+                  ? 'كل اللي المصدر عنده قيمة، الهدف عنده قيمة كمان. '+
+                    'جرّب قاعدة <b>«القيم الغلط»</b> أو <b>«الكل»</b>.'
+                  : 'مفيش بيانات مطابقة.')))+
+            '</div>'
+          : '')+
+        (prev.badSample && prev.badSample.length
+          ? '<div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">'+
+            'أمثلة على القيم المرفوضة: '+
+            prev.badSample.map(function(x){ return '«'+esc(x.v)+'»'; }).join(" · ")+'</div>'
+          : '')+
         (prev.sample.length
           ? '<div style="max-height:26vh;overflow:auto;border:1px solid var(--line-2);border-radius:9px">'+
             prev.sample.map(function(x){
@@ -3905,7 +3943,9 @@ function modalMergeCols(scope){
       '<span>فضّي عمود المصدر بعد النقل</span></label>'+
     '</div>'+
     '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
-    (prev && prev.n ? '<button class="btn" data-act="mgRun" data-s="'+esc(scope)+'">نقل '+prev.n+' قيمة</button>' : '')+
+    '<button class="btn'+(prev && prev.n ? '' : ' ghost')+'" data-act="mgRun" data-s="'+esc(scope)+'"'+
+      (prev && prev.n ? '' : ' disabled style="opacity:.45;cursor:not-allowed"')+'>'+
+      (prev && prev.n ? '✓ تطبيق — نقل '+prev.n+' قيمة' : '✓ تطبيق')+'</button>'+
     '</div>');
   UI.mgScope = scope;
 }
@@ -3940,16 +3980,21 @@ function mergeColsPreview(scope, from, to, rule, L){
   var arr = (scope==="teacher") ? DB.teachers.filter(function(x){ return x.status!=="left"; })
                                 : allSectorStudents().filter(function(x){ return !L || studentLevelOf(x)===L; });
   var toLabel = colLabelOf(to, scope, L);
-  var out = { n:0, skip:0, bad:0, sample:[], list:[] };
+  var out = { n:0, skip:0, bad:0, srcEmpty:0, total:0, sample:[], badSample:[], list:[] };
+  out.total = arr.length;
   arr.forEach(function(o){
     var v = colValOf(o, from, scope, L);
-    if(!v){ return; }
+    if(!v){ out.srcEmpty++; return; }
     var cur = colValOf(o, to, scope, L, true);
     var take = (rule==="all") ? true
              : (rule==="empty") ? !cur
              : !colValidFor(cur, to, L);          /* invalid */
     if(!take){ out.skip++; return; }
-    if(!colValidFor(v, to, L)){ out.bad++; return; }
+    if(!colValidFor(v, to, L)){
+      out.bad++;
+      if(out.badSample.length<6) out.badSample.push({ name:o.name, v:v });
+      return;
+    }
     out.n++;
     out.list.push({ o:o, v:v });
     if(out.sample.length<12) out.sample.push({ name:o.name, v:v, toLabel:toLabel });
