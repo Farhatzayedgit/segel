@@ -2134,7 +2134,16 @@ function modalBulkStudents(ids){
   var studs = ids.map(function(i){ return studentById(i); }).filter(Boolean);
   if(!studs.length){ toast("حدّد طلاب الأول من المربعات جنب الأسماء"); return; }
   UI.bulkIds = ids;
-  var clsOpts = myClasses().sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); })
+  /* كلهم من نفس الصف؟ ساعتها بنعرض حقول الصف ده بس */
+  var lvls = {};
+  studs.forEach(function(x){ lvls[studentLevelOf(x)||0] = 1; });
+  var ks = Object.keys(lvls);
+  var _BL = (ks.length===1) ? num(ks[0],0) : 0;     /* 0 = صفوف مختلطة */
+  UI.bulkLvl = _BL;
+  /* الفصول: بتاعت صفهم بس لو كلهم صف واحد */
+  var clsOpts = myClasses()
+    .filter(function(c){ return !_BL || Number(c.level)===_BL; })
+    .sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); })
     .map(function(c){ return '<option value="'+c.id+'">'+esc(c.name)+' — '+esc(levelName(c.level))+'</option>'; }).join("");
   openModal(mHead("تعديل "+studs.length+" طالب مع بعض")+
     '<div class="mb">'+
@@ -2156,22 +2165,47 @@ function modalBulkStudents(ids){
     '<div class="grid2">'+
       '<label class="f"><span>الديانة</span><select id="bk_rel"><option value="">— من غير تغيير —</option>'+
         '<option value="مسلم">مسلم</option><option value="مسيحي">مسيحي</option></select></label>'+
-      '<label class="f"><span>المسار (بكالوريا)</span><select id="bk_track"><option value="">— من غير تغيير —</option>'+
-        wishTracks().map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join("")+'</select></label>'+
+      /* الشعبة/المسار — بحقول الصف الصح، وبيختفي في الصف الأول */
+      (_BL>=2
+        ? '<label class="f"><span>'+esc(trackColLabel(_BL))+'</span><select id="bk_track">'+
+          '<option value="">— من غير تغيير —</option>'+
+          levelTracks(_BL).map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join("")+
+          '</select></label>'
+        : (_BL===1 ? '' :
+          '<label class="f"><span>الشعبة / المسار</span><select id="bk_track">'+
+          '<option value="">— من غير تغيير —</option>'+
+          LEVELS.filter(function(l){ return l.id>=2; }).map(function(l){
+            return '<optgroup label="'+esc(l.name)+'">'+
+              levelTracks(l.id).map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join("")+
+              '</optgroup>';
+          }).join("")+'</select></label>'))+
     '</div>'+
-    '<label class="f"><span>مادة التخصص</span><input type="text" id="bk_sub" placeholder="سيبها فاضية = من غير تغيير"></label>'+
-    '<div class="grid2">'+
-      '<label class="f"><span>النشاط التربوي</span><select id="bk_act"><option value="">— من غير تغيير —</option>'+
-        actsOf("activity").map(function(a){ return '<option value="'+a.id+'">'+esc(a.name)+'</option>'; }).join("")+'</select></label>'+
-      '<label class="f"><span>التربية المهنية</span><select id="bk_voc"><option value="">— من غير تغيير —</option>'+
-        actsOf("voc").map(function(a){ return '<option value="'+a.id+'">'+esc(a.name)+'</option>'; }).join("")+'</select></label>'+
-    '</div>'+
+    (_BL>=2
+      ? '<label class="f"><span>مادة التخصص</span><select id="bk_sub">'+
+        '<option value="">— من غير تغيير —</option></select>'+
+        '<small style="color:var(--muted);font-size:11.5px">اختر '+esc(trackColLabel(_BL))+' الأول عشان المواد تظهر</small></label>'
+      : '')+
+    (_BL===3
+      ? '<div class="note">رقم الجلوس بيتحط لكل طالب لوحده من صفحته — مش بيتغيّر جماعي.</div>'
+      : '')+
     '<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer">'+
       '<input type="checkbox" id="bk_enrich" checked style="width:18px;height:18px">'+
       '<span>إعادة استخراج البيانات من الرقم القومي والاسم (مواليد، نوع، محافظة، ولي أمر)</span></label>'+
     '</div>'+
     '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
     '<button class="btn" data-act="doBulkStudents">تطبيق على '+studs.length+' طالب</button></div>');
+  /* مادة التخصص بتتحدّث مع الشعبة */
+  var bt = document.getElementById("bk_track");
+  if(bt) bt.addEventListener("change", function(){
+    var bs = document.getElementById("bk_sub");
+    if(!bs) return;
+    var v = this.value;
+    var L2 = _BL;
+    if(!L2){ for(var i=2;i<=3;i++) if(levelTracks(i).some(function(x){ return x.id===v; })) L2 = i; }
+    var subs = levelSubjectsOf(L2, v);
+    bs.innerHTML = '<option value="">— من غير تغيير —</option>'+
+      subs.map(function(su){ return '<option value="'+esc(su)+'">'+esc(su)+'</option>'; }).join("");
+  });
 }
 function doBulkStudents(){
   var ids = UI.bulkIds || [];
@@ -2179,6 +2213,8 @@ function doBulkStudents(){
   if(!studs.length){ toast("مفيش طلاب محددين"); return; }
   var lvl = val("bk_lvl"), cls = val("bk_cls"), edu = val("bk_edu"),
       status = val("bk_status"), rel = val("bk_rel"), track = val("bk_track");
+  var subEl = document.getElementById("bk_sub");
+  var sub = subEl ? String(subEl.value||"").trim() : "";
   var doEnrich = !!(document.getElementById("bk_enrich")||{}).checked;
   markUndo("تعديل "+studs.length+" طالب");
   studs.forEach(function(s){
@@ -2192,11 +2228,13 @@ function doBulkStudents(){
     }
     if(status) s.status = status;
     if(rel) s.religion = rel;
-    if(track) s.bacTrack = track;
-    var bsub = val("bk_sub").trim();
-    if(bsub) s.bacSubject = bsub;
-    var bact = val("bk_act"); if(bact) s.actId = bact;
-    var bvoc = val("bk_voc"); if(bvoc) s.vocId = bvoc;
+    if(track){
+      s.bacTrack = track;
+      /* لو مادة تخصصه القديمة مش من الشعبة الجديدة، نمسحها */
+      var L3 = studentLevelOf(s);
+      if(s.bacSubject && levelSubjectsOf(L3, track).indexOf(s.bacSubject)<0) s.bacSubject = "";
+    }
+    if(sub) s.bacSubject = sub;
     if(doEnrich) enrichStudent(s);
   });
   UI.bulkIds = null;
