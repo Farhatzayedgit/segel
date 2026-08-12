@@ -323,6 +323,7 @@ table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
   .card{box-shadow:none;border:1px solid #999;break-inside:avoid;margin-bottom:8px}
   table.tbl th{background:#eee!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .print-hd{display:block!important;text-align:center;margin-bottom:12px;border-bottom:2px solid #000;padding-bottom:8px}
+  .paper-doc+.paper-doc{break-before:page;page-break-before:always}
   .pinmsg{font-size:11.5px;font-weight:600;margin-top:4px;min-height:15px}
 .syncpill{
   font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;
@@ -1803,8 +1804,11 @@ function render(){
 
   /* شاشة عرض أي ورقة مطبوعة (كشوف، شهادات، قصاصات) */
   if(UI.sub && UI.sub.paper){
+    var pn = num(UI.sub.paperN, 1);
     v.innerHTML = '<button class="btn ghost sm noprint" data-act="back" style="margin-bottom:10px">→ رجوع</button>'+
-      '<div class="noprint" style="margin-bottom:10px"><button class="btn" data-act="print">⎙ طباعة</button></div>'+
+      '<div class="noprint" style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+      '<button class="btn" data-act="print">⎙ طباعة'+(pn>1?" ("+pn+" ورقة)":"")+'</button>'+
+      (pn>1?'<span class="tag info">كل ورقة في صفحة مستقلة</span>':'')+'</div>'+
       UI.sub.paper;
     window.scrollTo(0,0);
     return;
@@ -8457,6 +8461,12 @@ function hookInputs(root){
     if(id==="logq"){ UI.filters.logq = e.target.value; render(); }
     if(id==="lsDate"){ UI.sub = { date: e.target.value }; render(); }
     if(id==="supDate"){ UI.sub = UI.sub || {}; UI.sub.date = e.target.value; render(); }
+    if(id==="pfq"){
+      pfKeep();
+      renderPaperFill();
+      var nq = document.getElementById("pfq");
+      if(nq){ nq.focus(); try{ nq.setSelectionRange(nq.value.length, nq.value.length); }catch(x){} }
+    }
     if(id==="trkLvl"){ DB.trackLevel = num(e.target.value,2); saveNow(); render(); toast("استمارة المسار بقت لطلاب "+levelName(DB.trackLevel)); }
     if(id==="attDate"){ UI.sub.date = e.target.value; render(); }
     if(id==="ctLvl" || id==="ctCls" || id==="ctScope"){
@@ -13893,25 +13903,124 @@ function modalPaperFill(key){
   var needsS = usesAny(sKeys), needsT = usesAny(tKeys);
   if(!needsS && !needsT){ openPaper(key, "", ""); return; }
 
-  var studs = myStudents().sort(function(a,b){ return sortAr(a.name,b.name); });
-  var tchs  = DB.teachers.filter(function(x){ return x.status!=="left"; }).sort(function(a,b){ return sortAr(a.name,b.name); });
+  UI.pfKey = key; UI.pfNeedS = needsS; UI.pfNeedT = needsT;
+  UI.pfPick = { s:[], t:[] };
+  UI.pfLevel = 0; UI.pfQ = "";
+  renderPaperFill();
+}
+/* اختيار الطلاب أو المعلمين — فلتر بالصف وبحث بالاسم والرقم القومي */
+function renderPaperFill(){
+  var t = paperByKey(UI.pfKey);
+  if(!t) return;
+  var needS = UI.pfNeedS, needT = UI.pfNeedT;
+  var q = String(UI.pfQ||"").trim();
+  var qn = normAr(q), qd = toEnDigits(q).replace(/[^0-9]/g,"");
+  var pickS = UI.pfPick.s, pickT = UI.pfPick.t;
+  var body = "";
+
+  if(needS){
+    var list = myStudents();
+    if(UI.pfLevel) list = list.filter(function(x){ return studentLevelOf(x)===UI.pfLevel; });
+    if(q) list = list.filter(function(x){
+      return normAr(x.name).indexOf(qn)>=0 || (qd.length>=3 && String(x.natId||"").indexOf(qd)>=0);
+    });
+    list = list.sort(function(a,b){ return sortAr(a.name,b.name); });
+    body += '<div class="chips" style="margin-bottom:8px">'+
+      '<button class="'+(!UI.pfLevel?"on":"")+'" data-act="pfLvl" data-l="0">كل الصفوف</button>'+
+      LEVELS.map(function(l){
+        var n2 = myStudents().filter(function(x){ return studentLevelOf(x)===l.id; }).length;
+        return '<button class="'+(UI.pfLevel===l.id?"on":"")+'" data-act="pfLvl" data-l="'+l.id+'">'+
+          esc(l.name)+' ('+n2+')</button>';
+      }).join("")+'</div>'+
+      '<input type="text" id="pfq" value="'+esc(q)+'" autocomplete="off" '+
+      'placeholder="بحث بالاسم أو الرقم القومي…" '+
+      'style="width:100%;padding:10px;border:1px solid var(--line-2);border-radius:9px;font:inherit;margin-bottom:8px">'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">'+
+      '<button class="btn ghost sm" data-act="pfAll">تحديد الظاهر ('+list.length+')</button>'+
+      '<button class="btn ghost sm" data-act="pfNone">إلغاء التحديد</button>'+
+      '<span style="flex:1"></span>'+
+      '<span class="tag '+(pickS.length?"ok":"")+'">'+pickS.length+' محدّد</span></div>'+
+      '<div style="max-height:38vh;overflow:auto;border:1px solid var(--line-2);border-radius:9px">';
+    if(!list.length) body += '<div class="empty"><b>مفيش نتائج</b><p>جرّب صف تاني أو غيّر البحث.</p></div>';
+    list.slice(0,300).forEach(function(x){
+      var c = classById(x.classId);
+      body += '<label class="list-item" style="cursor:pointer;margin:0">'+
+        '<input type="checkbox" class="pfck" data-k="s" data-id="'+x.id+'"'+
+        (pickS.indexOf(x.id)>=0?" checked":"")+' style="width:18px;height:18px;flex:0 0 18px">'+
+        '<span class="tx"><b>'+esc(x.name)+'</b><small><span style="direction:ltr">'+esc(x.natId||"")+'</span>'+
+        ' \u00b7 '+esc(studentLevelOf(x)?levelName(studentLevelOf(x)):"")+
+        (c?' \u00b7 '+esc(c.name):' \u00b7 غير مسكّن')+' \u00b7 '+esc(eduName(x.edu||"reg"))+'</small></span></label>';
+    });
+    if(list.length>300) body += '<div class="note">…وكمان '+(list.length-300)+' — ضيّق البحث</div>';
+    body += '</div>';
+  }
+
+  if(needT){
+    var tl = DB.teachers.filter(function(x){ return x.status!=="left"; });
+    if(q && !needS) tl = tl.filter(function(x){
+      return normAr(x.name).indexOf(qn)>=0 || String(x.code||"").indexOf(q)>=0 ||
+             (qd.length>=3 && String(x.natId||"").indexOf(qd)>=0);
+    });
+    tl = tl.sort(function(a,b){ return sortAr(a.name,b.name); });
+    if(needS) body += '<div style="height:12px"></div>';
+    body += '<div style="font-weight:700;font-family:Cairo,sans-serif;font-size:13px;margin-bottom:6px">المعلمون</div>';
+    if(!needS) body += '<input type="text" id="pfq" value="'+esc(q)+'" autocomplete="off" '+
+      'placeholder="بحث بالاسم أو الكود أو الرقم القومي…" '+
+      'style="width:100%;padding:10px;border:1px solid var(--line-2);border-radius:9px;font:inherit;margin-bottom:8px">';
+    body += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">'+
+      '<button class="btn ghost sm" data-act="pfAllT">تحديد الكل ('+tl.length+')</button>'+
+      '<button class="btn ghost sm" data-act="pfNoneT">إلغاء</button>'+
+      '<span style="flex:1"></span>'+
+      '<span class="tag '+(pickT.length?"ok":"")+'">'+pickT.length+' محدّد</span></div>'+
+      '<div style="max-height:'+(needS?"22vh":"42vh")+';overflow:auto;border:1px solid var(--line-2);border-radius:9px">';
+    tl.forEach(function(x){
+      body += '<label class="list-item" style="cursor:pointer;margin:0">'+
+        '<input type="checkbox" class="pfck" data-k="t" data-id="'+x.id+'"'+
+        (pickT.indexOf(x.id)>=0?" checked":"")+' style="width:18px;height:18px;flex:0 0 18px">'+
+        '<span class="tx"><b>'+esc(x.name)+'</b><small>'+esc(x.subject||"—")+
+        (x.code?' \u00b7 كود '+esc(x.code):'')+'</small></span></label>';
+    });
+    body += '</div>';
+  }
+
+  var nn = (needS?pickS.length:0) + (needT?pickT.length:0);
   openModal(mHead("تعبئة: "+t.title)+
     '<div class="mb">'+
-    '<div class="note">النموذج ده بيتعبّى تلقائيًا. اختار مين، والباقي هيتملّى من بيانات المدرسة والقاعدة. '+
-    'أي بيان مش موجود هيفضل <b>نقط للكتابة باليد</b>.</div>'+
-    (needsS? '<label class="f"><span>الطالب</span><select id="pf_s">'+
-      '<option value="">— بدون (نقط فاضية) —</option>'+
-      studs.map(function(x){
-        var c = classById(x.classId);
-        return '<option value="'+x.id+'">'+esc(x.name)+(c?' — '+esc(c.name):'')+'</option>';
-      }).join("")+'</select></label>' : '')+
-    (needsT? '<label class="f"><span>المعلم</span><select id="pf_t">'+
-      '<option value="">— بدون (نقط فاضية) —</option>'+
-      tchs.map(function(x){ return '<option value="'+x.id+'">'+esc(x.name)+(x.subject?' — '+esc(x.subject):'')+'</option>'; }).join("")+
-      '</select></label>' : '')+
-    '</div>'+
+    '<div class="note">اختار مين تطبع له — تقدر تختار <b>أكتر من واحد</b> وكل واحد هياخد ورقة مستقلة. '+
+    'وأي بيان مش موجود هيفضل نقط للكتابة باليد.</div>'+
+    body+'</div>'+
     '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
-    '<button class="btn" data-act="doPaperFill" data-k="'+esc(key)+'">فتح للطباعة</button></div>');
+    '<button class="btn ghost" data-act="doPaperFill" data-blank="1">ورقة فاضية</button>'+
+    '<button class="btn" data-act="doPaperFill">'+(nn>1? "فتح "+nn+" ورقة" : "فتح للطباعة")+'</button></div>');
+}
+/* بيحفظ اللي اتعلّم عليه والبحث قبل إعادة الرسم */
+function pfKeep(){
+  UI.pfPick = UI.pfPick || { s:[], t:[] };
+  var q = document.getElementById("pfq");
+  if(q) UI.pfQ = q.value;
+  Array.prototype.slice.call(document.querySelectorAll(".pfck")).forEach(function(b){
+    var arr = (b.dataset.k==="t") ? UI.pfPick.t : UI.pfPick.s;
+    var i = arr.indexOf(b.dataset.id);
+    if(b.checked && i<0) arr.push(b.dataset.id);
+    if(!b.checked && i>=0) arr.splice(i,1);
+  });
+}
+/* ورقة لكل واحد اتحدد — ورا بعض، كل واحدة في صفحة */
+function openPapers(key, sids, tids){
+  var t = paperByKey(key);
+  if(!t) return;
+  var raw = t.custom ? esc(t.body).replace(/\n/g,"<br>") : t.body;
+  var pairs = [];
+  if(sids.length && tids.length) sids.forEach(function(sid){ pairs.push([sid, tids[0]]); });
+  else if(sids.length) sids.forEach(function(sid){ pairs.push([sid, ""]); });
+  else if(tids.length) tids.forEach(function(tid){ pairs.push(["", tid]); });
+  else pairs.push(["",""]);
+  var docs = pairs.map(function(pr){
+    return '<div class="paper-doc">'+paperDoc(t.title, fillPaper(raw, pr[0], pr[1]))+'</div>';
+  }).join("");
+  UI.sub = { paper: docs, paperN: pairs.length };
+  closeModal();
+  render();
 }
 function paperByKey(k){
   if(!k) return null;
@@ -15251,7 +15360,32 @@ Object.assign(ACTS, {
     ta.focus();
   },
   paperOpen:   function(el){ modalPaperFill(el.dataset.k); },
-  doPaperFill: function(el){ openPaper(el.dataset.k, val("pf_s"), val("pf_t")); }
+  pfLvl:   function(el){ pfKeep(); UI.pfLevel = num(el.dataset.l,0); renderPaperFill(); },
+  pfAll:   function(){
+    pfKeep();
+    var q = String(UI.pfQ||"").trim(), qn = normAr(q), qd = toEnDigits(q).replace(/[^0-9]/g,"");
+    var list = myStudents();
+    if(UI.pfLevel) list = list.filter(function(x){ return studentLevelOf(x)===UI.pfLevel; });
+    if(q) list = list.filter(function(x){
+      return normAr(x.name).indexOf(qn)>=0 || (qd.length>=3 && String(x.natId||"").indexOf(qd)>=0); });
+    UI.pfPick.s = list.map(function(x){ return x.id; });
+    renderPaperFill();
+  },
+  pfNone:  function(){ pfKeep(); UI.pfPick.s = []; renderPaperFill(); },
+  pfAllT:  function(){
+    pfKeep();
+    UI.pfPick.t = DB.teachers.filter(function(x){ return x.status!=="left"; }).map(function(x){ return x.id; });
+    renderPaperFill();
+  },
+  pfNoneT: function(){ pfKeep(); UI.pfPick.t = []; renderPaperFill(); },
+  doPaperFill: function(el){
+    pfKeep();
+    if(el && el.dataset && el.dataset.blank==="1"){ openPaper(UI.pfKey, "", ""); return; }
+    var ss = UI.pfNeedS ? UI.pfPick.s : [];
+    var tt = UI.pfNeedT ? UI.pfPick.t : [];
+    if(!ss.length && !tt.length){ toast("اختار واحد على الأقل، أو اضغط «ورقة فاضية»"); return; }
+    openPapers(UI.pfKey, ss, tt);
+  }
 });
 
 /* ---------- أكشنات إدارة الاستمارات ---------- */
