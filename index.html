@@ -163,6 +163,10 @@ table.tbl th{
   padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0
 }
 table.tbl.dense th,.tbl.dense td{padding:4px 7px;font-size:12px}
+.tbl td[data-act="qEdit"]{position:relative}
+.tbl td[data-act="qEdit"]:hover{background:#eef4fb;box-shadow:inset 0 0 0 1px var(--acc)}
+.tbl td[data-act="qEdit"]:hover::after{content:"✎";position:absolute;left:5px;top:50%;
+  transform:translateY(-50%);font-size:11px;color:var(--acc)}
 .tbl td{padding:9px 10px;border-bottom:1px solid var(--line-2);vertical-align:middle}
 .tbl.dense th,.tbl.dense td{padding:4px 7px;font-size:12px}
 .tbl.dense small{font-size:11px}
@@ -3833,11 +3837,10 @@ function modalMergeCols(scope){
   /* الأعمدة اللي فيها بيانات فوق */
   opts.sort(function(a,b){ return (b.n||0)-(a.n||0); });
   var from = UI.mgFrom || "", to = UI.mgTo || "", rule = UI.mgRule || "empty";
-
-  /* معاينة: كام قيمة هتتنقل */
+  if(UI.mgLoose===undefined) UI.mgLoose = false;
   var prev = null;
   if(from && to && from!==to){
-    prev = mergeColsPreview(scope, from, to, rule, L);
+    prev = mergeColsPreview(scope, from, to, rule, L, UI.mgLoose);
   }
 
   openModal(mHead("دمج عمودين")+
@@ -3901,9 +3904,31 @@ function modalMergeCols(scope){
             '</div>' : '')
       : '<div class="note">اختار المصدر والهدف عشان تشوف المعاينة.</div>')+
     (from && to && from===to ? '<div class="note warn">المصدر والهدف نفس العمود.</div>' : '')+
-    '<label style="display:flex;align-items:center;gap:8px;margin-top:9px;cursor:pointer">'+
-      '<input type="checkbox" id="mg_clear" style="width:18px;height:18px">'+
-      '<span>فضّي عمود المصدر بعد النقل</span></label>'+
+    /* قبول كل القيم زي ما هي */
+    '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;'+
+      'padding:9px;border:1px solid var(--line-2);border-radius:9px">'+
+      '<input type="checkbox" id="mg_loose" data-act="mgLoose"'+(UI.mgLoose?" checked":"")+
+      ' style="width:18px;height:18px">'+
+      '<span><b>اقبل كل القيم زي ما هي</b><br>'+
+      '<small style="color:var(--muted)">من غير فحص — «علمي» و«أدبي» وأي كلمة تتنقل كما هي</small></span></label>'+
+    /* العمود الناتج */
+    '<div style="font-weight:700;font-family:Cairo,sans-serif;font-size:13px;margin:12px 0 6px">'+
+      'العمود الناتج</div>'+
+    '<label class="f"><span>يتحط فين؟</span><select id="mg_dest">'+
+      '<option value="to"'+((UI.mgDest||"to")==="to"?" selected":"")+'>في عمود الهدف «'+
+        esc(to? colLabelOf(to,scope,L) : "—")+'»</option>'+
+      '<option value="new"'+(UI.mgDest==="new"?" selected":"")+'>في عمود جديد باسم من اختياري</option>'+
+      '</select></label>'+
+    (UI.mgDest==="new"
+      ? '<label class="f"><span>اسم العمود الجديد</span>'+
+        '<input type="text" id="mg_newname" value="'+esc(UI.mgNewName||"")+'" '+
+        'placeholder="مثال: الشعبة الموحّدة"></label>' : '')+
+    /* مصير العمودين */
+    '<label class="f"><span>بعد الدمج، أعمل إيه بالعمودين؟</span><select id="mg_after">'+
+      '<option value="keep"'+((UI.mgAfter||"keep")==="keep"?" selected":"")+'>سيبهم زي ما هما</option>'+
+      '<option value="clearFrom"'+(UI.mgAfter==="clearFrom"?" selected":"")+'>فضّي عمود المصدر بس</option>'+
+      '<option value="delBoth"'+(UI.mgAfter==="delBoth"?" selected":"")+'>احذف العمودين (لو إضافيين)</option>'+
+      '</select></label>'+
     '</div>'+
     '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
     '<button class="btn'+(prev && prev.n ? '' : ' ghost')+'" data-act="mgRun" data-s="'+esc(scope)+'"'+
@@ -3939,7 +3964,7 @@ function colValidFor(v, key, L){
   if(k==="seat" || k==="phone") return /[0-9]/.test(toEnDigits(v));
   return true;
 }
-function mergeColsPreview(scope, from, to, rule, L){
+function mergeColsPreview(scope, from, to, rule, L, loose){
   var arr = (scope==="teacher") ? DB.teachers.filter(function(x){ return x.status!=="left"; })
                                 : allSectorStudents().filter(function(x){ return !L || studentLevelOf(x)===L; });
   var toLabel = colLabelOf(to, scope, L);
@@ -3953,7 +3978,7 @@ function mergeColsPreview(scope, from, to, rule, L){
              : (rule==="empty") ? !cur
              : !colValidFor(cur, to, L);          /* invalid */
     if(!take){ out.skip++; return; }
-    if(!colValidFor(v, to, L)){
+    if(!loose && !colValidFor(v, to, L)){
       out.bad++;
       if(out.badSample.length<6) out.badSample.push({ name:o.name, v:v });
       return;
@@ -4264,6 +4289,17 @@ function trackValueOf(s, L){
     if(t) return t.name;
     return wishTrackName(id);
   }
+  /* قيمة مكتوبة بإيد المستخدم ومش من القائمة — بتتعرض زي ما هي */
+  var want = fieldKey(num(L,0)===3 ? "الشعبة" : "المسار");
+  var hits = xfList("student").filter(function(f){
+    var k = fieldKey(f.label);
+    return k===want || synMatch(k, want) ||
+           k===fieldKey("الشعبة") || k===fieldKey("المسار") || k===fieldKey("التخصص");
+  });
+  for(var i=0;i<hits.length;i++){
+    var v = xfGet(s, hits[i].id);
+    if(v && String(v).trim()) return String(v).trim();
+  }
   return "";
 }
 /* ============================================================
@@ -4463,6 +4499,90 @@ function stuCellValue(d, s){
   if(d.k.indexOf("xf:")===0) return String(xfGet(s, d.k.slice(3))||"");
   return "1";
 }
+/* ============================================================
+   تعديل سريع لأي خانة — ضغطة واحدة على القيمة
+   ============================================================ */
+var CELL_EDITABLE = { track:1, subj:1, seat:1, phone:1, guard:1, gender:1, birth:1,
+                      gov:1, joined:1, prev:1, rel:1, edu:1, cls:1 };
+function cellEdit(k, sid){
+  if(!canEditData()) return "";
+  if(k.indexOf("xf:")===0 || CELL_EDITABLE[k])
+    return ' data-act="qEdit" data-k="'+esc(k)+'" data-id="'+esc(sid)+'" '+
+      'style="cursor:pointer" title="اضغط للتعديل"';
+  return "";
+}
+/* نافذة التعديل السريع */
+function modalQuickEdit(k, sid, scope){
+  scope = scope || "student";
+  var o = (scope==="teacher") ? teacherById(sid) : studentById(sid);
+  if(!o){ toast("السجل مش موجود"); return; }
+  var L = (scope==="student") ? studentLevelOf(o) : 0;
+  var label = colLabelOf(k.indexOf("xf:")===0 ? k : "base:"+k, scope, L);
+  var cur = colValOf(o, k.indexOf("xf:")===0 ? k : "base:"+k, scope, L, true);
+  UI.qeKey = k; UI.qeId = sid; UI.qeScope = scope;
+
+  /* الحقول اللي ليها قائمة */
+  var body = "";
+  if(k==="track" && scope==="student"){
+    body = '<label class="f"><span>'+esc(label)+'</span><select id="qe_v">'+
+      '<option value="">— بدون —</option>'+
+      levelTracks(L).map(function(t){
+        return '<option value="'+t.id+'"'+(o.bacTrack===t.id?" selected":"")+'>'+esc(t.name)+'</option>';
+      }).join("")+'</select></label>'+
+      '<div class="note">أو اكتب أي كلمة تانية:</div>'+
+      '<label class="f"><span>كتابة حرة</span><input type="text" id="qe_free" placeholder="سيبها فاضية عشان تستخدم القائمة"></label>';
+  }else if(k==="cls" && scope==="student"){
+    body = '<label class="f"><span>الفصل</span><select id="qe_v">'+
+      '<option value="">— بدون تسكين —</option>'+
+      myClasses().filter(function(c){ return !L || Number(c.level)===L; })
+        .sort(function(a,b){ return sortAr(a.name,b.name); })
+        .map(function(c){ return '<option value="'+c.id+'"'+(o.classId===c.id?" selected":"")+'>'+esc(c.name)+'</option>'; })
+        .join("")+'</select></label>';
+  }else if(k==="edu"){
+    body = '<label class="f"><span>نوعية التعليم</span><select id="qe_v">'+
+      EDU_IDS.map(function(e){
+        return '<option value="'+e+'"'+((o.edu||"reg")===e?" selected":"")+'>'+esc(eduName(e))+'</option>';
+      }).join("")+'</select></label>';
+  }else if(k==="rel"){
+    body = '<label class="f"><span>الديانة</span><select id="qe_v">'+
+      '<option value="">— بدون —</option>'+
+      '<option value="مسلم"'+(o.religion==="مسلم"?" selected":"")+'>مسلم</option>'+
+      '<option value="مسيحي"'+(o.religion==="مسيحي"?" selected":"")+'>مسيحي</option>'+
+      '</select></label>';
+  }else if(k==="gender"){
+    body = '<label class="f"><span>النوع</span><select id="qe_v">'+
+      '<option value="">— بدون —</option>'+
+      '<option value="ذكر"'+(o.gender==="ذكر"?" selected":"")+'>ذكر</option>'+
+      '<option value="أنثى"'+(o.gender==="أنثى"?" selected":"")+'>أنثى</option>'+
+      '</select></label>';
+  }else if(k.indexOf("xf:")===0){
+    var f = xfList(scope).filter(function(x){ return x.id===k.slice(3); })[0];
+    if(f && f.type==="select" && (f.options||[]).length){
+      body = '<label class="f"><span>'+esc(label)+'</span><select id="qe_v">'+
+        '<option value="">— بدون —</option>'+
+        f.options.map(function(x){ return '<option value="'+esc(x)+'"'+(cur===x?" selected":"")+'>'+esc(x)+'</option>'; }).join("")+
+        '</select></label>'+
+        '<label class="f"><span>أو اكتب قيمة تانية</span><input type="text" id="qe_free"></label>';
+    }else{
+      body = '<label class="f"><span>'+esc(label)+'</span>'+
+        '<input type="'+((f&&f.type==="date")?"date":((f&&f.type==="number")?"number":"text"))+
+        '" id="qe_v" value="'+esc(cur)+'" autocomplete="off"></label>';
+    }
+  }else{
+    var tp = (k==="birth"||k==="joined") ? "date" : "text";
+    body = '<label class="f"><span>'+esc(label)+'</span>'+
+      '<input type="'+tp+'" id="qe_v" value="'+esc(cur)+'" autocomplete="off"></label>';
+  }
+
+  openModal(mHead("تعديل: "+label)+
+    '<div class="mb">'+
+    '<div class="note"><b>'+esc(o.name)+'</b>'+
+    (scope==="student" && o.natId? ' · <span style="direction:ltr">'+esc(o.natId)+'</span>' : '')+'</div>'+
+    body+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="qeSave">حفظ</button></div>');
+}
 function stuCell(d, s, n, can){
   var c = classById(s.classId);
   switch(d.k){
@@ -4471,26 +4591,28 @@ function stuCell(d, s, n, can){
                     '><b style="font-weight:600">'+esc(s.name)+'</b></td>';
     case "natId": return '<td class="num" style="direction:ltr;text-align:right">'+esc(s.natId||"—")+'</td>';
     case "level": return '<td><small>'+esc(studentLevelOf(s)?levelName(studentLevelOf(s)):"—")+'</small></td>';
-    case "cls":   return '<td>'+(c? esc(c.name)
+    case "cls":   return '<td'+cellEdit("cls",s.id)+'>'+(c? esc(c.name)
                     : (isHomeStudent(s)? '<small>منازل</small>'
                        : '<small style="color:var(--danger)">غير مسكّن</small>'))+'</td>';
-    case "edu":   return '<td><small>'+esc(eduName(s.edu||"reg"))+'</small></td>';
+    case "edu":   return '<td'+cellEdit("edu",s.id)+'><small>'+esc(eduName(s.edu||"reg"))+'</small></td>';
     case "track": var tv = trackValueOf(s, studentLevelOf(s));
-                  return '<td><small>'+(tv? esc(tv) : '<span style="color:var(--danger)">غير محدد</span>')+'</small></td>';
-    case "subj":  return '<td><small>'+esc(s.bacSubject||"—")+'</small></td>';
-    case "phone": return '<td class="num" style="direction:ltr;text-align:right">'+esc(s.phone||"—")+'</td>';
-    case "guard": return '<td><small>'+esc(s.guardian||"—")+'</small></td>';
-    case "gender":return '<td><small>'+esc(s.gender||"—")+'</small></td>';
+                  return '<td'+cellEdit("track",s.id)+'><small>'+
+                    (tv? esc(tv) : '<span style="color:var(--danger)">غير محدد</span>')+'</small></td>';
+    case "subj":  return '<td'+cellEdit("subj",s.id)+'><small>'+esc(s.bacSubject||"—")+'</small></td>';
+    case "phone": return '<td class="num"'+cellEdit("phone",s.id)+' style="direction:ltr;text-align:right">'+esc(s.phone||"—")+'</td>';
+    case "guard": return '<td'+cellEdit("guard",s.id)+'><small>'+esc(s.guardian||"—")+'</small></td>';
+    case "gender":return '<td'+cellEdit("gender",s.id)+'><small>'+esc(s.gender||"—")+'</small></td>';
     case "birth": return '<td class="num">'+esc(s.birth?fmtDate(s.birth):"—")+'</td>';
     case "gov":   return '<td><small>'+esc(s.birthGov||"—")+'</small></td>';
     case "act":   return '<td><small>'+esc(s.actId?actName(s.actId):"—")+'</small></td>';
     case "voc":   return '<td><small>'+esc(s.vocId?actName(s.vocId):"—")+'</small></td>';
     case "abs":   var st = attendStats(s.id, s.classId);
                   return '<td class="num">'+(st.days? st.abs : "—")+'</td>';
-    case "seat":  return '<td class="num">'+esc(s.seat||"—")+'</td>';
+    case "seat":  return '<td class="num"'+cellEdit("seat",s.id)+'>'+esc(s.seat||"—")+'</td>';
     case "joined":return '<td class="num">'+esc(s.joined?fmtDate(s.joined):"—")+'</td>';
   }
-  if(d.k.indexOf("xf:")===0) return '<td><small>'+esc(xfGet(s, d.k.slice(3))||"—")+'</small></td>';
+  if(d.k.indexOf("xf:")===0)
+    return '<td'+cellEdit(d.k,s.id)+'><small>'+esc(xfGet(s, d.k.slice(3))||"—")+'</small></td>';
   return '<td>—</td>';
 }
 /* ============================================================
@@ -8197,44 +8319,157 @@ var ACTS = {
   },
   /* ---------- دمج الأعمدة ---------- */
   mgCols:  function(el){ UI.mgFrom=""; UI.mgTo=""; UI.mgRule="empty"; modalMergeCols(el.dataset.s||"student"); },
+  /* ---------- التعديل السريع ---------- */
+  qEdit: function(el){ modalQuickEdit(el.dataset.k, el.dataset.id, el.dataset.s || "student"); },
+  qeSave: function(){
+    var k = UI.qeKey, sid = UI.qeId, scope = UI.qeScope || "student";
+    var o = (scope==="teacher") ? teacherById(sid) : studentById(sid);
+    if(!o){ toast("السجل مش موجود"); return; }
+    var v = val("qe_v");
+    var free = document.getElementById("qe_free");
+    if(free && String(free.value||"").trim()) v = String(free.value).trim();
+    markUndo("تعديل بيان");
+    if(k.indexOf("xf:")===0){
+      if(String(v).trim()) xfSet(o, k.slice(3), v);
+      else if(o.extra) delete o.extra[k.slice(3)];
+    }else if(scope==="student"){
+      if(k==="track"){
+        var L3 = studentLevelOf(o);
+        if(!String(v).trim()){
+          o.bacTrack = "";
+          var wantE = fieldKey(L3===3 ? "الشعبة" : "المسار");
+          xfList("student").forEach(function(fE){
+            var kE = fieldKey(fE.label);
+            if(kE===wantE || synMatch(kE, wantE)){ if(o.extra) delete o.extra[fE.id]; }
+          });
+        }
+        else{
+          /* من القائمة = معرّف، أو كتابة حرة نجرّب نفهمها */
+          var id = levelTracks(L3).some(function(t){ return t.id===v; })
+                   ? v : trackIdFromText(v, L3);
+          /* نفضّي أي شعبة قديمة في الأعمدة الإضافية عشان القيمة الجديدة تبان */
+          var want3 = fieldKey(L3===3 ? "الشعبة" : "المسار");
+          xfList("student").forEach(function(f3){
+            var k3 = fieldKey(f3.label);
+            if(k3===want3 || synMatch(k3, want3)){ if(o.extra) delete o.extra[f3.id]; }
+          });
+          if(id) o.bacTrack = id;
+          else {
+            /* كلمة مش معروفة — تتحفظ في عمود إضافي وتظهر مكانها */
+            o.bacTrack = "";
+            var fd = ensureExtraField(trackColLabel(L3), L3);
+            xfSet(o, fd.id, v);
+          }
+        }
+      }
+      else if(k==="cls"){ if(v) assignStudentToClass(o, v); else o.classId = ""; }
+      else setBaseCol(o, k, v, studentLevelOf(o));
+    }else{
+      var map = { name:"name", code:"code", natId:"natId", subject:"subject", hire:"hireDate",
+                  finG:"finGrade", finD:"finDate", job:"jobNow", qual:"qual", qualT:"qualType",
+                  cadre:"cadreJob", phone:"phone", gender:"gender" };
+      if(map[k]) o[map[k]] = v;
+    }
+    UI.qeKey = null; UI.qeId = null;
+    saveNow(); closeModal(); render();
+    toastUndo("اتحفظ");
+  },
+  mgLoose: function(el){ UI.mgLoose = !UI.mgLoose; modalMergeCols(UI.mgScope); },
   mgRun: function(el){
     var scope = el.dataset.s || "student";
     var L = num(UI.stuLevel,0);
     var from = UI.mgFrom, to = UI.mgTo, rule = UI.mgRule||"empty";
     if(!from || !to || from===to){ toast("اختار المصدر والهدف"); return; }
-    var prev = mergeColsPreview(scope, from, to, rule, L);
-    if(!prev.n){ toast("مفيش قيم تتنقل"); return; }
-    var clear = !!(document.getElementById("mg_clear")||{}).checked;
-    if(!confirm("هيتنقل "+prev.n+" قيمة من «"+colLabelOf(from,scope,L)+"» لـ«"+colLabelOf(to,scope,L)+"».")) return;
+    var loose = UI.mgLoose;
+    var dest  = UI.mgDest || "to";
+    var after = UI.mgAfter || "keep";
+    var newName = String(UI.mgNewName||"").trim();
+    if(dest==="new" && !newName){ toast("اكتب اسم العمود الجديد"); return; }
+
+    var pool = (scope==="teacher") ? DB.teachers.filter(function(x){ return x.status!=="left"; })
+                                   : allSectorStudents().filter(function(x){ return !L || studentLevelOf(x)===L; });
+    /* عمود جديد؟ ننشئه */
+    var target = to;
+    if(dest==="new"){
+      var exist = xfList(scope).filter(function(f){ return normAr(f.label)===normAr(newName); })[0];
+      if(!exist){
+        exist = { id:uid("xf"), label:newName, type:"text", options:[],
+                  levels: (scope==="student" && L) ? [L] : [] };
+        xfList(scope).push(exist);
+      }
+      target = "xf:"+exist.id;
+    }
+    /* نجمّع القيم: الهدف أساس، والمصدر بيكمّل الفاضي */
+    var rows = [];
+    pool.forEach(function(o){
+      var vTo   = colValOf(o, to, scope, L, true);
+      var vFrom = colValOf(o, from, scope, L, true);
+      var val = "";
+      if(dest==="new"){
+        /* العمود الجديد: الهدف أولًا، والمصدر لو الهدف فاضي */
+        val = vTo || vFrom;
+      }else{
+        if(rule==="all") val = vFrom || vTo;
+        else if(rule==="empty") val = vTo ? "" : vFrom;
+        else val = colValidFor(vTo, to, L) ? "" : vFrom;   /* invalid */
+      }
+      if(!val) return;
+      if(!loose && !colValidFor(val, target, L)) return;
+      rows.push({ o:o, v:val });
+    });
+    if(!rows.length){ toast("مفيش قيم تتنقل"); return; }
+    if(!confirm(rows.length+" قيمة هتتحط في «"+
+      (dest==="new"? newName : colLabelOf(to,scope,L))+"».")) return;
+
     markUndo("دمج عمودين");
     var n = 0;
-    prev.list.forEach(function(x){
+    rows.forEach(function(x){
       var ok = false;
-      if(String(to).indexOf("xf:")===0){ xfSet(x.o, String(to).slice(3), x.v); ok = true; }
-      else if(scope==="student") ok = setBaseCol(x.o, String(to).slice(5), x.v, studentLevelOf(x.o));
+      if(String(target).indexOf("xf:")===0){ xfSet(x.o, String(target).slice(3), x.v); ok = true; }
+      else if(scope==="student") ok = setBaseCol(x.o, String(target).slice(5), x.v, studentLevelOf(x.o));
       else {
         var map = { name:"name", code:"code", natId:"natId", subject:"subject", hire:"hireDate",
                     finG:"finGrade", finD:"finDate", job:"jobNow", qual:"qual", qualT:"qualType",
                     cadre:"cadreJob", phone:"phone", gender:"gender" };
-        var key = map[String(to).slice(5)];
+        var key = map[String(target).slice(5)];
         if(key){ x.o[key] = x.v; ok = true; }
       }
-      if(!ok) return;
-      n++;
-      if(clear){
-        if(String(from).indexOf("xf:")===0){ if(x.o.extra) delete x.o.extra[String(from).slice(3)]; }
-        else{
-          var fk = String(from).slice(5);
-          if(fk==="cls") x.o.classId = "";
-          else if(fk==="track") x.o.bacTrack = "";
-          else if(fk==="subj") x.o.bacSubject = "";
-          else if(fk==="seat") x.o.seat = "";
-        }
-      }
+      if(ok) n++;
     });
-    UI.mgFrom=""; UI.mgTo="";
+    /* مصير العمودين */
+    function wipeCol(key){
+      pool.forEach(function(o){
+        if(String(key).indexOf("xf:")===0){ if(o.extra) delete o.extra[String(key).slice(3)]; }
+        else{
+          var k = String(key).slice(5);
+          if(k==="cls") o.classId = "";
+          else if(k==="track") o.bacTrack = "";
+          else if(k==="subj") o.bacSubject = "";
+          else if(k==="seat") o.seat = "";
+          else if(k==="prev") o.prevClass = "";
+        }
+      });
+    }
+    function dropCol(key){
+      if(String(key).indexOf("xf:")!==0) return false;   /* الأساسي مبيتحذفش */
+      var id = String(key).slice(3);
+      var lst = xfList(scope);
+      var f = lst.filter(function(x){ return x.id===id; })[0];
+      if(!f) return false;
+      pool.forEach(function(o){ if(o.extra) delete o.extra[id]; });
+      lst.splice(lst.indexOf(f), 1);
+      return true;
+    }
+    var dropped = 0;
+    if(after==="clearFrom" && from!==target) wipeCol(from);
+    if(after==="delBoth"){
+      if(from!==target && dropCol(from)) dropped++;
+      if(to!==target && dropCol(to)) dropped++;
+      if(from!==target && String(from).indexOf("xf:")!==0) wipeCol(from);
+    }
+    UI.mgFrom=""; UI.mgTo=""; UI.mgDest="to"; UI.mgNewName=""; UI.mgAfter="keep";
     saveNow(); closeModal(); render();
-    toastUndo("اتنقل "+n+" قيمة");
+    toastUndo("اتحط "+n+" قيمة"+(dropped? " · واتشال "+dropped+" عمود" : ""));
   },
   tblSort: function(el){
     var tbl = el.dataset.t, k = el.dataset.k;
@@ -9221,6 +9456,9 @@ function hookInputs(root){
     if(id==="mg_from"){ UI.mgFrom = e.target.value; modalMergeCols(UI.mgScope); }
     if(id==="mg_to"){   UI.mgTo   = e.target.value; modalMergeCols(UI.mgScope); }
     if(id==="mg_rule"){ UI.mgRule = e.target.value; modalMergeCols(UI.mgScope); }
+    if(id==="mg_dest"){ UI.mgDest = e.target.value; modalMergeCols(UI.mgScope); }
+    if(id==="mg_after"){ UI.mgAfter = e.target.value; }
+    if(id==="mg_newname"){ UI.mgNewName = e.target.value; }
     if(id==="pfq"){
       pfKeep();
       renderPaperFill();
