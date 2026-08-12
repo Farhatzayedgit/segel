@@ -3915,6 +3915,67 @@ var LEVEL_COLS = {
   2: ["idx","name","natId","level","cls","edu","track","subj","gender","birth","gov","guard","phone","joined","abs"],
   3: ["idx","name","natId","level","cls","edu","track","subj","seat","gender","birth","gov","guard","phone","joined","abs"]
 };
+/* ============================================================
+   فرز الأعمدة — كل عمود ليه زرار بيرتّب حسب نوع بياناته:
+   نص عربي (أ→ي) · إنجليزي (A→Z) · رقم (٠→٩) · تاريخ (الأقدم→الأحدث)
+   ============================================================ */
+function sortState(tbl){
+  tblInit();
+  var c = tblCfg(tbl);
+  if(!c.sort) c.sort = { k:"", dir:1 };
+  return c.sort;
+}
+/* نوع بيانات العمود — بيحدد شكل السهم والترتيب */
+function colKind(k){
+  if(/^(idx|abs|nisab|load|cls|years|seat|natId|phone|code)$/.test(k)) return "num";
+  if(/^(birth|hire|finD|joined)$/.test(k)) return "date";
+  return "text";
+}
+function sortArrow(tbl, k){
+  var st = sortState(tbl);
+  var kind = colKind(k);
+  if(st.k !== k){
+    return '<span style="opacity:.32;font-size:10px;margin-right:3px">⇅</span>';
+  }
+  var up = st.dir > 0;
+  var lbl = kind==="num"  ? (up? "١→٩" : "٩→١")
+          : kind==="date" ? (up? "الأقدم" : "الأحدث")
+          : (up? "أ→ي" : "ي→أ");
+  return '<span style="color:var(--acc);font-size:10px;margin-right:3px;white-space:nowrap">'+
+    (up?"▲":"▼")+' '+lbl+'</span>';
+}
+/* عنوان قابل للضغط */
+function sortableTh(tbl, k, label, extra){
+  return '<th data-act="tblSort" data-t="'+esc(tbl)+'" data-k="'+esc(k)+'" '+
+    'style="cursor:pointer;user-select:none"'+(extra||"")+' title="اضغط للترتيب">'+
+    esc(label)+sortArrow(tbl,k)+'</th>';
+}
+/* بيرتّب أي قائمة حسب العمود المختار */
+function applySort(list, tbl, valueOf){
+  var st = sortState(tbl);
+  if(!st.k) return list;
+  var kind = colKind(st.k);
+  var dir = st.dir;
+  return list.slice().sort(function(a,b){
+    var va = valueOf(st.k, a), vb = valueOf(st.k, b);
+    var ea = (va===undefined || va===null || String(va).trim()==="");
+    var eb = (vb===undefined || vb===null || String(vb).trim()==="");
+    if(ea && eb) return 0;
+    if(ea) return 1;              /* الفاضي دايمًا آخر حاجة */
+    if(eb) return -1;
+    if(kind==="num"){
+      var na = parseFloat(toEnDigits(String(va)).replace(/[^0-9.\-]/g,""));
+      var nb = parseFloat(toEnDigits(String(vb)).replace(/[^0-9.\-]/g,""));
+      if(!isNaN(na) && !isNaN(nb)) return (na-nb)*dir;
+    }
+    if(kind==="date"){
+      var da = new Date(va), db = new Date(vb);
+      if(!isNaN(da) && !isNaN(db)) return (da-db)*dir;
+    }
+    /* نص: عربي أو إنجليزي — localeCompare بيتعامل مع الاتنين */
+    return String(va).localeCompare(String(vb), ["ar","en"], {numeric:true}) * dir;
+  });
+}
 function stuColDefs(){
   var defs = [
     { k:"idx",   label:"م",             core:true },
@@ -4072,6 +4133,32 @@ function tchColDefs(){
   });
   return defs;
 }
+/* قيمة خانة المعلم كنص — للفرز */
+function tchCellValue(k, t){
+  switch(k){
+    case "idx":    return "";
+    case "code":   return t.code||"";
+    case "name":   return t.name||"";
+    case "natId":  return t.natId||"";
+    case "subject":return t.subject||"";
+    case "hire":   return t.hireDate||"";
+    case "finG":   return t.finGrade||"";
+    case "finD":   return t.finDate||"";
+    case "job":    return t.jobNow||"";
+    case "qual":   return t.qual||"";
+    case "qualT":  return t.qualType||"";
+    case "cadre":  return t.cadreJob||"";
+    case "phone":  return t.phone||"";
+    case "nisab":  return String(nisabOf(t.id));
+    case "load":   return String(plannedHours(t.id,{}));
+    case "cls":    var m={}; DB.schedule.forEach(function(x){ if(x.teacherId===t.id) m[x.classId]=1; });
+                   return String(Object.keys(m).length);
+    case "years":  return t.hireDate? String(serviceYears(t.hireDate)) : "";
+    case "gender": return t.gender||"";
+  }
+  if(String(k).indexOf("xf:")===0) return String(xfGet(t, String(k).slice(3))||"");
+  return "";
+}
 function tchCell(d, t, n, clsN){
   switch(d.k){
     case "idx":    return '<td class="rownum">'+n+'</td>';
@@ -4113,6 +4200,8 @@ function stuDefaultsOnce(){
 function stuCellValue(d, s){
   var c = classById(s.classId);
   switch(d.k){
+    case "name":  return s.name||"";
+    case "idx":   return "";
     case "natId": return s.natId||"";
     case "cls":   return c ? c.name : (isHomeStudent(s)?"منازل":"");
     case "edu":   return eduName(s.edu||"reg");
@@ -4128,7 +4217,7 @@ function stuCellValue(d, s){
     case "voc":   return s.vocId||"";
     case "joined":return s.joined||"";
     case "abs":   var st = attendStats(s.id, s.classId); return st.days? String(st.abs) : "";
-    case "level": return studentLevelOf(s)?"1":"";
+    case "level": return studentLevelOf(s)? String(studentLevelOf(s)) : "";
   }
   if(d.k.indexOf("xf:")===0) return String(xfGet(s, d.k.slice(3))||"");
   return "1";
@@ -4700,8 +4789,8 @@ function viewStudents(){
       (canEditData()?'<button class="btn sm" data-act="stuMissAll">✎ تعديلهم كلهم مع بعض</button>':'')+
       '<button class="btn ghost sm" data-act="stuMissOff">✕ إلغاء الفلتر</button></div>';
   }
-  h += printHd("كشف بأسماء الطلاب");
   var canBulk = canEditData();
+  list = applySort(list, "students", function(k, st){ return stuCellValue({k:k}, st); });
   var pg = pageSlice(list, "stu");
   var rows = UI.printAll ? list : pg.rows;      /* الطباعة الكاملة بترسم الكل */
   var defs = stuColDefs();
@@ -4714,6 +4803,23 @@ function viewStudents(){
     });
   }
   var cfg  = tblCfg("students");
+  /* شريط الترتيب النشط */
+  var _ss = sortState("students");
+  if(_ss.k){
+    var _sd = cols.filter(function(d){ return d.k===_ss.k; })[0];
+    var _sl = _sd ? colName("students",_sd) : _ss.k;
+    if(_ss.k==="track" && !cfg.label.track) _sl = trackColLabel(_lv);
+    var _kd = colKind(_ss.k);
+    h += '<div class="note noprint" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+      '<b>مرتّب بـ«'+esc(_sl)+'»</b> — '+
+      (_kd==="num"? (_ss.dir>0?"من الأقل للأكبر":"من الأكبر للأقل")
+       : _kd==="date"? (_ss.dir>0?"من الأقدم للأحدث":"من الأحدث للأقدم")
+       : (_ss.dir>0?"من أ للياء (A→Z)":"من الياء لأ (Z→A)"))+
+      '<span style="flex:1"></span>'+
+      '<button class="btn ghost sm" data-act="tblSort" data-t="students" data-k="'+esc(_ss.k)+'">↕ اعكس</button>'+
+      '<button class="btn ghost sm" data-act="tblSortOff" data-t="students">✕ إلغاء الترتيب</button></div>';
+  }
+  h += printHd("كشف بأسماء الطلاب");
 
   h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' طالب</h3>'+
     (canBulk?'<button class="btn ghost sm noprint" data-act="bulkEditStudents">✎ تعديل المحددين</button>'+
@@ -4724,7 +4830,7 @@ function viewStudents(){
     cols.map(function(d){
       var lb = colName("students",d);
       if(d.k==="track" && !tblCfg("students").label.track) lb = trackColLabel(_lv);
-      return '<th>'+esc(lb)+'</th>';
+      return sortableTh("students", d.k, lb);
     }).join("")+
     (canBulk?'<th class="noprint"></th>':'')+
     '</tr></thead><tbody>';
@@ -5573,6 +5679,7 @@ function viewTeachers(){
   /* كشف واحد بكل البيانات + تحديد وتعديل وحذف — زي كشف الطلاب بالظبط */
   h += printHd("كشف بيانات العاملين");
   tchDefaultsOnce();
+  regular = applySort(regular, "teachers", tchCellValue);
   var pgT  = pageSlice(regular, "tch");
   var tRows = UI.printAll ? regular : pgT.rows;
   var tCols = tblColumns("teachers", tchColDefs());
@@ -5584,7 +5691,7 @@ function viewTeachers(){
     tblToolbar("teachers","المعلمين",pgT)+'</div>'+
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl'+(tCfg.dense?" dense":"")+'"><thead><tr>'+
     (isDep?'<th class="noprint" style="width:34px"><input type="checkbox" id="selAllTch" style="width:17px;height:17px"></th>':'')+
-    tCols.map(function(d){ return '<th>'+esc(colName("teachers",d))+'</th>'; }).join("")+
+    tCols.map(function(d){ return sortableTh("teachers", d.k, colName("teachers",d)); }).join("")+
     (isDep?'<th class="noprint"></th>':'')+
     '</tr></thead><tbody>';
   if(!tRows.length){
@@ -7996,6 +8103,18 @@ var ACTS = {
       return !(x.classId===k[0] && Number(x.day)===num(k[1],0) && Number(x.period)===num(k[2],1)); });
     UI.cellKey = null;
     saveNow(); closeModal(); render(); toastUndo("اتفرّغت");
+  },
+  tblSort: function(el){
+    var tbl = el.dataset.t, k = el.dataset.k;
+    var st = sortState(tbl);
+    if(st.k === k) st.dir = -st.dir;         /* نفس العمود = اعكس */
+    else { st.k = k; st.dir = 1; }           /* عمود جديد = تصاعدي */
+    save(); render();
+  },
+  tblSortOff: function(el){
+    var st = sortState(el.dataset.t);
+    st.k = ""; st.dir = 1;
+    save(); render();
   },
   stuLvl: function(el){ UI.stuLevel = num(el.dataset.l,0); UI.stuMiss = null; setPage("stu",1); render(); },
   goStudents: function(){ UI.tab="students"; UI.sub=null; UI.stuLevel=0; UI.stuMiss=null; render(); },
