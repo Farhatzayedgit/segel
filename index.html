@@ -2810,6 +2810,74 @@ function fieldKey(x){
     .filter(Boolean).join(" ");
 }
 /* هل الاسمين من نفس مجموعة المرادفات؟ */
+/* ============================================================
+   خريطة المرادفات الكاملة — كل عمود أساسي وكل الأسماء اللي
+   ممكن تيجي بيها من الاستمارات أو الملفات المرفوعة.
+   ده اللي بيمنع إن نفس البيان يتعمل له عمودين.
+   ============================================================ */
+var COL_ALIASES = {
+  student: {
+    name:   ["الاسم","اسم الطالب","الاسم رباعي","الاسم الرباعي","اسم الطالب رباعي","اسم الطالبة"],
+    natId:  ["الرقم القومي","الرقم القومى","رقم قومي","الرقم القومي للطالب","رقم البطاقة","الرقم القومي 14"],
+    level:  ["الصف","الصف الدراسي","السنة الدراسية","المستوى","الفرقة"],
+    cls:    ["الفصل","الفصل الحالي","الفصل الدراسي","رقم الفصل","الفرقة والفصل"],
+    edu:    ["النوعية","نوعية التعليم","نوع التعليم","نظام الدراسة","نظام التعليم"],
+    track:  ["المسار","الشعبة","الشعبه","التخصص","الشعبة العلمية","شعبة العلمي","المسار الدراسي","التخصص الدراسي"],
+    subj:   ["مادة التخصص","ماده التخصص","المادة التخصصية","مادة التخصص الاختيارية","المادة الاختيارية"],
+    seat:   ["رقم الجلوس","رقم جلوس","الجلوس","رقم الجلوس بالكشوف"],
+    phone:  ["الهاتف","التليفون","الموبايل","رقم الهاتف","رقم الموبايل","هاتف ولي الأمر","رقم ولي الأمر","تليفون ولي الأمر","المحمول"],
+    guard:  ["ولي الأمر","اسم ولي الأمر","ولي الامر","اسم ولي الامر","الوصي"],
+    gender: ["النوع","الجنس","نوع الطالب","ذكر/أنثى"],
+    birth:  ["تاريخ الميلاد","الميلاد","تاريخ الميلاد بالكامل","المواليد"],
+    gov:    ["محافظة الميلاد","المحافظة","محافظه الميلاد","محل الميلاد"],
+    joined: ["تاريخ القيد","تاريخ الالتحاق","تاريخ التسجيل","القيد"],
+    prev:   ["الفصل السابق","فصل سابق","الفصل الماضي","الصف السابق"],
+    rel:    ["الديانة","الديانه","الدين"],
+    addr:   ["العنوان","محل الإقامة","محل الاقامه","السكن","العنوان بالتفصيل","عنوان السكن","محل السكن"]
+  },
+  teacher: {
+    name:    ["الاسم","اسم المعلم","الاسم رباعي","اسم المدرس"],
+    code:    ["كود المعلم","الكود","كود","رقم الكود","كود المدرس"],
+    natId:   ["الرقم القومى","الرقم القومي","رقم قومي","الرقم القومي للمعلم"],
+    subject: ["مادة التدريس","المادة","التخصص","مادة التخصص","المادة التي يدرسها"],
+    hire:    ["تاريخ التعيين","التعيين","تاريخ الاستلام","تاريخ أول تعيين"],
+    finG:    ["الدرجة المالية","الدرجه الماليه","الدرجة"],
+    finD:    ["تاريخ الدرجة","تاريخ الدرجه","تاريخ آخر درجة"],
+    job:     ["الوظيفة الحالية","الوظيفة","الوظيفه","المسمى الوظيفي"],
+    qual:    ["المؤهل","المؤهل الدراسي","الشهادة"],
+    qualT:   ["نوع المؤهل","نوع المؤهل الدراسي"],
+    cadre:   ["الوظيفة على الكادر","الكادر","وظيفة الكادر","الدرجة على الكادر"],
+    phone:   ["الهاتف","الموبايل","التليفون","رقم الهاتف","رقم الموبايل","المحمول"],
+    gender:  ["النوع","الجنس"]
+  }
+};
+/* بيحوّل أي اسم لمفتاح عمود أساسي — أو فاضي لو مالوش مقابل */
+function baseColOf(label, scope){
+  var k = fieldKey(label);
+  if(!k) return "";
+  var map = COL_ALIASES[scope||"student"] || {};
+  for(var col in map){
+    for(var i=0;i<map[col].length;i++){
+      if(fieldKey(map[col][i]) === k) return col;
+    }
+  }
+  return "";
+}
+/* الاسم الرسمي لأي عمود أساسي — بيتغيّر مع الصف لو لزم */
+function baseColLabel(col, scope, L){
+  if(scope==="teacher"){
+    var td = tchColDefs().filter(function(d){ return d.k===col; })[0];
+    return td ? td.label : col;
+  }
+  if(col==="track") return trackColLabel(L||0);
+  var sd = [{k:"name",l:"الاسم"},{k:"natId",l:"الرقم القومي"},{k:"level",l:"الصف"},
+            {k:"cls",l:"الفصل"},{k:"edu",l:"النوعية"},{k:"subj",l:"مادة التخصص"},
+            {k:"seat",l:"رقم الجلوس"},{k:"phone",l:"الهاتف"},{k:"guard",l:"ولي الأمر"},
+            {k:"gender",l:"النوع"},{k:"birth",l:"تاريخ الميلاد"},{k:"gov",l:"محافظة الميلاد"},
+            {k:"joined",l:"تاريخ القيد"},{k:"prev",l:"الفصل السابق"},{k:"rel",l:"الديانة"},
+            {k:"addr",l:"العنوان"}].filter(function(d){ return d.k===col; })[0];
+  return sd ? sd.l : col;
+}
 var FIELD_SYN = [
   ["عنوان","محل اقامه","سكن","عنوان بتفصيل"],
   ["هاتف","تليفون","موبايل","رقم هاتف","رقم موبايل"],
@@ -3109,6 +3177,24 @@ function healthChecks(){
       ? openN+" استمارة مفتوحة، وكلها ظاهرة للطلاب بالظبط."
       : "فيه اختلاف بين اللي إنت شايفه واللي الطالب شايفه.",
     act:"goForms", btn:"مراجعة" });
+  /* ١ع أعمدة إضافية بتكرّر بيانات أساسية */
+  var dupCols = [];
+  xfList("student").forEach(function(f){
+    var b = baseColOf(f.label, "student");
+    if(b) dupCols.push({ f:f, base:b, scope:"student" });
+  });
+  xfList("teacher").forEach(function(f){
+    var b = baseColOf(f.label, "teacher");
+    if(b) dupCols.push({ f:f, base:b, scope:"teacher" });
+  });
+  UI.dupCols = dupCols;
+  out.push({ id:"dupcols", ok: dupCols.length===0, level:"warn",
+    title:"أعمدة إضافية بتكرّر بيانات أساسية", n:dupCols.length,
+    desc: dupCols.length
+      ? dupCols.map(function(x){ return "«"+x.f.label+"» ← "+baseColLabel(x.base,x.scope,0); }).join(" · ")+
+        " — البيانات هتتنقل للعمود الأساسي والعمود الزيادة هيتشال."
+      : "مفيش أعمدة مكررة — كل بيان في مكانه.",
+    act:"mergeDupCols", btn:"دمج ونقل" });
   /* ١ن الرقم القومي محور البيانات — أي تكرار أو نقص خطر */
   var natDup = {}, natBad = 0;
   DB.students.forEach(function(x){
@@ -3858,14 +3944,15 @@ function stuColDefs(){
     defs.sort(function(a,b){ return allow.indexOf(a.k) - allow.indexOf(b.k); });
   }
   /* البيانات الإضافية — واللي اسمه زي عمود أساسي بيتخفي عشان ما يتكررش */
-  var baseNames = {};
-  defs.forEach(function(d){ baseNames[fieldKey(d.label)] = d.k; });
-  if(L===3) baseNames[fieldKey("الشعبة")] = "track";
-  if(L===2) baseNames[fieldKey("المسار")] = "track";
+  /* أي عمود إضافي اسمه (أو مرادفه) زي عمود أساسي — بيتخفي،
+     وقيمته بتتعرض في العمود الأساسي. ده بيمنع التكرار نهائيًا. */
+  var shown = {};
+  defs.forEach(function(d){ shown[d.k] = 1; });
   xfList("student").forEach(function(f){
     if(L && !xfInLevel(f, L)) return;
-    /* لو الاسم زي عمود أساسي، مش هنعمل عمود تاني — القيمة بتتعرض في الأساسي */
-    if(baseNames[fieldKey(f.label)]) return;
+    var base = baseColOf(f.label, "student");
+    if(base) return;                                   /* مرادف لعمود أساسي */
+    if(synMatch(fieldKey(f.label), fieldKey("الشعبة"))) return;
     defs.push({ k:"xf:"+f.id, label:f.label });
   });
   return defs;
@@ -3914,15 +4001,14 @@ function trackIdFromText(txt, L){
 }
 /* الشعبة المستنتجة للطالب — من الحقل الأساسي أو الفصل أو أي عمود إضافي */
 function trackIdOf(s, L){
+  /* ١) الحقل الرسمي — أعلى أولوية */
   if(s.bacTrack) return s.bacTrack;
-  var c = classById(s.classId);
-  if(c && c.track && c.track!=="none" && levelTracks(L).some(function(x){ return x.id===c.track; }))
-    return c.track;
-  /* من الأعمدة الإضافية اللي معناها شعبة */
+  /* ٢) البيان اللي الطالب سجّله بنفسه في استمارة أو عمود إضافي */
   var want = fieldKey(num(L,0)===3 ? "الشعبة" : "المسار");
   var hits = xfList("student").filter(function(f){
     var k = fieldKey(f.label);
-    return k===want || synMatch(k, want);
+    return k===want || synMatch(k, want) ||
+           k===fieldKey("الشعبة") || k===fieldKey("المسار") || k===fieldKey("التخصص");
   });
   for(var i=0;i<hits.length;i++){
     var v = xfGet(s, hits[i].id);
@@ -3930,6 +4016,10 @@ function trackIdOf(s, L){
     var id = trackIdFromText(v, L);
     if(id) return id;
   }
+  /* ٣) آخر حاجة: شعبة الفصل المسكّن عليه */
+  var c = classById(s.classId);
+  if(c && c.track && c.track!=="none" && levelTracks(L).some(function(x){ return x.id===c.track; }))
+    return c.track;
   return "";
 }
 /* مادة التخصص المستنتجة — من الحقل أو من عمود إضافي */
@@ -3975,7 +4065,11 @@ function tchColDefs(){
     { k:"years", label:"سنوات الخدمة",      off:true },
     { k:"gender",label:"النوع",            off:true }
   ];
-  xfList("teacher").forEach(function(f){ defs.push({ k:"xf:"+f.id, label:f.label }); });
+  /* نفس المنطق للمعلمين — العمود المكرر بيتخفي */
+  xfList("teacher").forEach(function(f){
+    if(baseColOf(f.label, "teacher")) return;
+    defs.push({ k:"xf:"+f.id, label:f.label });
+  });
   return defs;
 }
 function tchCell(d, t, n, clsN){
@@ -7906,6 +8000,37 @@ var ACTS = {
   stuLvl: function(el){ UI.stuLevel = num(el.dataset.l,0); UI.stuMiss = null; setPage("stu",1); render(); },
   goStudents: function(){ UI.tab="students"; UI.sub=null; UI.stuLevel=0; UI.stuMiss=null; render(); },
   goTeachers: function(){ UI.tab="teachers"; UI.sub=null; render(); },
+  mergeDupCols: function(){
+    var list = UI.dupCols || [];
+    if(!list.length){ toast("مفيش أعمدة مكررة"); return; }
+    if(!confirm("هتتنقل بيانات "+list.length+" عمود للأعمدة الأساسية، والأعمدة الزيادة هتتشال.\n"+
+      "القيم مش هتضيع — هتتحط في مكانها الصح.")) return;
+    markUndo("دمج الأعمدة المكررة");
+    var moved = 0, removed = 0;
+    list.forEach(function(x){
+      var arr = (x.scope==="teacher") ? DB.teachers : DB.students;
+      arr.forEach(function(o){
+        var v = xfGet(o, x.f.id);
+        if(v===undefined || v===null || String(v).trim()==="") return;
+        if(x.scope==="student"){
+          if(setBaseCol(o, x.base, v, studentLevelOf(o))) moved++;
+        }else{
+          var map = { name:"name", code:"code", natId:"natId", subject:"subject",
+                      hire:"hireDate", finG:"finGrade", finD:"finDate", job:"jobNow",
+                      qual:"qual", qualT:"qualType", cadre:"cadreJob", phone:"phone", gender:"gender" };
+          var key = map[x.base];
+          if(key && !String(o[key]||"").trim()){ o[key] = String(v); moved++; }
+        }
+        if(o.extra) delete o.extra[x.f.id];
+      });
+      var lst = xfList(x.scope);
+      var i = lst.indexOf(x.f);
+      if(i>=0){ lst.splice(i,1); removed++; }
+    });
+    UI.dupCols = null;
+    saveNow(); render();
+    toastUndo("اتنقل "+moved+" قيمة · واتشال "+removed+" عمود مكرر");
+  },
   fixTracks: function(){
     var L = num(UI.stuLevel,0);
     var list = allSectorStudents().filter(function(x){
@@ -14868,6 +14993,14 @@ function scanFieldNames(rows){
       if(v===undefined || v===null || String(v).trim()==="") continue;
       var k = normAr(label);
       if(seen[k]) { seen[k].n++; continue; }
+      /* لو الاسم مرادف لعمود أساسي، بيتحط فيه على طول — مفيش سؤال */
+      var baseCol = baseColOf(label, "student");
+      if(baseCol){
+        seen[k] = { label:label, key:k, n:1, base:baseCol,
+                    baseLabel: baseColLabel(baseCol,"student",0), sample:String(v).slice(0,40) };
+        out.push(seen[k]);
+        continue;
+      }
       var exact = xfList("student").filter(function(x){ return normAr(x.label)===k; })[0];
       /* المرادف لازم يكون عمود فعلي في كشف الطلاب — مش حقل في استمارة تانية */
       var near = null;
@@ -14886,6 +15019,32 @@ function scanFieldNames(rows){
     }
   });
   return out;
+}
+/* بيحطّ قيمة في العمود الأساسي الصح — بيرجع true لو نجح */
+function setBaseCol(st, col, v, L){
+  var val0 = String(v||"").trim();
+  if(!val0) return true;
+  switch(col){
+    case "name":  return true;                       /* الاسم مبيتغيّرش من الاستمارة */
+    case "natId": return true;                       /* ولا الرقم القومي */
+    case "level": var lv = parseLevel(val0); if(lv) setStudentLevel(st, lv); return true;
+    case "cls":   var c = findClassByName(val0, studentSector(st)) || findClassByName(val0);
+                  if(c) assignStudentToClass(st, c.id); return true;
+    case "edu":   var e = parseEdu(val0); if(e){ st.edu = e; st.sector = eduSector(e)||st.sector; } return true;
+    case "track": var id = trackIdFromText(val0, L || studentLevelOf(st));
+                  if(id) st.bacTrack = id; return true;
+    case "subj":  st.bacSubject = val0; return true;
+    case "seat":  st.seat = toEnDigits(val0).replace(/[^0-9]/g,""); return true;
+    case "phone": st.phone = toEnDigits(val0).replace(/[^0-9+]/g,""); return true;
+    case "guard": st.guardian = cleanName(val0); return true;
+    case "gender":st.gender = /انث|أنث|بنت|female/i.test(normAr(val0))?"أنثى":"ذكر"; return true;
+    case "birth": st.birth = val0; return true;
+    case "gov":   st.birthGov = val0; return true;
+    case "joined":st.joined = val0; return true;
+    case "prev":  st.prevClass = val0; return true;
+    case "rel":   st.religion = /مسيح|قبط/.test(normAr(val0))?"مسيحي":"مسلم"; return true;
+  }
+  return false;
 }
 function ensureExtraField(label, level){
   xfInit();
@@ -15200,10 +15359,19 @@ function migrateRowToStudent(r, opt){
     for(var label in r.extra){
       var v = r.extra[label];
       if(v===undefined || v===null || String(v).trim()==="") continue;
-      /* لو المستخدم اختار له عمود، نستخدمه؛ وإلا نمشي بالمطابقة التلقائية */
       var mapped = (UI.fieldMap && UI.fieldMap[normAr(label)]) || null;
-      var fd;
       if(mapped === "__skip") continue;
+      /* لو المستخدم وجّهه لعمود أساسي */
+      if(mapped && mapped.indexOf("base:")===0){
+        if(setBaseCol(st, mapped.slice(5), v, lvl)) n++;
+        continue;
+      }
+      /* أو لو اسمه أصلًا مرادف لعمود أساسي — يروح مكانه مش عمود جديد */
+      if(!mapped){
+        var base = baseColOf(label, "student");
+        if(base){ if(setBaseCol(st, base, v, lvl)) n++; continue; }
+      }
+      var fd;
       if(mapped) fd = xfList("student").filter(function(x){ return x.id===mapped; })[0];
       if(!fd) fd = ensureExtraField(label, lvl);
       if(String(xfGet(st, fd.id)) !== String(v)){ xfSet(st, fd.id, v); n++; }
@@ -15446,6 +15614,17 @@ function modalFieldMap(fid, mode, rows, fields){
   UI.fmFid = fid; UI.fmMode = mode; UI.fmRows = rows; UI.fmFields = fields;
   UI.fieldMap = UI.fieldMap || {};
   var body = fields.map(function(f){
+    /* لو له عمود أساسي، بنعرضه كمعلومة — مفيش قرار مطلوب */
+    if(f.base){
+      return '<div style="border:1px solid var(--line-2);background:#f4faf6;border-radius:11px;'+
+        'padding:10px;margin-bottom:8px">'+
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+          '<b style="flex:1;min-width:120px">'+esc(f.label)+'</b>'+
+          '<span class="tag">'+f.n+' طالب</span>'+
+          '<span class="tag ok">→ '+esc(f.baseLabel)+'</span></div>'+
+        '<div style="font-size:11.5px;color:var(--muted);margin-top:5px">'+
+          'بيان أساسي معروف — هيتحط في مكانه الرسمي تلقائيًا.</div></div>';
+    }
     var cur = UI.fieldMap[f.key] || (f.exact ? f.exact.id : (f.near ? f.near.id : "__new"));
     return '<div style="border:1px solid '+(f.exact?"var(--line-2)":"#f0dcb8")+';background:'+
       (f.exact?"#fbfcfa":"#fdf9f2")+';border-radius:11px;padding:10px;margin-bottom:8px">'+
@@ -15465,7 +15644,14 @@ function modalFieldMap(fid, mode, rows, fields){
       '<select class="fmSel" data-k="'+esc(f.key)+'">'+
         '<option value="__new"'+(cur==="__new"?" selected":"")+'>➕ عمود جديد باسم «'+esc(f.label)+'»</option>'+
         '<option value="__skip"'+(cur==="__skip"?" selected":"")+'>✕ تجاهل البيان ده</option>'+
-        '<optgroup label="أو اختار عمود موجود">'+
+        '<optgroup label="أو حطّه في بيان أساسي">'+
+        ["track","subj","seat","phone","guard","gender","birth","gov","joined","prev","rel","cls","edu"]
+        .map(function(bc){
+          return '<option value="base:'+bc+'"'+(cur==="base:"+bc?" selected":"")+'>'+
+            esc(baseColLabel(bc,"student",0))+'</option>';
+        }).join("")+
+        '</optgroup>'+
+        '<optgroup label="أو عمود إضافي موجود">'+
         xfList("student").map(function(x){
           return '<option value="'+x.id+'"'+(cur===x.id?" selected":"")+'>'+esc(x.label)+
             (xfLevels(x).length? ' — '+esc(xfLevelLabel(x)) : '')+'</option>';
@@ -15476,8 +15662,13 @@ function modalFieldMap(fid, mode, rows, fields){
 
   openModal(mHead("مطابقة البيانات قبل الترحيل")+
     '<div class="mb">'+
-    '<div class="note warn"><b>'+fields.length+' بيان في الاستمارة</b> محتاج تحدّد يروح فين في كشف الطلاب. '+
-    'ده بيمنع إن نفس البيان يتعمل له أكتر من عمود بأسماء مختلفة.</div>'+
+    (function(){
+      var ask = fields.filter(function(x){ return !x.base; }).length;
+      var auto = fields.length - ask;
+      return (auto? '<div class="note ok"><b>'+auto+' بيان</b> اتعرف مكانه تلقائيًا.</div>' : '')+
+        (ask? '<div class="note warn"><b>'+ask+' بيان</b> محتاج تحدّد يروح فين — '+
+          'ده بيمنع إن نفس البيان يتعمل له أكتر من عمود بأسماء مختلفة.</div>' : '');
+    })()+
     '<div style="max-height:48vh;overflow:auto">'+body+'</div>'+
     '</div>'+
     '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
@@ -15516,7 +15707,7 @@ function doFormMigrate(el, mode){
   /* قبل الترحيل: لو فيه بيان مش مطابق لأي عمود، نسأل يروح فين */
   if(!UI.fmDone){
     var scan = scanFieldNames(picked);
-    var need = scan.filter(function(x){ return !x.exact; });
+    var need = scan.filter(function(x){ return !x.exact && !x.base; });
     if(need.length){
       UI.migRows = rows;
       UI.fmLevel = lvl;
