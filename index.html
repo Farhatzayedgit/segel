@@ -3834,18 +3834,77 @@ function stuColDefs(){
 }
 /* قيمة الشعبة/المسار — من الحقل الأساسي أو من عمود إضافي بنفس المعنى */
 function trackValueOf(s, L){
-  if(s.bacTrack) return wishTrackName(s.bacTrack);
+  var id = trackIdOf(s, L);
+  if(id){
+    var t = levelTracks(L).filter(function(x){ return x.id===id; })[0];
+    if(t) return t.name;
+    return wishTrackName(id);
+  }
+  return "";
+}
+/* ============================================================
+   بيحوّل نص الشعبة/المسار لمعرّف رسمي.
+   الطالب ممكن يكون مسجّل «علوم» أو «علمي علوم» أو «Science» —
+   كلها بترجع sci. وده بيخلّي البيان المسجّل يظهر تلقائي.
+   ============================================================ */
+function trackIdFromText(txt, L){
+  var v = normAr(txt||"");
+  if(!v) return "";
+  var list = levelTracks(L);
+  /* ١) مطابقة بالاسم الرسمي */
+  for(var i=0;i<list.length;i++) if(normAr(list[i].name)===v) return list[i].id;
+  /* ٢) مطابقة بالمعرّف نفسه */
+  for(var j=0;j<list.length;j++) if(String(txt).trim()===list[j].id) return list[j].id;
+  /* ٣) مرادفات شائعة */
+  var SYN = {
+    sci:  ["علوم","علمي علوم","علمى علوم","science","احياء","أحياء","علمي"],
+    math: ["رياضه","رياضة","علمي رياضه","علمى رياضة","math","علمي رياضيات"],
+    lit:  ["ادبي","أدبي","ادبى","literary","اداب","آداب"],
+    med:  ["طب","الطب","طب وعلوم الحياه","medicine","صحه","صحة"],
+    eng:  ["هندسه","هندسة","حاسب","حاسبات","engineering","هندسه وعلوم الحاسب"],
+    bus:  ["اعمال","أعمال","تجاره","تجارة","business","اداره اعمال"],
+    art:  ["اداب وفنون","آداب وفنون","فنون","arts","ادبي فنون"]
+  };
+  for(var id in SYN){
+    if(!list.some(function(x){ return x.id===id; })) continue;
+    for(var k=0;k<SYN[id].length;k++){
+      var syn = normAr(SYN[id][k]);
+      if(v===syn || v.indexOf(syn)>=0 || syn.indexOf(v)>=0) return id;
+    }
+  }
+  return "";
+}
+/* الشعبة المستنتجة للطالب — من الحقل الأساسي أو الفصل أو أي عمود إضافي */
+function trackIdOf(s, L){
+  if(s.bacTrack) return s.bacTrack;
   var c = classById(s.classId);
-  if(c && c.track && c.track!=="none") return trackName(c.system, c.track);
-  /* نبص في الأعمدة الإضافية اللي معناها شعبة */
+  if(c && c.track && c.track!=="none" && levelTracks(L).some(function(x){ return x.id===c.track; }))
+    return c.track;
+  /* من الأعمدة الإضافية اللي معناها شعبة */
   var want = fieldKey(num(L,0)===3 ? "الشعبة" : "المسار");
-  var hit = xfList("student").filter(function(f){
+  var hits = xfList("student").filter(function(f){
     var k = fieldKey(f.label);
     return k===want || synMatch(k, want);
+  });
+  for(var i=0;i<hits.length;i++){
+    var v = xfGet(s, hits[i].id);
+    if(!v || !String(v).trim()) continue;
+    var id = trackIdFromText(v, L);
+    if(id) return id;
+  }
+  return "";
+}
+/* مادة التخصص المستنتجة — من الحقل أو من عمود إضافي */
+function subjectOf(s, L){
+  if(s.bacSubject && String(s.bacSubject).trim()) return String(s.bacSubject).trim();
+  var want = fieldKey("مادة التخصص");
+  var hit = xfList("student").filter(function(f){
+    var k = fieldKey(f.label);
+    return k===want || k.indexOf("تخصص")>=0;
   })[0];
   if(hit){
     var v = xfGet(s, hit.id);
-    if(v && String(v).trim()) return String(v);
+    if(v && String(v).trim()) return String(v).trim();
   }
   return "";
 }
@@ -4481,6 +4540,14 @@ function viewStudents(){
     var noNat = list.filter(function(x){ return String(x.natId||"").length!==14; }).length;
     if(noNat) miss.push({ n:noNat, t:"رقم قومي ناقص", act:"" });
     if(miss.length){
+      /* لو فيه شعب متسجّلة في أعمدة إضافية، نعرض زر تثبيتها في مكانها الصح */
+      var canFix = list.filter(function(x){ return !x.bacTrack && trackIdOf(x,_lv); }).length;
+      if(canFix && canEditData()){
+        h += '<div class="note ok noprint"><b>'+canFix+' طالب</b> شعبته مسجّلة في بيان إضافي — '+
+          'اضغط عشان تتثبّت في مكانها الرسمي.'+
+          '<div style="margin-top:7px"><button class="btn sm" data-act="fixTracks">'+
+          '✓ تثبيت شعب الـ'+canFix+' طالب</button></div></div>';
+      }
       h += '<div class="note warn noprint"><b>بيانات ناقصة في '+esc(levelName(_lv))+':</b> '+
         miss.map(function(m){ return '<b>'+m.n+'</b> '+esc(m.t); }).join(" · ")+
         ' — من إجمالي '+list.length+' طالب.'+
@@ -6657,6 +6724,11 @@ function studentSubjectOpts(trackId, sel){
 function modalStudent(id, presetCls){
   var s = id? studentById(id) : null;
   var _L = s ? (studentLevelOf(s) || num(UI.stuLevel,0)) : num(UI.stuLevel,0);
+  /* الشعبة ومادة التخصص بيتقروا تلقائيًا من أي بيان مسجّل للطالب */
+  var _trk = s ? trackIdOf(s, _L) : "";
+  var _sub = s ? subjectOf(s, _L) : "";
+  var _trkAuto = !!(s && _trk && !s.bacTrack);
+  var _subAuto = !!(s && _sub && !s.bacSubject);
   var clsOpts = DB.classes.slice().sort(function(a,b){return a.level-b.level||sortAr(a.name,b.name);})
     .map(function(c){
       var sel = (s? s.classId===c.id : presetCls===c.id) ? " selected":"";
@@ -6685,10 +6757,14 @@ function modalStudent(id, presetCls){
       ? '<label class="f"><span>'+esc(trackColLabel(_L))+'</span><select id="s_trk">'+
         '<option value="">— '+(_L===3?"بدون شعبة":"بدون مسار")+' —</option>'+
         levelTracks(_L).map(function(tr){
-          return '<option value="'+tr.id+'"'+((s&&s.bacTrack)===tr.id?" selected":"")+'>'+esc(tr.name)+'</option>';
-        }).join("")+'</select></label>'+
+          return '<option value="'+tr.id+'"'+(_trk===tr.id?" selected":"")+'>'+esc(tr.name)+'</option>';
+        }).join("")+'</select>'+
+        (_trkAuto? '<small style="color:var(--ok);font-size:11.5px">اتقرا تلقائيًا من بيانات الطالب المسجّلة</small>':'')+
+        '</label>'+
         '<label class="f"><span>مادة التخصص</span><select id="s_sub">'+
-        levelSubjOpts(_L, s?s.bacTrack:"", s?s.bacSubject:"")+'</select></label>'
+        levelSubjOpts(_L, _trk, _sub)+'</select>'+
+        (_subAuto? '<small style="color:var(--ok);font-size:11.5px">اتقرا تلقائيًا</small>':'')+
+        '</label>'
       : '')+
     /* رقم الجلوس — للصف الثالث بس */
     (_L===3
@@ -6699,7 +6775,7 @@ function modalStudent(id, presetCls){
     (s && !classById(s.classId) && !isHomeStudent(s)
       ? '<div class="note warn">الطالب <b>مش مسكّن على فصل</b> — اختر الفصل من فوق عشان يظهر في الكشوف '+
         'ويقدر المعلم يرصد غيابه ودرجاته.</div>' : '')+
-    (s && _L>=2 && !s.bacTrack
+    (s && _L>=2 && !_trk
       ? '<div class="note warn">'+(_L===3?"الشعبة":"المسار")+' <b>مش محدد</b> — لازم يتحدد عشان مواد التخصص تتحسب صح.</div>'
       : '')+
     '<div class="grid2">'+
@@ -7792,11 +7868,34 @@ var ACTS = {
   stuLvl: function(el){ UI.stuLevel = num(el.dataset.l,0); UI.stuMiss = null; setPage("stu",1); render(); },
   goStudents: function(){ UI.tab="students"; UI.sub=null; UI.stuLevel=0; UI.stuMiss=null; render(); },
   goTeachers: function(){ UI.tab="teachers"; UI.sub=null; render(); },
+  fixTracks: function(){
+    var L = num(UI.stuLevel,0);
+    var list = allSectorStudents().filter(function(x){
+      return (!L || studentLevelOf(x)===L) && !x.bacTrack && trackIdOf(x, studentLevelOf(x)); });
+    if(!list.length){ toast("مفيش حاجة تتثبّت"); return; }
+    if(!confirm("هيتثبّت "+(L===3?"الشعبة":"المسار")+" لـ "+list.length+" طالب من بياناتهم المسجّلة.\n"+
+      "البيان الإضافي هيفضل زي ما هو.")) return;
+    markUndo("تثبيت الشعب");
+    var n = 0, ns = 0;
+    list.forEach(function(x){
+      var L2 = studentLevelOf(x);
+      var id = trackIdOf(x, L2);
+      if(!id) return;
+      x.bacTrack = id; n++;
+      /* ومادة التخصص لو مسجّلة كمان */
+      if(!x.bacSubject){
+        var sub = subjectOf(x, L2);
+        if(sub && levelSubjectsOf(L2, id).indexOf(sub)>=0){ x.bacSubject = sub; ns++; }
+      }
+    });
+    saveNow(); render();
+    toastUndo("اتثبّت لـ "+n+" طالب"+(ns? " · و"+ns+" مادة تخصص" : ""));
+  },
   stuMiss:    function(el){ UI.stuMiss = el.dataset.w; setPage("stu",1); render(); },
   stuMissOff: function(){ UI.stuMiss = null; setPage("stu",1); render(); },
   stuMissAll: function(){
     var L = num(UI.stuLevel,0), mw = UI.stuMiss;
-    var ids = myStudents().filter(function(x){
+    var ids = allSectorStudents().filter(function(x){
       if(L && studentLevelOf(x)!==L) return false;
       if(mw==="بدون فصل")          return !classById(x.classId) && !isHomeStudent(x);
       if(mw==="بدون شعبة"||mw==="بدون مسار") return !trackValueOf(x,L);
@@ -13038,6 +13137,16 @@ function myStudents(){
 }
 /* طلاب اتسجّلوا/اترحّلوا بس لسه مش متسكّنين على فصل موجود — لازم يظهروا للوكيل.
    طلاب المنازل مستثنون: ليهم تبويب لوحدهم وملهومش فصول أصلًا. */
+/* كل طلاب القسم — المسكّنين وغير المسكّنين — للعمليات الجماعية */
+function allSectorStudents(){
+  var m = myClassIds(), sec = curSector();
+  return DB.students.filter(function(s){
+    if(s.status==="left") return false;
+    if(m[s.classId]) return true;
+    if(classById(s.classId)) return false;      /* مسكّن في قسم تاني */
+    return studentSector(s)===sec;              /* غير مسكّن — بنوعيته */
+  });
+}
 function unassignedStudents(){
   var sec = curSector();
   return DB.students.filter(function(s){
