@@ -6639,6 +6639,13 @@ function val(id){ var e=document.getElementById(id); return e? e.value : ""; }
 
 /* ---------- نافذة الطالب ---------- */
 /* مواد التخصص بتتغيّر حسب المسار المختار */
+/* مواد التخصص حسب الصف والمسار — من قرارات الوزارة */
+function levelSubjOpts(L, trackId, sel){
+  var subs = levelSubjectsOf(L, trackId);
+  if(!subs.length) return '<option value="">— اختر '+(num(L,0)===3?"الشعبة":"المسار")+' الأول —</option>';
+  return '<option value="">— اختر المادة —</option>'+
+    subs.map(function(su){ return '<option value="'+esc(su)+'"'+(sel===su?" selected":"")+'>'+esc(su)+'</option>'; }).join("");
+}
 function studentSubjectOpts(trackId, sel){
   var t = null;
   var _wt = wishTracks();
@@ -6649,6 +6656,7 @@ function studentSubjectOpts(trackId, sel){
 }
 function modalStudent(id, presetCls){
   var s = id? studentById(id) : null;
+  var _L = s ? (studentLevelOf(s) || num(UI.stuLevel,0)) : num(UI.stuLevel,0);
   var clsOpts = DB.classes.slice().sort(function(a,b){return a.level-b.level||sortAr(a.name,b.name);})
     .map(function(c){
       var sel = (s? s.classId===c.id : presetCls===c.id) ? " selected":"";
@@ -6672,29 +6680,40 @@ function modalStudent(id, presetCls){
     '<label class="f"><span>نوعية التعليم</span><select id="s_edu">'+
       EDU_TYPES.map(function(e){ return '<option value="'+e.id+'"'+((s&&s.edu?s.edu:"reg")===e.id?" selected":"")+'>'+esc(e.name)+'</option>'; }).join("")+
       '</select></label>'+
-    '<label class="f"><span>المسار</span><select id="s_trk">'+
-      '<option value="">— بدون مسار —</option>'+
-      wishTracks().map(function(tr){ return '<option value="'+tr.id+'"'+((s&&s.bacTrack)===tr.id?" selected":"")+'>'+esc(tr.name)+'</option>'; }).join("")+
-      '</select></label>'+
-    '<label class="f"><span>مادة التخصص</span><select id="s_sub">'+studentSubjectOpts(s?s.bacTrack:"", s?s.bacSubject:"")+'</select></label>'+
-    '<label class="f"><span>النشاط التربوي</span><select id="s_act">'+
-      '<option value="">— لم يختر —</option>'+
-      actsOf("activity").map(function(a){ return '<option value="'+a.id+'"'+((s&&s.actId)===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+
-      '</select></label>'+
-    '<label class="f"><span>التربية المهنية</span><select id="s_voc">'+
-      '<option value="">— لم يختر —</option>'+
-      actsOf("voc").map(function(a){ return '<option value="'+a.id+'"'+((s&&s.vocId)===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+
-      '</select></label>'+
+    /* المسار/الشعبة — بأسماء الصف الصح، وبيختفي في الصف الأول */
+    (_L>=2
+      ? '<label class="f"><span>'+esc(trackColLabel(_L))+'</span><select id="s_trk">'+
+        '<option value="">— '+(_L===3?"بدون شعبة":"بدون مسار")+' —</option>'+
+        levelTracks(_L).map(function(tr){
+          return '<option value="'+tr.id+'"'+((s&&s.bacTrack)===tr.id?" selected":"")+'>'+esc(tr.name)+'</option>';
+        }).join("")+'</select></label>'+
+        '<label class="f"><span>مادة التخصص</span><select id="s_sub">'+
+        levelSubjOpts(_L, s?s.bacTrack:"", s?s.bacSubject:"")+'</select></label>'
+      : '')+
+    /* رقم الجلوس — للصف الثالث بس */
+    (_L===3
+      ? '<label class="f"><span>رقم الجلوس</span><input type="text" id="s_seat" inputmode="numeric" '+
+        'value="'+esc(s?(s.seat||""):"")+'" placeholder="من كشوف الوزارة"></label>'
+      : '')+
     '</div>'+
+    (s && !classById(s.classId) && !isHomeStudent(s)
+      ? '<div class="note warn">الطالب <b>مش مسكّن على فصل</b> — اختر الفصل من فوق عشان يظهر في الكشوف '+
+        'ويقدر المعلم يرصد غيابه ودرجاته.</div>' : '')+
+    (s && _L>=2 && !s.bacTrack
+      ? '<div class="note warn">'+(_L===3?"الشعبة":"المسار")+' <b>مش محدد</b> — لازم يتحدد عشان مواد التخصص تتحسب صح.</div>'
+      : '')+
     '<div class="grid2">'+
     '<label class="f"><span>اسم ولي الأمر (بيتكمل من الاسم)</span><input type="text" id="s_g" value="'+esc(s?(s.guardian||""):"")+'"></label>'+
     '<label class="f"><span>هاتف ولي الأمر</span><input type="tel" id="s_ph" inputmode="tel" value="'+esc(s?(s.phone||""):"")+'"></label>'+
     '<label class="f"><span>الديانة</span><select id="s_rel">'+
       opt(["مسلم","مسيحي"], s?s.religion:"")+'</select></label>'+
     '<label class="f"><span>تاريخ القيد</span><input type="date" id="s_j" value="'+esc(s?(s.joined||""):today())+'"></label>'+
-    '<label class="f"><span>مجموع الصف الثاني (بكالوريا)</span><input type="number" id="s_bp" step="0.5" min="0" '+
-      'value="'+esc(s?(s.bacPrev||""):"")+'" placeholder="من 400 — لطلاب ٣ ثانوي بكالوريا"></label>'+
     '</div>'+
+    (_L===3
+      ? '<label class="f"><span>مجموع الصف الثاني (يُضاف للمجموع النهائي)</span>'+
+        '<input type="number" id="s_bp" step="0.5" min="0" max="400" '+
+        'value="'+esc(s?(s.bacPrev||""):"")+'" placeholder="من ٤٠٠"></label>'
+      : '')+
     xfInputs("student", s)+
     '<label class="f"><span>ملاحظات</span><textarea id="s_notes">'+esc(s?(s.notes||""):"")+'</textarea></label>'+
     (s?'<button class="btn ghost block" data-act="delStudent" data-id="'+s.id+'" style="color:var(--danger)">حذف الطالب نهائيًا</button>':'')+
@@ -6703,7 +6722,17 @@ function modalStudent(id, presetCls){
   var trk = document.getElementById("s_trk");
   if(trk) trk.addEventListener("change", function(){
     var sub = document.getElementById("s_sub");
-    if(sub) sub.innerHTML = studentSubjectOpts(this.value, "");
+    if(sub) sub.innerHTML = levelSubjOpts(_L, this.value, "");
+  });
+  /* لو غيّرت الصف، الشعبة ومادة التخصص لازم يتغيّروا معاه */
+  var lvlEl = document.getElementById("s_lvl");
+  if(lvlEl) lvlEl.addEventListener("change", function(){
+    var nl = num(this.value,0);
+    if(nl !== _L){
+      var keep = s ? s.id : "";
+      UI.stuLevel = nl;
+      if(keep) modalStudent(keep);
+    }
   });
   updateStudentDerived();
 }
@@ -6752,7 +6781,9 @@ function saveStudent(){
   if(pickedCls) assignStudentToClass(s, pickedCls);   /* التسكين بيساوي الصف مع صف الفصل */
   else s.classId = "";
   setStudentLevel(s, num(val("s_lvl"),0) || studentLevelOf(s) || 1);
-  s.natId = toEnDigits(val("s_nat")).replace(/\D/g,"");
+  s.natId = nat0;
+  var seatEl = document.getElementById("s_seat");
+  if(seatEl) s.seat = toEnDigits(seatEl.value||"").replace(/[^0-9]/g,"");
   s.guardian = val("s_g").trim();
   s.phone = val("s_ph").trim();
   s.religion = val("s_rel");
@@ -6761,8 +6792,7 @@ function saveStudent(){
   s.sector = eduType(s.edu).sector;
   s.bacTrack = val("s_trk");
   s.bacSubject = s.bacTrack ? val("s_sub") : "";
-  s.actId = val("s_act");
-  s.vocId = val("s_voc");
+  /* النشاط والتربية المهنية بقوا مواد في الجدول — مش حقول هنا */
   if(s.edu==="home"){ s.classId = ""; }
   s.joined = val("s_j");
   s.notes = val("s_notes").trim();
