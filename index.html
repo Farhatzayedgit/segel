@@ -2180,10 +2180,10 @@ function modalBulkStudents(ids){
               '</optgroup>';
           }).join("")+'</select></label>'))+
     '</div>'+
-    (_BL>=2
+    (_BL===2
       ? '<label class="f"><span>مادة التخصص</span><select id="bk_sub">'+
         '<option value="">— من غير تغيير —</option></select>'+
-        '<small style="color:var(--muted);font-size:11.5px">اختر '+esc(trackColLabel(_BL))+' الأول عشان المواد تظهر</small></label>'
+        '<small style="color:var(--muted);font-size:11.5px">اختر المسار الأول عشان المواد تظهر</small></label>'
       : '')+
     (_BL===3
       ? '<div class="note">رقم الجلوس بيتحط لكل طالب لوحده من صفحته — مش بيتغيّر جماعي.</div>'
@@ -3831,6 +3831,137 @@ function tcKeep(id){
     else c.label[inp.dataset.k] = v;
   });
 }
+/* ============================================================
+   دمج عمودين — بينقل قيم عمود لعمود تاني بقواعد واضحة:
+   • الفاضي بس  • القيم اللي مش قيم صحيحة للعمود  • الكل
+   ============================================================ */
+function modalMergeCols(scope){
+  scope = scope || "student";
+  var isT = scope==="teacher";
+  var arr = isT ? DB.teachers : allSectorStudents();
+  var L = num(UI.stuLevel, 0);
+  /* الأعمدة المتاحة: الأساسية + الإضافية */
+  var opts = [];
+  (isT ? tchColDefs() : stuColDefs()).forEach(function(d){
+    if(d.k==="idx") return;
+    opts.push({ v:"base:"+d.k, label:d.label, base:d.k });
+  });
+  xfList(scope).forEach(function(f){
+    if(opts.some(function(o){ return o.v==="xf:"+f.id; })) return;
+    opts.push({ v:"xf:"+f.id, label:f.label+" (إضافي)", xf:f.id });
+  });
+  var from = UI.mgFrom || "", to = UI.mgTo || "", rule = UI.mgRule || "empty";
+
+  /* معاينة: كام قيمة هتتنقل */
+  var prev = null;
+  if(from && to && from!==to){
+    prev = mergeColsPreview(scope, from, to, rule, L);
+  }
+
+  openModal(mHead("دمج عمودين")+
+    '<div class="mb">'+
+    '<div class="note">بتنقل القيم من عمود لعمود. مثال: عندك شعب مكتوبة في عمود «الفصل» '+
+    'وعايزها تروح لعمود «الشعبة» — اختار المصدر والهدف والقاعدة.</div>'+
+    '<div class="grid2">'+
+      '<label class="f"><span>من عمود (المصدر)</span><select id="mg_from">'+
+        '<option value="">— اختر —</option>'+
+        opts.map(function(o){ return '<option value="'+esc(o.v)+'"'+(from===o.v?" selected":"")+'>'+esc(o.label)+'</option>'; }).join("")+
+        '</select></label>'+
+      '<label class="f"><span>إلى عمود (الهدف)</span><select id="mg_to">'+
+        '<option value="">— اختر —</option>'+
+        opts.map(function(o){ return '<option value="'+esc(o.v)+'"'+(to===o.v?" selected":"")+'>'+esc(o.label)+'</option>'; }).join("")+
+        '</select></label>'+
+    '</div>'+
+    '<label class="f"><span>القاعدة</span><select id="mg_rule">'+
+      '<option value="empty"'+(rule==="empty"?" selected":"")+'>الفاضي بس — اللي الهدف عنده فاضي</option>'+
+      '<option value="invalid"'+(rule==="invalid"?" selected":"")+'>القيم الغلط — اللي في الهدف مش قيمة صحيحة للعمود</option>'+
+      '<option value="all"'+(rule==="all"?" selected":"")+'>الكل — يستبدل اللي في الهدف</option>'+
+      '</select></label>'+
+    (prev
+      ? '<div class="note '+(prev.n?"ok":"warn")+'"><b>المعاينة:</b> '+
+        (prev.n? prev.n+' قيمة هتتنقل' : 'مفيش قيم مطابقة للقاعدة')+
+        (prev.skip? ' · '+prev.skip+' هتتساب زي ما هي' : '')+
+        (prev.bad? ' · <b>'+prev.bad+'</b> قيمة مش صالحة للعمود الهدف وهتتساب' : '')+'</div>'+
+        (prev.sample.length
+          ? '<div style="max-height:26vh;overflow:auto;border:1px solid var(--line-2);border-radius:9px">'+
+            prev.sample.map(function(x){
+              return '<div class="list-item"><span class="tx"><b>'+esc(x.name)+'</b>'+
+                '<small>«'+esc(x.v)+'» → '+esc(x.toLabel)+'</small></span></div>';
+            }).join("")+
+            (prev.n>prev.sample.length? '<div class="note">…وكمان '+(prev.n-prev.sample.length)+'</div>':'')+
+            '</div>' : '')
+      : '<div class="note">اختار المصدر والهدف عشان تشوف المعاينة.</div>')+
+    (from && to && from===to ? '<div class="note warn">المصدر والهدف نفس العمود.</div>' : '')+
+    '<label style="display:flex;align-items:center;gap:8px;margin-top:9px;cursor:pointer">'+
+      '<input type="checkbox" id="mg_clear" style="width:18px;height:18px">'+
+      '<span>فضّي عمود المصدر بعد النقل</span></label>'+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    (prev && prev.n ? '<button class="btn" data-act="mgRun" data-s="'+esc(scope)+'">نقل '+prev.n+' قيمة</button>' : '')+
+    '</div>');
+  UI.mgScope = scope;
+}
+/* بيقرا قيمة عمود (أساسي أو إضافي) */
+/* raw=true يرجّع القيمة المحفوظة فعلًا (مش المستنتجة) — للهدف */
+function colValOf(o, key, scope, L, raw){
+  if(String(key).indexOf("xf:")===0) return String(xfGet(o, String(key).slice(3))||"").trim();
+  var k = String(key).slice(5);
+  if(scope==="teacher") return String(tchCellValue(k, o)||"").trim();
+  if(raw){
+    /* الحقول اللي بتتستنتج — بنقرا المحفوظ بس */
+    if(k==="track") return String(o.bacTrack||"").trim();
+    if(k==="cls")   return String(o.classId||"").trim();
+    if(k==="subj")  return String(o.bacSubject||"").trim();
+  }
+  return String(stuCellValue({k:k}, o)||"").trim();
+}
+/* هل القيمة دي صالحة للعمود ده؟ */
+function colValidFor(v, key, L){
+  if(!v) return false;
+  if(String(key).indexOf("xf:")===0) return true;      /* الإضافي بيقبل أي حاجة */
+  var k = String(key).slice(5);
+  if(k==="track") return !!trackIdFromText(v, L);
+  if(k==="cls")   return !!(findClassByName(v, curSector()) || findClassByName(v));
+  if(k==="edu")   return !!parseEdu(v);
+  if(k==="level") return !!parseLevel(v);
+  if(k==="natId") return normNat(v).length===14;
+  if(k==="seat" || k==="phone") return /[0-9]/.test(toEnDigits(v));
+  return true;
+}
+function mergeColsPreview(scope, from, to, rule, L){
+  var arr = (scope==="teacher") ? DB.teachers.filter(function(x){ return x.status!=="left"; })
+                                : allSectorStudents().filter(function(x){ return !L || studentLevelOf(x)===L; });
+  var toLabel = colLabelOf(to, scope, L);
+  var out = { n:0, skip:0, bad:0, sample:[], list:[] };
+  arr.forEach(function(o){
+    var v = colValOf(o, from, scope, L);
+    if(!v){ return; }
+    var cur = colValOf(o, to, scope, L, true);
+    var take = (rule==="all") ? true
+             : (rule==="empty") ? !cur
+             : !colValidFor(cur, to, L);          /* invalid */
+    if(!take){ out.skip++; return; }
+    if(!colValidFor(v, to, L)){ out.bad++; return; }
+    out.n++;
+    out.list.push({ o:o, v:v });
+    if(out.sample.length<12) out.sample.push({ name:o.name, v:v, toLabel:toLabel });
+  });
+  return out;
+}
+function colLabelOf(key, scope, L){
+  if(String(key).indexOf("xf:")===0){
+    var f = xfList(scope).filter(function(x){ return x.id===String(key).slice(3); })[0];
+    return f ? f.label : "";
+  }
+  var k = String(key).slice(5);
+  if(scope==="teacher"){
+    var td = tchColDefs().filter(function(d){ return d.k===k; })[0];
+    return td ? td.label : k;
+  }
+  if(k==="track") return trackColLabel(L||0);
+  var sd = stuColDefs().filter(function(d){ return d.k===k; })[0];
+  return sd ? sd.label : k;
+}
 function modalTableCfg(id, defs, title){
   var c = tblCfg(id);
   var ordered = (function(){
@@ -3873,7 +4004,9 @@ function modalTableCfg(id, defs, title){
 /* شريط أدوات الجدول: إعدادات + طباعة */
 function tblToolbar(id, title, pg){
   var many = pg && pg.pages > 1;
+  var scope = (id==="teachers") ? "teacher" : "student";
   return '<button class="btn ghost sm noprint" data-act="tblCfg" data-t="'+esc(id)+'">⚙ الأعمدة</button>'+
+    (canEditData()? '<button class="btn ghost sm noprint" data-act="mgCols" data-s="'+scope+'" style="margin-right:5px">⇄ دمج عمودين</button>' : '')+
     (many
       ? '<button class="btn ghost sm noprint" data-act="print" style="margin-right:5px">⎙ الصفحة دي</button>'+
         '<button class="btn ghost sm noprint" data-act="printAll" style="margin-right:5px">⎙ كل الصفحات ('+pg.total+')</button>'
@@ -3911,9 +4044,12 @@ function levelSubjectsOf(L, tid){
 }
 /* الأعمدة اللي تخص كل صف — من قرارات الوزارة */
 var LEVEL_COLS = {
+  /* الأول: سنة تمهيدية مشتركة — مفيش شعبة ولا تخصص */
   1: ["idx","name","natId","level","cls","edu","gender","birth","gov","guard","phone","joined","abs"],
+  /* الثاني: بكالوريا — المسار + مادة التخصص الاختيارية */
   2: ["idx","name","natId","level","cls","edu","track","subj","gender","birth","gov","guard","phone","joined","abs"],
-  3: ["idx","name","natId","level","cls","edu","track","subj","seat","gender","birth","gov","guard","phone","joined","abs"]
+  /* الثالث: ثانوية عامة — الشعبة بس (مفيش مادة تخصص، دي بتاعة البكالوريا) */
+  3: ["idx","name","natId","level","cls","edu","track","seat","gender","birth","gov","guard","phone","joined","abs"]
 };
 /* ============================================================
    فرز الأعمدة — كل عمود ليه زرار بيرتّب حسب نوع بياناته:
@@ -3984,7 +4120,7 @@ function stuColDefs(){
     { k:"level", label:"الصف" },
     { k:"cls",   label:"الفصل" },
     { k:"edu",   label:"النوعية" },
-    { k:"track", label:"المسار" },
+    { k:"track", label:(num(UI.stuLevel,0)===3 ? "الشعبة" : "المسار") },
     { k:"subj",  label:"مادة التخصص" },
     { k:"phone", label:"الهاتف",        off:true },
     { k:"guard", label:"ولي الأمر",      off:true },
@@ -4216,6 +4352,9 @@ function stuCellValue(d, s){
     case "act":   return s.actId||"";
     case "voc":   return s.vocId||"";
     case "joined":return s.joined||"";
+    case "prev":  return s.prevClass||"";
+    case "rel":   return s.religion||"";
+    case "addr":  return "";
     case "abs":   var st = attendStats(s.id, s.classId); return st.days? String(st.abs) : "";
     case "level": return studentLevelOf(s)? String(studentLevelOf(s)) : "";
   }
@@ -4751,6 +4890,8 @@ function viewStudents(){
     if(_lv>=2){
       var noTrk = list.filter(function(x){ return !trackValueOf(x,_lv); }).length;
       if(noTrk) miss.push({ n:noTrk, t:(_lv===3?"بدون شعبة":"بدون مسار"), act:"" });
+    }
+    if(_lv===2){   /* مادة التخصص للبكالوريا بس */
       var noSub = list.filter(function(x){ return !String(x.bacSubject||"").trim(); }).length;
       if(noSub) miss.push({ n:noSub, t:"بدون مادة تخصص", act:"" });
     }
@@ -7000,10 +7141,13 @@ function modalStudent(id, presetCls){
         }).join("")+'</select>'+
         (_trkAuto? '<small style="color:var(--ok);font-size:11.5px">اتقرا تلقائيًا من بيانات الطالب المسجّلة</small>':'')+
         '</label>'+
-        '<label class="f"><span>مادة التخصص</span><select id="s_sub">'+
-        levelSubjOpts(_L, _trk, _sub)+'</select>'+
-        (_subAuto? '<small style="color:var(--ok);font-size:11.5px">اتقرا تلقائيًا</small>':'')+
-        '</label>'
+        /* مادة التخصص للبكالوريا بس (الصف الثاني) */
+        (_L===2
+          ? '<label class="f"><span>مادة التخصص</span><select id="s_sub">'+
+            levelSubjOpts(_L, _trk, _sub)+'</select>'+
+            (_subAuto? '<small style="color:var(--ok);font-size:11.5px">اتقرا تلقائيًا</small>':'')+
+            '</label>'
+          : '')
       : '')+
     /* رقم الجلوس — للصف الثالث بس */
     (_L===3
@@ -8104,6 +8248,47 @@ var ACTS = {
     UI.cellKey = null;
     saveNow(); closeModal(); render(); toastUndo("اتفرّغت");
   },
+  /* ---------- دمج الأعمدة ---------- */
+  mgCols:  function(el){ UI.mgFrom=""; UI.mgTo=""; UI.mgRule="empty"; modalMergeCols(el.dataset.s||"student"); },
+  mgRun: function(el){
+    var scope = el.dataset.s || "student";
+    var L = num(UI.stuLevel,0);
+    var from = UI.mgFrom, to = UI.mgTo, rule = UI.mgRule||"empty";
+    if(!from || !to || from===to){ toast("اختار المصدر والهدف"); return; }
+    var prev = mergeColsPreview(scope, from, to, rule, L);
+    if(!prev.n){ toast("مفيش قيم تتنقل"); return; }
+    var clear = !!(document.getElementById("mg_clear")||{}).checked;
+    if(!confirm("هيتنقل "+prev.n+" قيمة من «"+colLabelOf(from,scope,L)+"» لـ«"+colLabelOf(to,scope,L)+"».")) return;
+    markUndo("دمج عمودين");
+    var n = 0;
+    prev.list.forEach(function(x){
+      var ok = false;
+      if(String(to).indexOf("xf:")===0){ xfSet(x.o, String(to).slice(3), x.v); ok = true; }
+      else if(scope==="student") ok = setBaseCol(x.o, String(to).slice(5), x.v, studentLevelOf(x.o));
+      else {
+        var map = { name:"name", code:"code", natId:"natId", subject:"subject", hire:"hireDate",
+                    finG:"finGrade", finD:"finDate", job:"jobNow", qual:"qual", qualT:"qualType",
+                    cadre:"cadreJob", phone:"phone", gender:"gender" };
+        var key = map[String(to).slice(5)];
+        if(key){ x.o[key] = x.v; ok = true; }
+      }
+      if(!ok) return;
+      n++;
+      if(clear){
+        if(String(from).indexOf("xf:")===0){ if(x.o.extra) delete x.o.extra[String(from).slice(3)]; }
+        else{
+          var fk = String(from).slice(5);
+          if(fk==="cls") x.o.classId = "";
+          else if(fk==="track") x.o.bacTrack = "";
+          else if(fk==="subj") x.o.bacSubject = "";
+          else if(fk==="seat") x.o.seat = "";
+        }
+      }
+    });
+    UI.mgFrom=""; UI.mgTo="";
+    saveNow(); closeModal(); render();
+    toastUndo("اتنقل "+n+" قيمة");
+  },
   tblSort: function(el){
     var tbl = el.dataset.t, k = el.dataset.k;
     var st = sortState(tbl);
@@ -9118,6 +9303,9 @@ function hookInputs(root){
     if(id==="logq"){ UI.filters.logq = e.target.value; render(); }
     if(id==="lsDate"){ UI.sub = { date: e.target.value }; render(); }
     if(id==="supDate"){ UI.sub = UI.sub || {}; UI.sub.date = e.target.value; render(); }
+    if(id==="mg_from"){ UI.mgFrom = e.target.value; modalMergeCols(UI.mgScope); }
+    if(id==="mg_to"){   UI.mgTo   = e.target.value; modalMergeCols(UI.mgScope); }
+    if(id==="mg_rule"){ UI.mgRule = e.target.value; modalMergeCols(UI.mgScope); }
     if(id==="pfq"){
       pfKeep();
       renderPaperFill();
