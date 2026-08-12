@@ -6965,45 +6965,6 @@ function saveAssign(){
    بتربط: المعلم + الفصل + المادة، وبتسجّل التكليف عشان يقدر
    يرصد الغياب والدرجات للفصل ده من حسابه.
    ============================================================ */
-function modalTeacherSlot(tid, day, period){
-  var t = teacherById(tid);
-  if(!t){ toast("المعلم مش موجود"); return; }
-  var cell = DB.schedule.filter(function(x){
-    return x.teacherId===tid && x.day===day && x.period===period && inSector(classById(x.classId)); })[0];
-  var curC = cell ? cell.classId : "";
-  var curS = cell ? cell.subjectId : "";
-  var classes = myClasses().sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); });
-  var w = periodWindow(period);
-  var n = nisabOf(tid), l = plannedHours(tid,{});
-
-  openModal(mHead((cell?"تعديل":"إضافة")+" حصة — "+t.name)+
-    '<div class="mb" data-tid="'+tid+'" data-day="'+day+'" data-per="'+period+'" id="slotBox">'+
-    '<div class="note"><b>'+esc(DAYS[day])+' — الحصة '+period+'</b>'+(w?' ('+esc(w.from)+' – '+esc(w.to)+')':'')+
-      ' · النصاب '+n+' · الحِمل '+l+' · المتبقّي '+(n-l)+'</div>'+
-    '<label class="f"><span>الفصل *</span><select id="sl_c">'+
-      '<option value="">— اختر الفصل —</option>'+
-      classes.map(function(c){
-        var busy = DB.schedule.filter(function(x){
-          return x.classId===c.id && x.day===day && x.period===period; })[0];
-        var tag = "";
-        if(busy && busy.teacherId!==tid) tag = " — مشغول: "+subjName(busy.subjectId)+
-          (busy.teacherId? " / "+teacherName(busy.teacherId) : "");
-        return '<option value="'+c.id+'"'+(curC===c.id?" selected":"")+'>'+
-          esc(c.name)+' ('+studentsOf(c.id).length+' طالب)'+esc(tag)+'</option>';
-      }).join("")+
-      '</select></label>'+
-    '<label class="f"><span>المادة *</span><select id="sl_s"></select></label>'+
-    '<div id="sl_warn"></div>'+
-    '<div class="note ok">لما تحفظ، الفصل ده هيظهر للمعلم في <b>«فصولي»</b> و<b>«طلابي»</b>، '+
-      'ويقدر يرصد منه الغياب والدرجات.</div>'+
-    (cell?'<button class="btn ghost block" data-act="delTchSlot" data-t="'+tid+'" data-d="'+day+'" data-p="'+period+'" style="color:var(--danger)">تفريغ الحصة</button>':'')+
-    '</div>'+
-    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
-    '<button class="btn" data-act="saveTchSlot">حفظ</button></div>');
-  fillSlotSubjects(curS);
-  var sel = document.getElementById("sl_c");
-  if(sel) sel.onchange = function(){ fillSlotSubjects(""); };
-}
 /* مواد الفصل المختار — مرتّبة: تخصص المعلم الأول */
 function fillSlotSubjects(sel){
   var box = document.getElementById("slotBox");
@@ -7071,32 +7032,6 @@ function saveTeacherSlot(){
 
   saveNow(); closeModal(); render();
   toastUndo("اتسجّلت الحصة — الفصل بقى في «فصولي» عند المعلم");
-}
-function modalSched(cid, day, period){
-  if(period > periodsCount()){ toast("عدّل عدد الحصص من أوقات اليوم الدراسي"); return; }
-  var cur = schedCell(cid, day, period);
-  var subs = DB.subjects.filter(function(s){ return s.classId===cid; });
-  if(!subs.length){ toast("ضيف مواد للفصل الأول"); return; }
-  openModal(mHead(DAYS[day]+" — الحصة "+period)+
-    '<div class="mb">'+
-    '<label class="f"><span>المادة أو النشاط</span><select id="h_s"><option value="">— حصة فاضية —</option>'+
-      (function(){
-        var core = subs.filter(function(x){ return !isActivitySubj(x); });
-        var acts = subs.filter(function(x){ return isActivitySubj(x); });
-        function opt(x){ return '<option value="'+x.id+'"'+(cur&&cur.subjectId===x.id?" selected":"")+'>'+esc(x.name)+'</option>'; }
-        var o = "";
-        if(core.length) o += '<optgroup label="المواد الدراسية">'+core.map(opt).join("")+'</optgroup>';
-        if(acts.length) o += '<optgroup label="حصص النشاط (الفصل بيتقسّم مجموعات)">'+acts.map(opt).join("")+'</optgroup>';
-        return o;
-      })()+
-    '</select></label>'+
-    '<label class="f" id="h_twrap"><span>المعلم</span><select id="h_t"></select></label>'+
-    '<div id="h_actbox"></div>'+
-    '<div id="h_warn"></div></div>'+mFoot("حفظ","saveSched"));
-  MODAL.dataset.cid = cid; MODAL.dataset.day = day; MODAL.dataset.p = period;
-  fillSchedTeacher(cur? cur.teacherId : "");
-  document.getElementById("h_s").onchange = function(){ fillSchedTeacher(""); };
-  document.getElementById("h_t").onchange = checkBusy;
 }
 /* قائمة معلمي المادة: كل اللي مادة تدريسهم هي المادة دي — مش المسند بس */
 function fillSchedTeacher(sel){
@@ -13633,25 +13568,6 @@ function classForWishTrack(trackId, sector){
   return pool.filter(function(c){ return c.system==="bac" && c.track===trackId; })[0] ||
          pool.filter(function(c){ return c.track===trackId; })[0] || null;
 }
-function migrateWishToStudent(w, classId){
-  wishesInit();
-  /* منع التكرار بالرقم القومي */
-  var exists = DB.students.filter(function(s){ return s.natId && s.natId===w.natId; })[0];
-  if(exists){ w.migrated = exists.id; return {ok:false, dup:true, msg:"الرقم القومي مسجّل بالفعل كطالب"}; }
-  var s = {
-    id: uid("s"), status:"active", joined: today(),
-    name: cleanName(w.name), natId: w.natId, classId: "",
-    prevClass: w.prevClass || "", bacSubject: w.subject || "", bacTrack: w.track || "",
-    edu: w.edu || "reg", sector: eduType(wishEdu(w)).sector, fromWish: w.id
-  };
-  /* الصف بييجي من صف الاستمارة نفسها — الطالب بيبقى معروف صفه حتى لو مش متسكّن */
-  setStudentLevel(s, num(DB.trackLevel,2));
-  if(classId) assignStudentToClass(s, classId);
-  enrichStudent(s);
-  DB.students.push(s);
-  w.migrated = s.id;
-  return {ok:true, sid:s.id, assigned: !!s.classId};
-}
 function wishById(wid){
   wishesInit();
   for(var i=0;i<DB.wishes.length;i++) if(DB.wishes[i].id===wid) return DB.wishes[i];
@@ -15747,17 +15663,6 @@ function buildOnce(ctx, respectNisab){
   return { placed:placed, left:left, tCount:tCount, remaining:byClass };
 }
 /* أفضل محاولة من عدة محاولات */
-function generateSchedule(respectNisab, tries){
-  var ctx = genContext();
-  if(!ctx.items.length) return { ctx:ctx, best:null };
-  var best = null;
-  for(var i=0;i<(tries||40);i++){
-    var r = buildOnce(ctx, respectNisab);
-    if(!best || r.left < best.left) best = r;
-    if(best.left===0) break;
-  }
-  return { ctx:ctx, best:best };
-}
 
 /* ============================================================
    شاشة الجداول — تبويبات فرعية
@@ -15778,78 +15683,6 @@ function generateSchedule(respectNisab, tries){
 /* ============================================================
    توليد جدول فصل واحد — من غير ما يمس باقي الفصول
    ============================================================ */
-function genOneClassSchedule(cid){
-  var c = classById(cid);
-  if(!c) return { err:"الفصل مش موجود" };
-  var subs = DB.subjects.filter(function(su){ return su.classId===cid; });
-  if(!subs.length) return { err:"الفصل مفيهوش مواد — اضغط «توليد المواد المقررة» الأول" };
-
-  var days = schoolDayIdx(), P = periodsCount();
-  /* الطلب: كل حصة مطلوبة ومعلمها */
-  var items = [], noT = [];
-  subs.forEach(function(su){
-    if(isActivitySubj(su)) return;      /* حصص النشاط بتتحط موحّدة للصف كله */
-    var hrs = subjHours(su);
-    if(!hrs) return;
-    var a = DB.assign.filter(function(x){ return x.classId===cid && x.subjectId===su.id; })[0];
-    var tid = a ? a.teacherId : "";
-    if(!tid){
-      /* مفيش إسناد — ندوّر على معلم بتخصص المادة وعنده متاح */
-      var best = null, bestFree = -1;
-      teachingStaff().forEach(function(t){
-        if(teacherFitsSubject(t, su.name) < SUBJ_MATCH_MIN) return;
-        var n = nisabOf(t.id), used = plannedHours(t.id, {});
-        if(used + hrs > n) return;
-        var free = (n - used) / Math.max(1,n) - (t.hourly?0.5:0);
-        if(free > bestFree){ bestFree = free; best = t; }
-      });
-      if(best){
-        tid = best.id;
-        DB.assign.push({ id:uid("as"), classId:cid, subjectId:su.id, teacherId:tid });
-      }else{ noT.push(su.name); return; }
-    }
-    for(var i=0;i<hrs;i++) items.push({ subjectId:su.id, teacherId:tid, name:su.name });
-  });
-  if(!items.length) return { err: noT.length? "مفيش معلمين متاحين لمواد الفصل ده" : "مفيش حصص مطلوبة" };
-
-  /* نمسح جدول الفصل ده بس */
-  DB.schedule = DB.schedule.filter(function(x){ return x.classId!==cid; });
-
-  var placed = 0, left = [];
-  var dayHas = {};   /* منع تكرار نفس المادة مرتين في يوم */
-  shuffle(items);
-  /* الأكتر حصصًا الأول */
-  items.forEach(function(it){
-    var done = false;
-    for(var pi=1; pi<=P && !done; pi++){
-      for(var k=0; k<days.length && !done; k++){
-        var d = days[(k + pi) % days.length];
-        if(schedCell(cid, d, pi)) continue;
-        if(it.teacherId && teacherBusy(it.teacherId, d, pi)) continue;
-        if(dayHas[d+"|"+it.subjectId]) continue;
-        DB.schedule.push({ id:uid("h"), classId:cid, day:d, period:pi,
-                           subjectId:it.subjectId, teacherId:it.teacherId });
-        dayHas[d+"|"+it.subjectId] = 1;
-        placed++; done = true;
-      }
-    }
-    /* لو مالقاش، نسمح بتكرار المادة في نفس اليوم */
-    if(!done){
-      for(var pj=1; pj<=P && !done; pj++){
-        for(var m=0; m<days.length && !done; m++){
-          var dd = days[m];
-          if(schedCell(cid, dd, pj)) continue;
-          if(it.teacherId && teacherBusy(it.teacherId, dd, pj)) continue;
-          DB.schedule.push({ id:uid("h"), classId:cid, day:dd, period:pj,
-                             subjectId:it.subjectId, teacherId:it.teacherId });
-          placed++; done = true;
-        }
-      }
-    }
-    if(!done) left.push(it.name);
-  });
-  return { placed:placed, left:left, noTeacher:noT, cls:c };
-}
 function shortageReport(levels){
   var classes = myClasses().filter(function(c){
     return !levels || levels.indexOf(Number(c.level))>=0;
@@ -16020,51 +15853,8 @@ function actUnassigned(kind){
   return actEligible(kind).filter(function(s){ return !s[key] || !actById(s[key]); });
 }
 /* توزيع تلقائي عادل للطلاب اللي مختاروش */
-function autoDistributeActs(kind){
-  var key = kind==="voc" ? "vocId" : "actId";
-  var open = actsOf(kind).filter(function(a){ return a.on!==false; });
-  if(!open.length) return { err:"مفيش أنشطة مفعّلة" };
-  var un = actUnassigned(kind);
-  if(!un.length) return { err:"كل الطلاب مختارين بالفعل" };
-  /* العدد الحالي لكل نشاط */
-  var cnt = {};
-  open.forEach(function(a){ cnt[a.id] = studentsOfAct(a.id, kind).length; });
-  var n = 0;
-  un.forEach(function(s){
-    /* الأقل عددًا الأول، مع احترام السعة لو محددة */
-    var best = null, bestN = Infinity;
-    open.forEach(function(a){
-      var cap = num(a.cap,0);
-      if(cap && cnt[a.id] >= cap) return;
-      if(cnt[a.id] < bestN){ bestN = cnt[a.id]; best = a; }
-    });
-    if(!best) return;
-    s[key] = best.id; cnt[best.id]++; n++;
-  });
-  return { done:n, left: actUnassigned(kind).length };
-}
 /* حِمل معلمي الأنشطة: كل مجموعة = حصة أسبوعيًا */
 /* اختيار معلم للنشاط — المرشّحون حسب تخصصهم */
-function modalActivity(id){
-  var a = id ? actById(id) : null;
-  var kind = a ? a.kind : (UI.actKind==="voc" ? "voc" : "activity");
-  openModal(mHead(a?"تعديل النشاط":"إضافة نشاط")+
-    '<div class="mb">'+
-    '<label class="f"><span>اسم النشاط *</span><input type="text" id="ac_name" value="'+esc(a?a.name:"")+'"></label>'+
-    '<div class="grid2">'+
-      '<label class="f"><span>النوع</span><select id="ac_kind">'+
-        '<option value="activity"'+(kind==="activity"?" selected":"")+'>نشاط تربوي (١٠ درجات)</option>'+
-        '<option value="voc"'+(kind==="voc"?" selected":"")+'>تربية مهنية (٢٠ درجة)</option>'+
-        '</select></label>'+
-      '<label class="f"><span>الحد الأقصى للطلاب</span>'+
-        '<input type="number" id="ac_cap" min="0" value="'+esc(a?num(a.cap,0):0)+'" placeholder="٠ = مفتوح"></label>'+
-    '</div>'+
-    '<div class="note">الحد الأقصى بيمنع التوزيع التلقائي من تكديس النشاط. سيبه صفر لو مفيش حد.</div>'+
-    (a?'<button class="btn ghost block" data-act="actDel" data-id="'+a.id+'" style="color:var(--danger)">حذف النشاط</button>':'')+
-    '</div>'+
-    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
-    '<button class="btn" data-act="actSave" data-id="'+(a?a.id:"")+'">حفظ</button></div>');
-}
 /* قائمة اختيار المعلم لمادة معيّنة — المطابقين للتخصص فوق ومعلّم عليهم */
 /* بطاقة: كل معلم وتخصصه وحِمله — للمراجعة السريعة */
 
@@ -16106,59 +15896,6 @@ function activitySubjectsOf(cid){
   return DB.subjects.filter(function(su){ return su.classId===cid && isActivitySubj(su); });
 }
 /* بيحط حصص النشاط لكل صف في خانة موحّدة */
-function placeActivityPeriods(levels){
-  var res = { placed:0, levels:[], skipped:[] };
-  var days = schoolDayIdx(), P = periodsCount();
-  var byLevel = {};
-  myClasses().forEach(function(c){
-    var L = Number(c.level);
-    if(levels && levels.indexOf(L)<0) return;
-    if(!activitySubjectsOf(c.id).length) return;
-    if(!byLevel[L]) byLevel[L] = [];
-    byLevel[L].push(c);
-  });
-  Object.keys(byLevel).forEach(function(L){
-    var classes = byLevel[L];
-    /* كل نوع نشاط ليه خانة موحّدة للصف كله */
-    var kinds = {};
-    classes.forEach(function(c){
-      activitySubjectsOf(c.id).forEach(function(su){ kinds[su.name] = 1; });
-    });
-    Object.keys(kinds).forEach(function(sname){
-      /* ندوّر على خانة فاضية في كل فصول الصف */
-      var slot = null;
-      for(var pi=P; pi>=1 && !slot; pi--){          /* آخر حصص اليوم أنسب للنشاط */
-        for(var di=0; di<days.length && !slot; di++){
-          var d = days[di];
-          var free = classes.every(function(c){
-            var cell = schedCell(c.id, d, pi);
-            if(!cell) return true;
-            var su0 = subjById(cell.subjectId);
-            return su0 && normAr(su0.name)===normAr(sname);   /* موجودة بالفعل = تمام */
-          });
-          if(free) slot = { day:d, period:pi };
-        }
-      }
-      if(!slot){ res.skipped.push(levelName(L)+" — "+sname); return; }
-      classes.forEach(function(c){
-        var su = activitySubjectsOf(c.id).filter(function(x){ return normAr(x.name)===normAr(sname); })[0];
-        if(!su) return;
-        /* نشيل أي نسخة قديمة من نفس النشاط في الفصل */
-        DB.schedule = DB.schedule.filter(function(x){
-          return !(x.classId===c.id && x.subjectId===su.id);
-        });
-        DB.schedule = DB.schedule.filter(function(x){
-          return !(x.classId===c.id && x.day===slot.day && x.period===slot.period);
-        });
-        DB.schedule.push({ id:uid("h"), classId:c.id, day:slot.day, period:slot.period,
-                           subjectId:su.id, teacherId:"", actKind:subjKind(su) });
-        res.placed++;
-      });
-      res.levels.push(levelName(L)+" — "+sname+": "+DAYS[slot.day]+" الحصة "+slot.period);
-    });
-  });
-  return res;
-}
 function autoAssignTeachers(levels, opt){
   opt = opt || {};
   var classes = myClasses().filter(function(c){ return levels.indexOf(Number(c.level))>=0; })
@@ -16212,31 +15949,6 @@ function autoAssignTeachers(levels, opt){
     res.assigned++;
   });
   return res;
-}
-function modalAutoAssign(){
-  var cnt = {};
-  LEVELS.forEach(function(l){
-    cnt[l.id] = myClasses().filter(function(c){ return Number(c.level)===l.id; }).length;
-  });
-  var scope = UI.asgScope || "1";
-  openModal(mHead("توزيع التكليفات تلقائيًا")+
-    '<div class="mb">'+
-    '<div class="note">البرنامج هيوزّع مواد الفصول على المعلمين حسب <b>تخصص كل معلم</b> و<b>نصابه القانوني</b>، '+
-    'وبالعدل بينهم — اللي نصابه فاضي أكتر بياخد الأول. بعد كده تعمل «توليد الجدول».</div>'+
-    '<label class="f"><span>الأنصبة هتتوزّع على أنهي صفوف؟</span><select id="ag_scope">'+
-      '<option value="1"'+(scope==="1"?" selected":"")+'>الصف الأول فقط ('+cnt[1]+' فصل)</option>'+
-      '<option value="12"'+(scope==="12"?" selected":"")+'>الأول والثاني ('+(cnt[1]+cnt[2])+' فصل)</option>'+
-      '<option value="123"'+(scope==="123"?" selected":"")+'>الأول والثاني والثالث ('+(cnt[1]+cnt[2]+cnt[3])+' فصل)</option>'+
-      '<option value="2"'+(scope==="2"?" selected":"")+'>الصف الثاني فقط ('+cnt[2]+' فصل)</option>'+
-      '<option value="3"'+(scope==="3"?" selected":"")+'>الصف الثالث فقط ('+cnt[3]+' فصل)</option>'+
-      '<option value="23"'+(scope==="23"?" selected":"")+'>الثاني والثالث ('+(cnt[2]+cnt[3])+' فصل)</option>'+
-      '</select><small style="color:var(--muted);font-size:11.5px">الصفوف اللي برّه الاختيار تكليفاتها هتفضل زي ما هي، وحِمل معلميها هيتحسب.</small></label>'+
-    '<div class="note ok"><b>مادة التدريس شرط أساسي.</b> المعلم مبياخدش غير المادة اللي هي تخصصه — '+
-    'مدرس فرنساوي عمره ما هياخد حصص إنجليزي. واللي مالوش معلم بتخصصه هيظهرلك في تقرير العجز.</div>'+
-    '<div class="note warn">تكليفات الصفوف المختارة هتتمسح وتتوزّع من جديد. فيه «تراجع» بعدها.</div>'+
-    '</div>'+
-    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
-    '<button class="btn" data-act="doAutoAssign">وزّع التكليفات</button></div>');
 }
 function doAutoAssign(){
   var scope = val("ag_scope") || "1";
