@@ -2766,26 +2766,54 @@ function fieldLibrary(){
   return out.sort(function(a,b){ return sortAr(a.label,b.label); });
 }
 /* بيدوّر على اسم مطابق أو قريب في المكتبة */
+/* بيشيل "ال" التعريف من كل كلمة عشان «العنوان» تطابق «عنوان» */
+function fieldKey(x){
+  return normAr(x||"").split(/\s+/).map(function(w){ return w.replace(/^ال/,""); })
+    .filter(Boolean).join(" ");
+}
+/* هل الاسمين من نفس مجموعة المرادفات؟ */
+var FIELD_SYN = [
+  ["عنوان","محل اقامه","سكن","عنوان بتفصيل"],
+  ["هاتف","تليفون","موبايل","رقم هاتف","رقم موبايل"],
+  ["ولي امر","اسم ولي امر"],
+  ["ديانه","دين"],
+  ["شعبه","تخصص","مسار"],
+  ["رقم جلوس","جلوس"],
+  ["محافظه","محافظه ميلاد"]
+];
+function synMatch(a, b){
+  if(!a || !b) return false;
+  for(var g=0; g<FIELD_SYN.length; g++){
+    var grp = FIELD_SYN[g].map(fieldKey);
+    var ha = grp.some(function(x){ return a.indexOf(x)>=0 || x.indexOf(a)>=0; });
+    var hb = grp.some(function(x){ return b.indexOf(x)>=0 || x.indexOf(b)>=0; });
+    if(ha && hb) return true;
+  }
+  return false;
+}
 function findSimilarField(label){
   var k = normAr(label||"");
   if(!k) return null;
+  var kk = fieldKey(label);
   var lib = fieldLibrary();
   for(var i=0;i<lib.length;i++) if(normAr(lib[i].label)===k) return { f:lib[i], exact:true };
   /* معجم مرادفات للحالات الشائعة */
   var SYN = [
-    ["عنوان","محل الاقامه","السكن","محل الإقامة","العنوان بالتفصيل"],
-    ["هاتف","تليفون","موبايل","رقم الهاتف","رقم الموبايل"],
-    ["ولي الامر","اسم ولي الامر","ولي الأمر"],
-    ["الديانه","الديانة","الدين"],
-    ["الشعبه","الشعبة","التخصص"]
+    ["عنوان","محل اقامه","سكن","عنوان بتفصيل","عنوان بالتفصيل"],
+    ["هاتف","تليفون","موبايل","رقم هاتف","رقم موبايل"],
+    ["ولي امر","اسم ولي امر"],
+    ["ديانه","دين"],
+    ["شعبه","تخصص","مسار"],
+    ["رقم جلوس","جلوس"],
+    ["محافظه","محافظه ميلاد"]
   ];
   for(var g=0; g<SYN.length; g++){
-    var grp = SYN[g].map(normAr);
-    var hit = grp.some(function(x){ return k.indexOf(x)>=0 || x.indexOf(k)>=0; });
+    var grp = SYN[g].map(fieldKey);
+    var hit = grp.some(function(x){ return kk.indexOf(x)>=0 || x.indexOf(kk)>=0; });
     if(!hit) continue;
     for(var j=0;j<lib.length;j++){
-      var lk = normAr(lib[j].label);
-      if(lk===k) continue;
+      var lk = fieldKey(lib[j].label);
+      if(normAr(lib[j].label)===k) continue;
       if(grp.some(function(x){ return lk.indexOf(x)>=0 || x.indexOf(lk)>=0; }))
         return { f:lib[j], exact:false };
     }
@@ -3696,6 +3724,41 @@ function tblToolbar(id, title, pg){
       : '<button class="btn ghost sm noprint" data-act="print" style="margin-right:5px">⎙ طباعة / تصدير</button>');
 }
 /* أعمدة كشف الطلاب — الأساسي والاختياري والبيانات الإضافية */
+/* ============================================================
+   تقسيمات كل صف حسب قرارات الوزارة (٢٠٢٦/٢٠٢٧)
+   • الأول الثانوي: سنة تمهيدية مشتركة — مفيش تخصص
+   • الثاني: البكالوريا بأربع مسارات + مادة تخصص لكل مسار
+   • الثالث: لسه ثانوية عامة بشعبها (علمي علوم / علمي رياضة / أدبي)
+     لأن البكالوريا بدأت من الصف الثاني
+   ============================================================ */
+var LEVEL_TRACKS = {
+  1: { label:"عام (سنة تمهيدية مشتركة)", system:"any", tracks:[] },
+  2: { label:"البكالوريا المصرية", system:"bac",
+       tracks:[
+         { id:"med",  name:"الطب وعلوم الحياة",      subjects:["الأحياء","الكيمياء"] },
+         { id:"eng",  name:"الهندسة وعلوم الحاسب",   subjects:["الرياضيات البحتة","الفيزياء","علوم الحاسب"] },
+         { id:"bus",  name:"الأعمال",                subjects:["الرياضيات التطبيقية","الاقتصاد وإدارة الأعمال","الإحصاء"] },
+         { id:"art",  name:"الآداب والفنون",         subjects:["علم النفس والاجتماع","الجغرافيا","الفلسفة"] }
+       ] },
+  3: { label:"الثانوية العامة", system:"gen",
+       tracks:[
+         { id:"sci",  name:"علمي علوم",   subjects:["الأحياء","الكيمياء","الفيزياء","الجيولوجيا"] },
+         { id:"math", name:"علمي رياضة",  subjects:["الرياضيات البحتة","الرياضيات التطبيقية","الفيزياء","الكيمياء"] },
+         { id:"lit",  name:"أدبي",        subjects:["التاريخ","الجغرافيا","الفلسفة والمنطق","علم النفس والاجتماع"] }
+       ] }
+};
+function levelTracks(L){ var o = LEVEL_TRACKS[num(L,0)]; return o ? o.tracks : []; }
+function levelTrackLabel(L){ var o = LEVEL_TRACKS[num(L,0)]; return o ? o.label : ""; }
+function levelSubjectsOf(L, tid){
+  var t = levelTracks(L).filter(function(x){ return x.id===tid; })[0];
+  return t ? t.subjects : [];
+}
+/* الأعمدة اللي تخص كل صف — من قرارات الوزارة */
+var LEVEL_COLS = {
+  1: ["idx","name","natId","level","cls","edu","gender","birth","gov","guard","phone","joined","abs"],
+  2: ["idx","name","natId","level","cls","edu","track","subj","gender","birth","gov","guard","phone","joined","abs"],
+  3: ["idx","name","natId","level","cls","edu","track","subj","seat","gender","birth","gov","guard","phone","joined","abs"]
+};
 function stuColDefs(){
   var defs = [
     { k:"idx",   label:"م",             core:true },
@@ -3713,19 +3776,29 @@ function stuColDefs(){
     { k:"gov",   label:"محافظة الميلاد",  off:true },
     { k:"act",   label:"النشاط التربوي",  off:true },
     { k:"voc",   label:"التربية المهنية", off:true },
+    { k:"seat",  label:"رقم الجلوس",      off:true },
     { k:"abs",   label:"أيام الغياب",     off:true },
     { k:"joined",label:"تاريخ القيد",     off:true }
   ];
   var L = num(UI.stuLevel, 0);
+  /* أعمدة الصف حسب قرارات الوزارة — اللي مش بتاعه بيختفي */
+  if(L && LEVEL_COLS[L]){
+    var allow = LEVEL_COLS[L];
+    defs = defs.filter(function(d){ return allow.indexOf(d.k) >= 0; });
+    /* نرتّبهم بترتيب القرار */
+    defs.sort(function(a,b){ return allow.indexOf(a.k) - allow.indexOf(b.k); });
+  }
   xfList("student").forEach(function(f){
     if(L && !xfInLevel(f, L)) return;          /* الحقل مش بتاع الصف ده */
     defs.push({ k:"xf:"+f.id, label:f.label });
   });
-  /* أعمدة أساسية تخص صفوف معيّنة */
-  if(L===1){
-    defs = defs.filter(function(d){ return d.k!=="track" && d.k!=="subj"; });
-  }
   return defs;
+}
+/* اسم عمود المسار بيتغيّر حسب الصف */
+function trackColLabel(L){
+  if(num(L,0)===3) return "الشعبة";
+  if(num(L,0)===2) return "المسار";
+  return "المسار / الشعبة";
 }
 /* الأعمدة الاختيارية مخفية أول مرة */
 /* ---------- أعمدة كشف المعلمين ---------- */
@@ -3811,6 +3884,7 @@ function stuCell(d, s, n, can){
     case "voc":   return '<td><small>'+esc(s.vocId?actName(s.vocId):"—")+'</small></td>';
     case "abs":   var st = attendStats(s.id, s.classId);
                   return '<td class="num">'+(st.days? st.abs : "—")+'</td>';
+    case "seat":  return '<td class="num">'+esc(s.seat||"—")+'</td>';
     case "joined":return '<td class="num">'+esc(s.joined?fmtDate(s.joined):"—")+'</td>';
   }
   if(d.k.indexOf("xf:")===0) return '<td><small>'+esc(xfGet(s, d.k.slice(3))||"—")+'</small></td>';
@@ -4309,7 +4383,11 @@ function viewStudents(){
     tblToolbar("students","الطلاب",pg)+'</div>'+
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl'+(cfg.dense?" dense":"")+'"><thead><tr>'+
     (canBulk?'<th class="noprint" style="width:34px"><input type="checkbox" id="selAllStu" style="width:17px;height:17px"></th>':'')+
-    cols.map(function(d){ return '<th>'+esc(colName("students",d))+'</th>'; }).join("")+
+    cols.map(function(d){
+      var lb = colName("students",d);
+      if(d.k==="track" && !tblCfg("students").label.track) lb = trackColLabel(_lv);
+      return '<th>'+esc(lb)+'</th>';
+    }).join("")+
     (canBulk?'<th class="noprint"></th>':'')+
     '</tr></thead><tbody>';
   if(!rows.length){
@@ -14435,6 +14513,35 @@ function formRows(f){
    الأعمدة الإضافية: أي بيان في الاستمارة مالوش مكان في ملف الطالب
    بيتعمل له عمود جديد بنفس عنوانه، وبيتحط تحته إجابات الطلاب.
    ============================================================ */
+/* بيلمّ كل أسماء البيانات في الصفوف اللي هتترحّل، ويفصل المطابق عن الجديد */
+function scanFieldNames(rows){
+  var seen = {}, out = [];
+  (rows||[]).forEach(function(r){
+    if(!r.extra) return;
+    for(var label in r.extra){
+      var v = r.extra[label];
+      if(v===undefined || v===null || String(v).trim()==="") continue;
+      var k = normAr(label);
+      if(seen[k]) { seen[k].n++; continue; }
+      var exact = xfList("student").filter(function(x){ return normAr(x.label)===k; })[0];
+      /* المرادف لازم يكون عمود فعلي في كشف الطلاب — مش حقل في استمارة تانية */
+      var near = null;
+      if(!exact){
+        var kk = fieldKey(label);
+        near = xfList("student").filter(function(x){
+          var lk = fieldKey(x.label);
+          if(!lk || lk===kk) return false;
+          return synMatch(kk, lk);
+        })[0] || null;
+      }
+      var o = { label:label, key:k, n:1,
+                exact: exact || null, near: near,
+                sample: String(v).slice(0,40) };
+      seen[k] = o; out.push(o);
+    }
+  });
+  return out;
+}
 function ensureExtraField(label, level){
   xfInit();
   var list = xfList("student");
@@ -14721,7 +14828,12 @@ function migrateRowToStudent(r, opt){
     for(var label in r.extra){
       var v = r.extra[label];
       if(v===undefined || v===null || String(v).trim()==="") continue;
-      var fd = ensureExtraField(label, lvl);
+      /* لو المستخدم اختار له عمود، نستخدمه؛ وإلا نمشي بالمطابقة التلقائية */
+      var mapped = (UI.fieldMap && UI.fieldMap[normAr(label)]) || null;
+      var fd;
+      if(mapped === "__skip") continue;
+      if(mapped) fd = xfList("student").filter(function(x){ return x.id===mapped; })[0];
+      if(!fd) fd = ensureExtraField(label, lvl);
       if(String(xfGet(st, fd.id)) !== String(v)){ xfSet(st, fd.id, v); n++; }
     }
     return n;
@@ -14954,6 +15066,69 @@ function updateMgCount(){
   var n = document.querySelectorAll("#mglist .mgck:checked").length;
   el.textContent = n+" محدّد للترحيل";
 }
+/* ============================================================
+   نافذة مطابقة البيانات — بتظهر قبل الترحيل لو فيه بيان
+   في الاستمارة اسمه مش مطابق لأي عمود في كشف الطلاب.
+   ============================================================ */
+function modalFieldMap(fid, mode, rows, fields){
+  UI.fmFid = fid; UI.fmMode = mode; UI.fmRows = rows; UI.fmFields = fields;
+  UI.fieldMap = UI.fieldMap || {};
+  var body = fields.map(function(f){
+    var cur = UI.fieldMap[f.key] || (f.exact ? f.exact.id : (f.near ? f.near.id : "__new"));
+    return '<div style="border:1px solid '+(f.exact?"var(--line-2)":"#f0dcb8")+';background:'+
+      (f.exact?"#fbfcfa":"#fdf9f2")+';border-radius:11px;padding:10px;margin-bottom:8px">'+
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:7px">'+
+        '<b style="flex:1;min-width:120px">'+esc(f.label)+'</b>'+
+        '<span class="tag">'+f.n+' طالب</span>'+
+        (f.exact? '<span class="tag ok">مطابق</span>'
+                : (f.near? '<span class="tag warn">فيه بيان قريب</span>'
+                         : '<span class="tag bad">مفيش عمود</span>'))+
+      '</div>'+
+      '<div style="font-size:11.5px;color:var(--muted);margin-bottom:7px">مثال من البيانات: '+
+        esc(f.sample||"—")+'</div>'+
+      (f.near && !f.exact
+        ? '<div class="note" style="margin:0 0 7px">فيه عمود اسمه <b>«'+esc(f.near.label)+'»</b> — '+
+          'لو نفس البيان اختاره من القائمة عشان ما يتعملش عمود مكرر.</div>' : '')+
+      '<label class="f" style="margin:0"><span>يروح فين؟</span>'+
+      '<select class="fmSel" data-k="'+esc(f.key)+'">'+
+        '<option value="__new"'+(cur==="__new"?" selected":"")+'>➕ عمود جديد باسم «'+esc(f.label)+'»</option>'+
+        '<option value="__skip"'+(cur==="__skip"?" selected":"")+'>✕ تجاهل البيان ده</option>'+
+        '<optgroup label="أو اختار عمود موجود">'+
+        xfList("student").map(function(x){
+          return '<option value="'+x.id+'"'+(cur===x.id?" selected":"")+'>'+esc(x.label)+
+            (xfLevels(x).length? ' — '+esc(xfLevelLabel(x)) : '')+'</option>';
+        }).join("")+
+        '</optgroup></select></label>'+
+      '</div>';
+  }).join("");
+
+  openModal(mHead("مطابقة البيانات قبل الترحيل")+
+    '<div class="mb">'+
+    '<div class="note warn"><b>'+fields.length+' بيان في الاستمارة</b> محتاج تحدّد يروح فين في كشف الطلاب. '+
+    'ده بيمنع إن نفس البيان يتعمل له أكتر من عمود بأسماء مختلفة.</div>'+
+    '<div style="max-height:48vh;overflow:auto">'+body+'</div>'+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="fmGo">تأكيد وترحيل</button></div>');
+}
+/* بينفّذ الترحيل بعد ما المستخدم يحدّد كل بيان يروح فين */
+function doFormMigrateWith(fid, picked, lvl){
+  var f = (fid==="track") ? {id:"track", title:"استمارة المسار"} : formById(fid);
+  var before = xfList("student").length;
+  markUndo("ترحيل من استمارة");
+  var r = migrateFormRows(f, picked, { level: num(lvl,2) });
+  setLastMig(fid);
+  var newCols = xfList("student").length - before;
+  UI.migRows = null; UI.fmDone = false; UI.fieldMap = null;
+  saveNow(); closeModal(); render();
+  var parts = [];
+  if(r.add)  parts.push("اتضاف "+r.add+" جديد");
+  if(r.upd)  parts.push("اتحدّث "+r.upd);
+  if(r.placed) parts.push("اتسكّن "+r.placed+" على فصول");
+  if(newCols) parts.push("اتعمل "+newCols+" عمود جديد");
+  if(r.bad)  parts.push(r.bad+" بيانات ناقصة");
+  toastUndo(parts.length ? parts.join(" · ") : "مفيش تغيير");
+}
 function doFormMigrate(el, mode){
   var fid = el && el.dataset ? el.dataset.id : "";
   var f = (fid==="track") ? {id:"track", title:"استمارة المسار"} : formById(fid);
@@ -14965,6 +15140,19 @@ function doFormMigrate(el, mode){
     .map(function(cb){ return rows[num(cb.dataset.i,-1)]; }).filter(Boolean);
   if(!picked.length){ toast(mode==="new" ? "مفيش تسجيلات جديدة بعد آخر ترحيل" : "مختارتش أي حد"); return; }
   var lvl = num(val("mg_lvl"), 2);
+
+  /* قبل الترحيل: لو فيه بيان مش مطابق لأي عمود، نسأل يروح فين */
+  if(!UI.fmDone){
+    var scan = scanFieldNames(picked);
+    var need = scan.filter(function(x){ return !x.exact; });
+    if(need.length){
+      UI.migRows = rows;
+      UI.fmLevel = lvl;
+      modalFieldMap(fid, mode, picked, scan);
+      return;
+    }
+  }
+  UI.fmDone = false;
   var before = xfList("student").length;
   markUndo("ترحيل من استمارة");
   /* نوعية كل طالب هي اللي تحدد قسمه، والتسكين تلقائي للنظامي والخدمات */
@@ -15360,6 +15548,17 @@ Object.assign(ACTS, {
     ta.focus();
   },
   paperOpen:   function(el){ modalPaperFill(el.dataset.k); },
+  fmGo: function(){
+    UI.fieldMap = UI.fieldMap || {};
+    Array.prototype.slice.call(document.querySelectorAll(".fmSel")).forEach(function(sel){
+      UI.fieldMap[sel.dataset.k] = sel.value;
+    });
+    UI.fmDone = true;
+    closeModal();
+    /* نكمّل الترحيل بنفس اللي كان مختار */
+    var saved = UI.fmRows;
+    doFormMigrateWith(UI.fmFid, saved, UI.fmLevel);
+  },
   pfLvl:   function(el){ pfKeep(); UI.pfLevel = num(el.dataset.l,0); renderPaperFill(); },
   pfAll:   function(){
     pfKeep();
