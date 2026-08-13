@@ -15091,7 +15091,18 @@ function viewFormsIndex(){
     h += '<div class="card"><div class="hd"><div style="flex:1">'+
       '<span class="eyebrow">'+esc(l.name)+'</span>'+
       '<h3>استمارات '+esc(l.name)+' ('+list.length+')</h3></div>'+
-      '<span class="tag info">'+studentsOfLevel(l.id).length+' طالب مسجّل</span>'+
+      (function(){
+        var all = studentsOfLevel(l.id);
+        var reg = all.filter(function(x){ return (!x.edu||x.edu==="reg") && !isHomeStudent(x); }).length;
+        var srv = all.filter(function(x){ return x.edu==="srv" && !isHomeStudent(x); }).length;
+        var hom = all.filter(function(x){ return isHomeStudent(x); }).length;
+        var parts = [];
+        if(reg) parts.push(reg+" انتظام");
+        if(srv) parts.push(srv+" خدمات");
+        if(hom) parts.push(hom+" منازل");
+        return '<span class="tag info" title="'+esc(parts.join(" · "))+'">'+
+          all.length+' طالب'+(parts.length>1? ' ('+esc(parts.join(" · "))+')' : '')+'</span>';
+      })()+
       (can?'<button class="btn ghost sm" data-act="formNew" data-lvl="'+l.id+'">+ استمارة</button>':'')+
       '</div><div class="bd flush">';
     if(!list.length){
@@ -15115,8 +15126,12 @@ function viewFormsIndex(){
   }
   return h;
 }
+/* كل طلاب الصف — المسكّنين وغير المسكّنين، وكل النوعيات.
+   ده اللي بتتحسب عليه الاستمارات عشان يطابق كشف الطلاب بالظبط. */
 function studentsOfLevel(L){
-  return myStudents().filter(function(s){ return studentLevelOf(s)===L; });
+  return DB.students.filter(function(s){
+    return s.status!=="left" && studentLevelOf(s)===num(L,0);
+  });
 }
 function formSubsCount(id){
   if(id==="track"){ wishesInit(); return wishesOfSector().length; }
