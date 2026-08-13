@@ -3467,7 +3467,15 @@ function healthChecks(){
     desc: badNat.length? "من غيرها مش هيتحسب المواليد ولا النوع ولا المحافظة."
                        : "كل الأرقام القومية سليمة.",
     act:"goStudents", btn:"مراجعة" });
-  /* ٥ فصول من غير مواد */
+  /* ٥ طلاب من غير نوعية تعليم — بيختفوا من كل الكشوف */
+  var noEduN = DB.students.filter(function(s){
+    return s.status!=="left" && eduUndefined(s); }).length;
+  out.push({ id:"noedu", ok:!noEduN, level:"bad",
+    title:"طلاب من غير نوعية تعليم", n:noEduN,
+    desc: noEduN? "مش ظاهرين في كشف الانتظام ولا الخدمات ولا المنازل. حدّدهم من تبويب «نوعية غير محددة» في شاشة الطلاب."
+                : "كل الطلاب نوعيتهم محددة.",
+    act:"goStudentsNone", btn:"اعرضهم" });
+  /* ٦ فصول من غير مواد */
   var noSub = myClasses().filter(function(c){
     return !DB.subjects.some(function(su){ return su.classId===c.id; }); });
   out.push({ id:"nosubs", ok:!noSub.length, level:"warn",
@@ -6649,17 +6657,27 @@ function viewMySchedule(){
    القسم مبقاش بيتبدّل من الهيدر — الفئة هي اللي بتحدد كل حاجة.
    ============================================================ */
 function stuCat(){ return UI.stuCat || "reg"; }
+/* الطالب ده نوعيته محددة؟ — «غير محدد» فئة قائمة بذاتها، مش انتظام */
+function eduUndefined(s){
+  if(!s) return true;
+  return !(s.edu==="reg" || s.edu==="srv" || s.edu==="home");
+}
 function catStudents(cat){
   cat = cat || stuCat();
   return DB.students.filter(function(s){
     if(s.status==="left") return false;
+    if(cat==="none") return eduUndefined(s);
+    if(eduUndefined(s)) return false;          /* غير المحدد ما يظهرش في أي فئة تانية */
     if(cat==="home") return isHomeStudent(s);
-    if(cat==="srv")  return (s.edu==="srv") && !isHomeStudent(s);
-    return (!s.edu || s.edu==="reg") && !isHomeStudent(s);
+    if(cat==="srv")  return s.edu==="srv";
+    return s.edu==="reg";
   });
 }
 function catName(cat){
-  return cat==="home" ? "طلاب المنازل" : (cat==="srv" ? "طلاب الخدمات" : "طلاب الانتظام");
+  return cat==="home" ? "طلاب المنازل"
+       : cat==="srv"  ? "طلاب الخدمات"
+       : cat==="none" ? "نوعية غير محددة"
+       : "طلاب الانتظام";
 }
 /* فصول الفئة — الخدمات منفصلة تمامًا عن الانتظام */
 function viewStudents(){
@@ -6688,6 +6706,16 @@ function viewStudents(){
       '<button class="btn ghost sm noprint" data-act="enrichAll" style="margin-right:6px">⟳ استخراج البيانات للكل</button>'+
       '<button class="btn ghost sm noprint" data-act="impTpl" data-tg="students" style="margin-right:6px">نموذج جاهز</button>':''));
 
+  /* تنبيه: فيه طلاب نوعيتهم مش محددة — أخطر من التسكين لأنه بيخفي طلاب */
+  if(roleIs("deputy") && _cat!=="none"){
+    var _nn = catStudents("none").length;
+    if(_nn){
+      h += '<div class="note bad noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
+        '<span style="flex:1;min-width:200px"><b>'+_nn+' طالب من غير نوعية تعليم</b> — '+
+        'مش ظاهرين في أي كشف من التلاتة لحد ما تحدد نوعيتهم.</span>'+
+        '<button class="btn seal sm" data-act="stuCat" data-c="none">اعرضهم</button></div>';
+    }
+  }
   /* تنبيه: طلاب في القسم الغلط */
   if(roleIs("deputy")){
     var mis = sectorMismatch();
@@ -6719,31 +6747,55 @@ function viewStudents(){
   }
 
   /* الفلاتر: المنازل مالهاش فصول، والخدمات نوعيتها معروفة */
+  /* فلتر «نوعية التعليم» اتشال — التبويبات فوق هي اللي بتقسّم بالنوعية،
+     ووجوده جوه التبويب كان بيلخبط الأعداد ويخلّي المستخدم يفتكر إن فيه نوعيات تانية جوه. */
   h += stuFilterBar(pool, f,
-    _cat==="home" ? ["lvl","track","sub"]
-    : (_cat==="srv" ? ["lvl","track","sub","cls"]
-    : ["lvl","track","sub","cls","edu"]));
+    _cat==="home" ? ["lvl","track","sub"] : ["lvl","track","sub","cls"]);
 
   h += schedRoleNote("بيانات الطلاب");
   /* شريط الفئات — انتظام · خدمات · منازل */
+  var _noneN = catStudents("none").length;
   h += '<div class="chips noprint" style="margin-bottom:10px">'+
-    ["reg","srv","home"].map(function(ct){
+    ["reg","srv","home"].concat(_noneN||_cat==="none"?["none"]:[]).map(function(ct){
       var n = catStudents(ct).length;
-      return '<button class="'+(_cat===ct?"on":"")+'" data-act="stuCat" data-c="'+ct+'">'+
+      return '<button class="'+(_cat===ct?"on":"")+'" data-act="stuCat" data-c="'+ct+'"'+
+        (ct==="none"?' style="border-color:var(--danger);color:var(--danger)"':'')+'>'+
         esc(catName(ct))+' ('+n+')</button>';
     }).join("")+'</div>';
-  if(_cat==="home"){
+  if(roleIs("deputy") && _cat!=="none" && list.length){
+    h += '<div class="note noprint" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+      '<span style="flex:1;min-width:200px;font-size:12.5px">لو الطلاب دول اتحطّوا في الفئة دي بالغلط '+
+      '(استيراد قديم من غير عمود نوعية التعليم)، ارجّعهم «غير محدد» وارفع الملف تاني بالعمود الصح.</span>'+
+      '<button class="btn ghost sm" data-act="resetEdu" style="color:var(--danger)">↺ إرجاع النوعية «غير محدد»</button>'+
+      '</div>';
+  }
+  if(_cat==="none"){
+    h += '<div class="note bad"><b>الطلاب دول نوعية تعليمهم مش محددة.</b> '+
+      'يعني ملف الاستيراد ما كانش فيه عمود «نوعية التعليم»، أو قيمه ما كانتش مفهومة. '+
+      '<b>البرنامج ما حطّهمش انتظام عشان ما يخربش بياناتك.</b><br>'+
+      'صحّحهم بواحدة من دول: ارفع الملف تاني وفيه عمود النوعية (هيتحدّثوا بالمفتاح من غير تكرار)، '+
+      'أو حدّد نوعية كل طالب من صفحته، أو استخدم التحديد الجماعي تحت.</div>';
+    if(roleIs("deputy") && _noneN){
+      h += '<div class="note warn noprint" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+        '<span style="flex:1;min-width:180px">تحديد جماعي لكل الـ<b>'+_noneN+'</b> طالب المعروضين:</span>'+
+        EDU_TYPES.map(function(e){
+          return '<button class="btn ghost sm" data-act="setEduAll" data-e="'+e.id+'">كلهم '+esc(e.name)+'</button>';
+        }).join("")+'</div>';
+    }
+  }else if(_cat==="home"){
     h += '<div class="note">طلاب المنازل مالهمش فصول ولا أعمال سنة ولا غياب — '+
       'البيانات هنا للعرض والتعديل والطباعة بس.</div>';
   }else if(_cat==="srv"){
     h += '<div class="note">قسم الخدمات منفصل تمامًا عن الانتظام — فصوله وطلابه ليهم كيانهم الخاص، '+
       'حتى لو الاسم متشابه.</div>';
   }
-  /* تبويبات الصفوف — كل صف وأعمدته */
+  /* تبويبات الصفوف — العدّ من وعاء الفئة نفسه، من غير فلتر الصف
+     عشان ما يحصلش تناقض بين «كل الصفوف» والشرائح */
+  var lvlBase = stuApply(pool, Object.assign({}, f, {lvl:""}));
   h += '<div class="chips noprint">'+
-    '<button class="'+(!_lv?"on":"")+'" data-act="stuLvl" data-l="0">كل الصفوف ('+list.length+')</button>'+
+    '<button class="'+(!_lv?"on":"")+'" data-act="stuLvl" data-l="0">كل الصفوف ('+lvlBase.length+')</button>'+
     LEVELS.map(function(l){
-      var n = list.filter(function(x){ return studentLevelOf(x)===l.id; }).length;
+      var n = lvlBase.filter(function(x){ return studentLevelOf(x)===l.id; }).length;
       return '<button class="'+(_lv===l.id?"on":"")+'" data-act="stuLvl" data-l="'+l.id+'">'+
         esc(l.name)+' ('+n+')</button>';
     }).join("")+'</div>';
@@ -10709,8 +10761,63 @@ var ACTS = {
     UI.stuLevel = 0; UI.stuMiss = null; UI.filters = {};
     setPage("stu",1); render();
   },
+  resetEdu: function(){
+    /* المعروضين دلوقتي بس — بعد الفئة والفلاتر والصف */
+    var pool = stuApply(catStudents(stuCat()), UI.filters);
+    var lv = num(UI.stuLevel,0);
+    if(lv) pool = pool.filter(function(x){ return studentLevelOf(x)===lv; });
+    if(!pool.length){ toast("مفيش طلاب معروضين"); return; }
+    if(!confirm("إرجاع نوعية التعليم لـ "+pool.length+" طالب لحالة «غير محدد»؟\n\n"+
+      "دول الطلاب المعروضين دلوقتي بالفلاتر الحالية.\n"+
+      "بياناتهم التانية كلها هتفضل زي ما هي — النوعية بس هي اللي هتترجّع.\n"+
+      "بعدها ارفع ملف الإكسيل تاني وفيه عمود «نوعية التعليم» وهيتحدّثوا بالمفتاح من غير تكرار.\n\n"+
+      "معاك «تراجع» بعد التنفيذ.")) return;
+    markUndo("إرجاع نوعية التعليم");
+    var n = 0;
+    pool.forEach(function(s){ delete s.edu; s.eduUnset = 1; n++; });
+    saveNow();
+    logOp("إرجاع نوعية التعليم", n+" طالب");
+    UI.stuCat = "none"; UI.filters = {}; UI.stuLevel = 0;
+    render();
+    toastUndo("رجّع "+n+" طالب «غير محدد»");
+  },
+  setEduAll: function(el){
+    var e = el.dataset.e;
+    if(!EDU_TYPES.some(function(x){ return x.id===e; })) return;
+    /* اللي معروضين دلوقتي بس — بعد الفلاتر، مش كل غير المحددين في المدرسة */
+    var pool = stuApply(catStudents("none"), UI.filters);
+    var lv = num(UI.stuLevel,0);
+    if(lv) pool = pool.filter(function(x){ return studentLevelOf(x)===lv; });
+    if(!pool.length){ toast("مفيش طلاب معروضين"); return; }
+    if(!confirm("تحديد نوعية «"+eduName(e)+"» لـ "+pool.length+" طالب؟\n\n"+
+      "دول الطلاب المعروضين دلوقتي بالفلاتر الحالية.\n"+
+      (e==="home"? "طلاب المنازل مالهمش فصول — التسكين هيتشال منهم.\n" : "")+
+      "معاك «تراجع» بعد التنفيذ.")) return;
+    markUndo("تحديد نوعية التعليم");
+    var n = 0;
+    pool.forEach(function(s){
+      s.edu = e;
+      s.sector = eduType(e).sector;
+      delete s.eduUnset;
+      if(e==="home") s.classId = "";
+      else if(s.classId){
+        /* لو فصله الحالي في قسم تاني، يخرج منه بدل ما يظهر في الكشف الغلط */
+        var c = classById(s.classId);
+        if(c && classSector(c)!==s.sector) s.classId = "";
+      }
+      n++;
+    });
+    saveNow();
+    logOp("تحديد نوعية التعليم", eduName(e)+" — "+n+" طالب");
+    render();
+    toastUndo("اتحدّد "+n+" طالب "+eduName(e));
+  },
   stuLvl: function(el){ UI.stuLevel = num(el.dataset.l,0); UI.stuMiss = null; setPage("stu",1); render(); },
   goStudents: function(){ UI.tab="students"; UI.sub=null; UI.stuLevel=0; UI.stuMiss=null; render(); },
+  goStudentsNone: function(){
+    UI.tab="students"; UI.sub=null; UI.stuCat="none"; UI.sector="reg";
+    UI.stuLevel=0; UI.stuMiss=null; UI.filters={}; render();
+  },
   goTeachers: function(){ UI.tab="teachers"; UI.sub=null; render(); },
   mergeDupCols: function(){
     var list = UI.dupCols || [];
@@ -12778,7 +12885,7 @@ function parseWishTrack(v){
   return "";
 }
 function impStudents(recs){
-  var r = {add:0, upd:0, skip:0, err:[], dup:0, home:0, srv:0, reg:0};
+  var r = {add:0, upd:0, skip:0, err:[], dup:0, home:0, srv:0, reg:0, noEdu:0, badEdu:{}};
   var defCls = UI.imp.ctx.classId || "";
   var newCls = 0;
 
@@ -12809,6 +12916,7 @@ function impStudents(recs){
     if(code) seenCode[code] = 1;
 
     /* نوعية التعليم بتحدد القسم والتسكين */
+    var rawEdu = String(o.edu==null?"":o.edu).trim();
     var edu = parseEdu(o.edu) || parseEdu(o.cls) || "";
     var isHome = edu==="home";
 
@@ -12847,26 +12955,36 @@ function impStudents(recs){
     s.name = name;
     if(nat){ s.natId = nat; byNat[nat] = s; }
     if(code){ s.code = code; byCode[code] = s; }
+    if(edu) delete s.eduUnset;
 
-    /* التوزيع حسب النوعية */
+    /* ============================================================
+       نوعية التعليم — ما بنخمّنش أبدًا
+       لو العمود مش موجود أو قيمته مش مفهومة، الطالب بيفضل «غير محدد»
+       وبيتعدّ في التقرير. الافتراض الصامت هو اللي بيخرّب البيانات:
+       بيحطّ الكل انتظام وانت فاكر إنهم اتوزّعوا.
+       ============================================================ */
     if(edu){
       s.edu = edu;
       s.sector = eduType(edu).sector;
       if(edu==="home"){ s.classId = ""; r.home++; }
       else r[edu==="srv"?"srv":"reg"]++;
     }else if(!s.edu){
-      s.edu = "reg";
-      s.sector = curSector();
-      r.reg++;
+      s.eduUnset = 1;                 /* علامة صريحة: محتاج تحديد */
+      r.noEdu++;
+      if(rawEdu) r.badEdu[rawEdu] = (r.badEdu[rawEdu]||0)+1;
     }
-    if(!isHome && cid) assignStudentToClass(s, cid);
-
     var impLvl = parseLevel(o.level) || parseLevel(o.cls) || 0;
     if(impLvl) setStudentLevel(s, impLvl);
     else if(!studentLevelOf(s)) setStudentLevel(s, 1);
 
     var trk = parseWishTrack(o.track);
     if(trk) s.bacTrack = trk;
+    /* ============================================================
+       التسكين آخر حاجة — بعد ما الصف والمسار يتحطّوا على الطالب.
+       لو سكّناه قبل كده، بوابة «الفصل لازم يطابق المسار» بترفضه
+       لأنها بتشوف طالب من غير صف ولا مسار، فيفضل غير مسكّن غلط.
+       ============================================================ */
+    if(!isHome && cid) assignStudentToClass(s, cid);
     if(o.subject) s.bacSubject = String(o.subject).trim();
     if(o.seat!==undefined && o.seat!=="") s.seat = toEnDigits(o.seat).trim();
     if(o.guardian) s.guardian = cleanName(o.guardian);
@@ -12884,6 +13002,17 @@ function impStudents(recs){
   if(r.srv)  dist.push(r.srv+" خدمات");
   if(r.home) dist.push(r.home+" منازل");
   if(dist.length) notes.push("التوزيع حسب النوعية: <b>"+dist.join(" · ")+"</b>.");
+  /* التحذير الأهم: نوعية مش محددة = بيانات ناقصة، مش انتظام */
+  if(r.noEdu){
+    var bad = Object.keys(r.badEdu||{});
+    notes.push('<span style="color:var(--danger)">⚠ <b>'+r.noEdu+' طالب من غير نوعية تعليم</b> — '+
+      (bad.length
+        ? 'العمود موجود بس فيه قيم مش مفهومة: '+bad.slice(0,5).map(function(x){ return "«"+esc(x)+"»"; }).join("، ")+
+          (bad.length>5?" وغيرها":"")+". "
+        : 'عمود «نوعية التعليم» مش موجود في الملف أو ما اتوصّلش. ')+
+      '<b>ما اتحطّوش انتظام</b> — سايبينهم «غير محدد» عشان ما نخربش بياناتك. '+
+      'هتلاقيهم في تبويب «نوعية غير محددة» في شاشة الطلاب وتحدّدهم من هناك أو ترفع الملف تاني بالعمود.</span>');
+  }
   if(notes.length) r.note = notes.join("<br>");
   return r;
 }
