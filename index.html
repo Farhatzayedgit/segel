@@ -657,7 +657,7 @@ function blankDB(){
     users:[], teachers:[], classes:[], subjects:[], students:[],
     assign:[], schedule:[], attend:{}, marks:{}, behavior:[], notices:[],
     staff:[], leaves:[], staffAtt:{}, subs:{},
-    locations:[], dutyPlan:[], duty:{}, events:[], holidays:[],
+    locations:[], dutyPlan:[], duty:{}, dutyWeek:{}, events:[], holidays:[],
     sectors:{}, wishes:[],
     forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[], trackExtra:[], trackEdus:[], tables:{}, lastMig:{}, sessions:[], attLog:{}, attDone:{}, schedCfg:{}
   };
@@ -1477,6 +1477,7 @@ var NAV = {
     ["today","لوحة اليوم","today"],
     
     ["insight","لوحة المؤشرات","stats"],
+    ["duty","الإشراف اليومي","duty"],
 
     ["_g","الطلاب"],
     ["students","الطلاب","students"],
@@ -1551,6 +1552,7 @@ var NAV = {
     ["_g","التقارير والمستندات"],
     
     ["insight","لوحة المؤشرات","stats"],
+    ["duty","الإشراف اليومي","duty"],
     ["papers","الورقيات","papers"]
   ],
 
@@ -1783,6 +1785,7 @@ function render(){
     case "schedule":   h = viewScheduleHub(); break;
     case "myschedule": h = viewMySchedule(); break;
     case "insight":    h = viewInsight(); break;
+    case "duty":       h = viewDuty(); break;
     case "eligib":     h = viewEligibility(); break;
     case "oplog":      h = viewOpLog(); break;
     case "home":       UI.stuCat = "home"; UI.tab = "students"; h = viewStudents(); break;
@@ -3297,6 +3300,23 @@ function viewInsight(){
   return h + insightNow();
 }
 /* ---------- النبض اليومي: أهم ٨ أرقام النهاردة ---------- */
+/* كارت مشرف اليوم — في لوحة اليوم */
+function dutyTodayCard(){
+  dutyWeekInit();
+  var di = new Date(today()).getDay();
+  if(!isSchoolDayIdx(di)) return "";
+  var tid = dutySupOf(di, UI.sector||"reg");
+  var t = tid ? teacherById(tid) : null;
+  return '<div class="card noprint"><div class="bd">'+
+    '<div class="list-item" style="border:0;padding:4px 0">'+
+    '<span class="ico" style="color:'+(t?"var(--seal)":"var(--danger)")+'">'+icon("duty",22)+'</span>'+
+    '<span class="tx"><b>مشرف '+esc(DAYS[di])+'</b><small>'+
+      (t? esc(t.name)+(t.subject? ' · '+esc(t.subject) : '')
+        : 'مفيش مشرف محدد لليوم — حدّده من تبويب الإشراف اليومي')+'</small></span>'+
+    (roleIs("manager")||roleIs("deputy")||roleIs("admin")
+      ? '<button class="btn ghost sm" data-act="goDuty">'+(t?"تعديل":"تحديد")+'</button>' : '')+
+    '</div></div></div>';
+}
 function insightNow(){
   var date = today();
   var cls = myClasses();
@@ -4910,6 +4930,12 @@ function genClassSchedule(cid, opts){
         if(item.tid){
           if(tchBusyAt(item.tid, sl.d, sl.p)) continue;            /* المعلم مشغول */
           if(!opts.ignoreNisab && tchLoad(item.tid) >= nisabOf(item.tid)) break;
+          /* يوم إشرافه: بنخفّف عليه — حصتين أقل من الباقي */
+          if(dutyDaysOf(item.tid).indexOf(sl.d) >= 0){
+            var dl = DB.schedule.filter(function(z){
+              return z.teacherId===item.tid && Number(z.day)===sl.d; }).length;
+            if(round < 2 && dl >= Math.max(1, P - DUTY_NISAB_CUT)) continue;
+          }
         }
         DB.schedule.push({ id:uid("h"), classId:cid, day:sl.d, period:sl.p,
                            subjectId:item.su.id, teacherId:item.tid||"" });
@@ -4979,6 +5005,156 @@ function modalGenResult(r){
     mFoot("تمام","close"));
 }
 /* ---------- شاشة فحص الجدول ---------- */
+/* ============================================================
+   الإشراف اليومي — مشرف عام لكل يوم في الأسبوع
+   الإشراف بيقلّل نصاب المعلم حصتين (زي المعتاد في المدارس)
+   ============================================================ */
+var DUTY_NISAB_CUT = 2;
+function dutyWeekInit(){
+  /* مفتاح منفصل عن DB.duty القديم (اللي بالتاريخ) */
+  if(!DB.dutyWeek || typeof DB.dutyWeek!=="object" || Array.isArray(DB.dutyWeek)) DB.dutyWeek = {};
+  return DB.dutyWeek;
+}
+/* مشرف اليوم — di رقم اليوم (0 الأحد) */
+function dutySupOf(di, sec){
+  dutyWeekInit();
+  var v = DB.dutyWeek[(sec||"reg")+"|"+num(di,0)];
+  return (typeof v==="string") ? v : "";
+}
+function setDutySup(di, tid, sec){
+  dutyWeekInit();
+  var k = (sec||"reg")+"|"+num(di,0);
+  if(tid) DB.dutyWeek[k] = String(tid);
+  else delete DB.dutyWeek[k];
+}
+/* أيام إشراف المعلم في الأسبوع */
+function dutyDaysOf(tid){
+  dutyWeekInit();
+  var out = [];
+  schoolDayIdx().forEach(function(d){
+    ["reg","srv"].forEach(function(sc){
+      if(DB.dutyWeek[sc+"|"+d]===tid && out.indexOf(d)<0) out.push(d);
+    });
+  });
+  return out;
+}
+/* هل النهاردة يوم إشرافه؟ */
+function isDutyToday(tid){
+  var di = new Date(today()).getDay();
+  return dutyDaysOf(tid).indexOf(di) >= 0;
+}
+/* ---------- شاشة الإشراف ---------- */
+function viewDuty(){
+  var g = gate("teachers");
+  if(g) return g;
+  dutyWeekInit();
+  var sec = UI.dutySec || "reg";
+  var can = roleIs("manager") || roleIs("deputy") || roleIs("admin");
+  var days = schoolDayIdx();
+  var pool = teachingStaff().filter(function(t){ return t.status!=="left"; })
+    .sort(function(a,b){ return sortAr(a.name,b.name); });
+
+  var h = pageHd("الإشراف اليومي", "مشرف عام لكل يوم — جدول ثابت طول الأسبوع",
+    exportBtns());
+  h += '<div class="chips noprint" style="margin-bottom:10px">'+
+    ["reg","srv"].map(function(x){
+      return '<button class="'+(sec===x?"on":"")+'" data-act="dutySec" data-v="'+x+'">'+
+        (x==="reg"?"الانتظام":"الخدمات")+'</button>';
+    }).join("")+'</div>';
+
+  if(can) h += '<div class="note">اختار مشرف كل يوم من القائمة. '+
+    '<b>الإشراف بيقلّل نصاب المعلم '+DUTY_NISAB_CUT+' حصص</b> عن اليوم اللي بيشرف فيه، '+
+    'وبنراعي كده في توليد الجدول.</div>';
+
+  h += printHd("جدول الإشراف اليومي");
+  h += '<div class="card"><div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th style="width:110px">اليوم</th><th>المشرف العام</th>'+
+    '<th style="width:90px">النصاب</th><th style="width:90px">حصصه اليوم</th>'+
+    '</tr></thead><tbody>';
+  days.forEach(function(d){
+    var tid = dutySupOf(d, sec);
+    var t = tid ? teacherById(tid) : null;
+    var q = tid ? nisabOf(tid) : 0;
+    var dayLoad = tid ? DB.schedule.filter(function(x){
+      return x.teacherId===tid && Number(x.day)===d; }).length : 0;
+    var isToday = (new Date(today()).getDay()===d);
+    h += '<tr'+(isToday?' style="background:#f2faf7"':'')+'>'+
+      '<td style="font-weight:700;font-family:Cairo,sans-serif">'+esc(DAYS[d])+
+        (isToday?' <span class="tag ok">النهاردة</span>':'')+'</td>'+
+      '<td>'+(can
+        ? '<select class="dutySel" data-d="'+d+'" style="width:100%;max-width:340px;padding:7px;'+
+          'border:1px solid var(--line-2);border-radius:8px;font:inherit">'+
+          '<option value="">— بدون مشرف —</option>'+
+          pool.map(function(x){
+            var busy = dutyDaysOf(x.id).filter(function(dd){ return dd!==d; }).length;
+            return '<option value="'+x.id+'"'+(tid===x.id?" selected":"")+'>'+
+              esc(x.name)+(x.subject? ' — '+esc(x.subject) : '')+
+              (busy? ' (مشرف '+busy+' يوم كمان)' : '')+'</option>';
+          }).join("")+'</select>'
+        : (t? '<b>'+esc(t.name)+'</b>'+(t.subject?' <small>'+esc(t.subject)+'</small>':'')
+             : '<span style="color:var(--danger)">بدون مشرف</span>'))+'</td>'+
+      '<td class="num">'+(tid? q : "—")+'</td>'+
+      '<td class="num"'+(dayLoad>periodsCount()-DUTY_NISAB_CUT?' style="color:var(--warn)"':'')+'>'+
+        (tid? dayLoad : "—")+'</td></tr>';
+  });
+  h += '</tbody></table></div></div>'+
+    (can? '<div class="bd"><button class="btn" data-act="dutySave" data-s="'+sec+'">حفظ جدول الإشراف</button></div>' : '')+
+    '</div>';
+
+  /* ملخّص المشرفين */
+  var assigned = days.map(function(d){ return dutySupOf(d, sec); }).filter(Boolean);
+  var uniq = {};
+  assigned.forEach(function(x){ uniq[x] = (uniq[x]||0)+1; });
+  var names = Object.keys(uniq);
+  h += '<div class="stats noprint">'+
+    stat("أيام مغطّاة", assigned.length+" / "+days.length, "من أيام الأسبوع",
+      assigned.length===days.length?"acc-g":"acc-r")+
+    stat("المشرفون", names.length, "معلم", "acc")+
+    stat("تقليل النصاب", assigned.length*DUTY_NISAB_CUT, "حصة إجمالًا", "")+
+    '</div>';
+  if(names.length){
+    h += '<div class="card noprint"><div class="hd"><h3>المشرفون ('+names.length+')</h3></div>'+
+      '<div class="bd flush">'+
+      names.map(function(tid){
+        var t2 = teacherById(tid);
+        var dd = days.filter(function(d){ return dutySupOf(d,sec)===tid; }).map(function(d){ return DAYS[d]; });
+        return '<div class="list-item"><span class="av">'+esc((t2?t2.name:"?").charAt(0))+'</span>'+
+          '<span class="tx"><b>'+esc(t2?t2.name:"—")+'</b><small>'+esc(dd.join(" · "))+
+          ' · نصابه '+(t2?nisabOf(tid):0)+' حصة</small></span>'+
+          '<span class="tag'+(dd.length>2?" warn":"")+'">'+dd.length+' يوم</span></div>';
+      }).join("")+'</div></div>';
+  }
+  return h;
+}
+/* جدول اليوم لكل الفصول — للمشرف */
+function viewDutyToday(){
+  var di = new Date(today()).getDay();
+  var sec = UI.sector || "reg";
+  var classes = DB.classes.filter(function(c){ return classSector(c)===sec; })
+    .sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); });
+  var P = periodsCount();
+  var h = printHd("جدول يوم "+DAYS[di]+" — كل الفصول");
+  if(!classes.length) return h+'<div class="card"><div class="bd"><div class="empty"><b>مفيش فصول</b></div></div></div>';
+  h += '<div class="card"><div class="bd flush"><div class="tbl-wrap"><table class="tbl sched"><thead><tr>'+
+    '<th>الفصل</th>';
+  for(var p=1;p<=P;p++){
+    var w = periodWindow(p);
+    h += '<th style="text-align:center">'+p+(w?'<br><small style="font-weight:400">'+esc(w.from)+'</small>':'')+'</th>';
+  }
+  h += '</tr></thead><tbody>';
+  classes.forEach(function(c){
+    h += '<tr><td style="font-weight:700;font-family:Cairo,sans-serif">'+esc(c.name)+'</td>';
+    for(var p=1;p<=P;p++){
+      var cell = schedCell(c.id, di, p);
+      if(cell){
+        h += '<td class="has"><b>'+esc(subjName(cell.subjectId))+'</b>'+
+          '<small>'+esc(cell.teacherId? teacherName(cell.teacherId) : "بدون معلم")+'</small></td>';
+      }else h += '<td class="free"></td>';
+    }
+    h += '</tr>';
+  });
+  return h + '</tbody></table></div></div></div>';
+}
 function viewSchedAudit(){
   var sec = UI.schedSec || "reg";
   var a = schedAudit(sec);
@@ -5247,7 +5423,10 @@ function viewSchedTeachers(){
     exportBtns());
   /* بطاقة النصاب */
   h += '<div class="stats noprint" style="margin-bottom:12px">'+
-    stat("النصاب القانوني", _q, jobOfTeacher(t.id)||"معلم", "acc")+
+    stat("النصاب القانوني", _q, (function(){
+      var dd = dutyDaysOf(t.id).length;
+      return (jobOfTeacher(t.id)||"معلم") + (dd? " · إشراف "+dd+" يوم (−"+(dd*DUTY_NISAB_CUT)+")" : "");
+    })(), "acc")+
     stat("الحِمل الحالي", _n, _n>_q? "زيادة "+(_n-_q)+" حصة" : (_n<_q? "ناقص "+(_q-_n)+" حصة" : "مكتمل"),
          _n>_q? "acc-r" : (_n===_q? "acc-g" : ""))+
     stat("الفصول", (function(){ var m={};
@@ -5525,8 +5704,27 @@ function viewMySchedule(){
   h += '<div class="chips noprint">'+
     '<button class="'+(tab==="day"?"on":"")+'" data-act="mySchTab" data-t="day">النهاردة</button>'+
     '<button class="'+(tab==="week"?"on":"")+'" data-act="mySchTab" data-t="week">الأسبوع كله</button>'+
+    (isDutyToday(tid)? '<button class="'+(tab==="duty"?"on":"")+'" data-act="mySchTab" data-t="duty">'+
+      'جدول اليوم لكل الفصول</button>' : '')+
     '</div>';
 
+  /* لو النهاردة يوم إشرافه — تنبيه بارز وجدول اليوم لكل الفصول */
+  var _duty = isDutyToday(tid);
+  if(_duty){
+    h += '<div class="card" style="border-color:var(--seal);background:#f2faf8;margin-bottom:12px">'+
+      '<div class="bd"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
+      '<span class="av" style="background:var(--seal);flex:0 0 auto">م</span>'+
+      '<span style="flex:1;min-width:180px">'+
+        '<b style="font-family:Cairo,sans-serif;font-size:15px">النهاردة يوم الإشراف بتاعك</b>'+
+        '<div style="font-size:12.5px;color:var(--muted);margin-top:2px">'+
+        esc(DAYS[di])+' — إنت المشرف العام على المدرسة. تحت جدول اليوم لكل الفصول.</div></span>'+
+      '<button class="btn ghost sm" data-act="mySchTab" data-t="duty">جدول اليوم</button>'+
+      '</div></div></div>';
+  }
+  if(tab==="duty"){
+    if(!_duty) h += '<div class="note">النهاردة مش يوم إشرافك.</div>';
+    return h + viewDutyToday();
+  }
   if(tab==="day"){
     var mine = DB.schedule.filter(function(x){ return x.teacherId===tid && Number(x.day)===di; })
       .sort(function(a,b){ return a.period-b.period; });
@@ -8781,6 +8979,20 @@ var ACTS = {
     saveNow(); render();
     toastUndo("اتوحّد "+fixed+" حصة"+(n? " · واتشال "+n+" تكليف مكرر" : ""));
   },
+  goDuty:   function(){ UI.tab="duty"; UI.sub=null; render(); },
+  dutySec:  function(el){ UI.dutySec = el.dataset.v; render(); },
+  dutySave: function(el){
+    var sec = el.dataset.s || "reg";
+    dutyWeekInit();
+    markUndo("تعديل جدول الإشراف");
+    var n = 0;
+    Array.prototype.slice.call(document.querySelectorAll(".dutySel")).forEach(function(sel){
+      setDutySup(num(sel.dataset.d,0), sel.value, sec);
+      if(sel.value) n++;
+    });
+    saveNow(); render();
+    toastUndo("اتحفظ الإشراف — "+n+" يوم");
+  },
   cfgCls:  function(el){ UI.cfgCls = el.dataset.id; render(); },
   cfgSave: function(el){
     var cid = el.dataset.id;
@@ -11579,7 +11791,7 @@ var BULK = ["meta","weights","bac","control","absRules","users","teachers","clas
   "holidays","sectors",
   /* اللي كان ناقص — علشان كده الاستمارات ماكانتش بتوصل للطلاب */
   "forms","papers","activities","curriculum","tracksCustom","trackLevel","trackOpen","trackStrict",
-  "calendar","exams","extraFields","dupOk","msgs","notices","trackExtra","trackEdus","tables","lastMig","schedCfg"];
+  "calendar","exams","extraFields","dupOk","msgs","notices","trackExtra","trackEdus","tables","lastMig","schedCfg","dutyWeek"];
 /* المجموعات اللي بتتزامن عنصر عنصر (كل معلم بيكتب في خانته) */
 var GRAIN = ["attend","marks","staffAtt","subs","duty",
   "formSubs","lessons","attLog","attDone",
@@ -13512,6 +13724,7 @@ function viewToday(){
     '<input type="date" id="supDate" value="'+esc(date)+'"></label>'+
     '<button class="btn ghost" data-act="supToday">النهاردة</button>'+
     '</div></div>';
+  h += dutyTodayCard();
 
   var ds0 = dayStatus(date);
   if(!ds0.ok) return h + holidayBlock(ds0);
@@ -17261,7 +17474,9 @@ function nisabOf(tid){
   var job = s ? s.job : "معلم";
   var base = NISAB_SEC[job];
   if(base===undefined) base = NISAB_SEC["معلم"];
-  var t = teacherById(tid);
+  /* الإشراف اليومي بيقلّل النصاب حصتين عن كل يوم إشراف */
+  var duty = dutyDaysOf(tid).length;
+  if(duty) base -= duty * DUTY_NISAB_CUT;
   return Math.max(1, base);
 }
 /* حصص المعلم الحالية في الفترة الحالية */
