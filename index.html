@@ -1708,7 +1708,9 @@ var NAV = {
     ["duty","الإشراف اليومي","duty"],
 
     ["_g","الطلاب"],
-    ["students","الطلاب","students"],
+    ["students","طلاب الانتظام","students"],
+    ["stu_srv","طلاب الخدمات","times"],
+    ["stu_home","طلاب المنازل","forms"],
     ["absence","غياب الطلاب","absence"],
     ["eligib","الأهلية للامتحان","attend"],
     ["wishes","استمارات الطلاب","grades"],
@@ -1748,7 +1750,9 @@ var NAV = {
     
 
     ["_g","الطلاب"],
-    ["students","الطلاب","students"],
+    ["students","طلاب الانتظام","students"],
+    ["stu_srv","طلاب الخدمات","times"],
+    ["stu_home","طلاب المنازل","forms"],
     ["wishes","استمارات الطلاب","grades"],
     ["eligib","الأهلية للامتحان","attend"],
     ["parents","أولياء الأمور","forms"],
@@ -1802,6 +1806,17 @@ var NAV = {
 /* التنقل الفعلي: تبويب «الإشراف» بيظهر للمعلم في يوم مناوبته بس */
 function navFor(u){
   var items = (NAV[u.role] || []).slice();
+  /* تبويب «نوعية غير محددة» بيظهر لوحده لما يبقى فيه طلاب محتاجين تحديد،
+     وبيختفي أول ما يتصفّر — عشان ما يزحمش القايمة على الفاضي */
+  if(u.role!=="teacher" && u.role!=="student" && u.role!=="parent"){
+    var nn = 0;
+    try{ nn = catStudents("none").length; }catch(e){}
+    if(nn || UI.tab==="stu_none"){
+      var at = -1;
+      items.forEach(function(x, i){ if(x[0]==="stu_home") at = i; });
+      if(at >= 0) items.splice(at+1, 0, ["stu_none","نوعية غير محددة ("+nn+")","attend"]);
+    }
+  }
   if(u.role==="teacher" && u.teacherId){
     var d = myDutyToday();
     if(d.any) items.splice(1, 0, ["myduty","الإشراف","duty"]);
@@ -1924,8 +1939,11 @@ function gsOpen(kind, id){
     if(!s) return;
     var sec = studentSector(s);
     if(sec!==curSector()) UI.sector = sec;
-    if(isHomeStudent(s)){ UI.tab="home"; UI.sub=null; }
-    else { UI.tab="students"; UI.sub={student:s.id}; }
+    /* الطالب بيتفتح في شاشة نوعيته — مش في شاشة واحدة للكل */
+    UI.stuCat = eduUndefined(s) ? "none" : (s.edu==="home" ? "home" : (s.edu==="srv" ? "srv" : "reg"));
+    UI.tab = UI.stuCat==="srv" ? "stu_srv" : UI.stuCat==="home" ? "stu_home"
+           : UI.stuCat==="none" ? "stu_none" : "students";
+    UI.sub = {student:s.id};
   }
   if(kind==="teacher"){ UI.tab="teachers"; UI.sub={teacher:id}; }
   if(kind==="class"){
@@ -2029,8 +2047,20 @@ function render(){
     case "duty":       h = viewDuty(); break;
     case "eligib":     h = viewEligibility(); break;
     case "oplog":      h = viewOpLog(); break;
-    case "home":       UI.stuCat = "home"; UI.tab = "students"; h = viewStudents(); break;
-    case "students":   h = UI.sub&&UI.sub.student ? viewStudent(UI.sub.student) : viewStudents(); break;
+    /* ============================================================
+       شاشة مستقلة لكل نوعية تعليم
+       كل نوعية ليها تبويبها الخاص ومسارها الخاص، وبياناتها منفصلة
+       تمامًا عن التانية — مفيش تداخل ولا خلط.
+       ============================================================ */
+    case "stu_srv":    UI.stuCat = "srv";  UI.sector = "srv";
+                       h = UI.sub&&UI.sub.student ? viewStudent(UI.sub.student) : viewStudents(); break;
+    case "stu_home":   UI.stuCat = "home"; UI.sector = "reg";
+                       h = UI.sub&&UI.sub.student ? viewStudent(UI.sub.student) : viewStudents(); break;
+    case "stu_none":   UI.stuCat = "none"; UI.sector = "reg";
+                       h = UI.sub&&UI.sub.student ? viewStudent(UI.sub.student) : viewStudents(); break;
+    case "home":       UI.stuCat = "home"; UI.tab = "stu_home"; h = viewStudents(); break;
+    case "students":   UI.stuCat = "reg";  UI.sector = "reg";
+                       h = UI.sub&&UI.sub.student ? viewStudent(UI.sub.student) : viewStudents(); break;
     case "classes":    h = UI.sub&&UI.sub.cls ? viewClass(UI.sub.cls) : viewClasses(); break;
     case "teachers":   h = UI.sub&&UI.sub.teacher ? viewTeacher(UI.sub.teacher) : viewTeachers(); break;
     case "assign":     h = viewAssign(); break;
@@ -6741,7 +6771,7 @@ function viewStudents(){
       h += '<div class="note bad noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
         '<span style="flex:1;min-width:200px"><b>'+_nn+' طالب من غير نوعية تعليم</b> — '+
         'مش ظاهرين في أي كشف من التلاتة لحد ما تحدد نوعيتهم.</span>'+
-        '<button class="btn seal sm" data-act="stuCat" data-c="none">اعرضهم</button></div>';
+        '<button class="btn seal sm" data-act="tab" data-tab="stu_none">اعرضهم</button></div>';
     }
   }
   /* تنبيه: طلاب في القسم الغلط */
@@ -6789,27 +6819,13 @@ function viewStudents(){
      ============================================================ */
   /* وعاء عدّ الصفوف: من غير فلتر الصف عشان الأرقام ما تتناقضش */
   var lvlBase = stuApply(pool, Object.assign({}, f, {lvl:""}));
-  var _noneN = catStudents("none").length;
-  var _cats  = ["reg","srv","home"].concat(_noneN||_cat==="none" ? ["none"] : []);
-  var _catIcon = { reg:"👥", srv:"🕐", home:"🏠", none:"⚠" };
-
+  /* ============================================================
+     الشاشة دي بتخص نوعية واحدة بس — التبويب في القايمة هو النوعية.
+     فمفيش شرائط نوعية هنا خالص، الصفوف بس.
+     ============================================================ */
   h += '<div class="card noprint" style="margin-bottom:12px"><div class="bd" style="padding:11px 12px">'+
-    /* الصف الأول: نوعية التعليم */
     '<div style="font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:6px;'+
-      'font-family:Cairo,sans-serif;letter-spacing:.02em">١ · نوعية التعليم</div>'+
-    '<div class="chips" style="padding-bottom:4px">'+
-      _cats.map(function(ct){
-        var n = catStudents(ct).length;
-        var on = (_cat===ct);
-        return '<button class="'+(on?"on":"")+'" data-act="stuCat" data-c="'+ct+'"'+
-          (ct==="none"&&!on?' style="border-color:var(--danger);color:var(--danger)"':'')+'>'+
-          _catIcon[ct]+' '+esc(catName(ct))+' <small>'+n+'</small></button>';
-      }).join("")+
-    '</div>'+
-    '<div style="height:1px;background:var(--line-2);margin:9px 0"></div>'+
-    /* الصف التاني: الصف الدراسي */
-    '<div style="font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:6px;'+
-      'font-family:Cairo,sans-serif">٢ · الصف الدراسي</div>'+
+      'font-family:Cairo,sans-serif">الصف الدراسي</div>'+
     '<div class="chips" style="padding-bottom:2px">'+
       '<button class="'+(!_lv?"on":"")+'" data-act="stuLvl" data-l="0">كل الصفوف <small>'+lvlBase.length+'</small></button>'+
       LEVELS.map(function(l){
@@ -6818,7 +6834,6 @@ function viewStudents(){
           esc(l.name)+' <small>'+n+'</small></button>';
       }).join("")+
     '</div>'+
-    /* سطر التأكيد: انت واقف فين دلوقتي + استمارة الصف */
     '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px;'+
       'padding-top:9px;border-top:1px solid var(--line-2)">'+
       '<span style="font-size:12.5px"><b>معروض:</b> '+esc(catName(_cat))+
@@ -10823,10 +10838,14 @@ var ACTS = {
     st.k = ""; st.dir = 1;
     save(); render();
   },
+  /* كل نوعية شاشة مستقلة — التنقّل بينهم بيغيّر التبويب نفسه */
   stuCat: function(el){
-    UI.stuCat = el.dataset.c;
-    UI.sector = (UI.stuCat==="srv") ? "srv" : "reg";
-    UI.stuLevel = 0; UI.stuMiss = null; UI.filters = {};
+    var c = el.dataset.c;
+    UI.stuCat = c;
+    UI.sector = (c==="srv") ? "srv" : "reg";
+    UI.tab = (c==="srv") ? "stu_srv" : (c==="home") ? "stu_home"
+           : (c==="none") ? "stu_none" : "students";
+    UI.sub = null; UI.stuLevel = 0; UI.stuMiss = null; UI.filters = {};
     setPage("stu",1); render();
   },
   /* ============================================================
@@ -10858,7 +10877,10 @@ var ACTS = {
     });
     saveNow();
     logOp("استرجاع نوعية التعليم", n+" طالب من القسم المحفوظ");
-    UI.stuCat = (nSrv>nReg) ? "srv" : "reg"; UI.filters = {}; UI.stuLevel = 0;
+    UI.stuCat = (nSrv>nReg) ? "srv" : "reg";
+    UI.tab = (UI.stuCat==="srv") ? "stu_srv" : "students";
+    UI.sector = (UI.stuCat==="srv") ? "srv" : "reg";
+    UI.filters = {}; UI.stuLevel = 0;
     render();
     toastUndo("اترجّع "+n+" طالب");
   },
@@ -10906,9 +10928,12 @@ var ACTS = {
     if(!mine.length) toast(esc(levelName(L))+" لسه مالوش استمارة — اعملها من «+ استمارة جديدة»");
   },
   stuLvl: function(el){ UI.stuLevel = num(el.dataset.l,0); UI.stuMiss = null; setPage("stu",1); render(); },
-  goStudents: function(){ UI.tab="students"; UI.sub=null; UI.stuLevel=0; UI.stuMiss=null; render(); },
+  goStudents: function(){
+    UI.tab="students"; UI.sub=null; UI.stuCat="reg"; UI.sector="reg";
+    UI.stuLevel=0; UI.stuMiss=null; render();
+  },
   goStudentsNone: function(){
-    UI.tab="students"; UI.sub=null; UI.stuCat="none"; UI.sector="reg";
+    UI.tab="stu_none"; UI.sub=null; UI.stuCat="none"; UI.sector="reg";
     UI.stuLevel=0; UI.stuMiss=null; UI.filters={}; render();
   },
   goTeachers: function(){ UI.tab="teachers"; UI.sub=null; render(); },
@@ -11308,7 +11333,10 @@ var ACTS = {
   findDups: function(){ modalDuplicates(); },
   doMergeDups: doMergeDups,
   goClasses:  function(){ UI.tab="classes";  UI.sub=null; render(); },
-  goStudents: function(){ UI.tab="students"; UI.sub=null; render(); },
+  goStudents: function(){
+    UI.tab="students"; UI.sub=null; UI.stuCat="reg"; UI.sector="reg";
+    UI.stuLevel=0; UI.stuMiss=null; render();
+  },
   undoLast: function(){ undoLast(); },
   backupNow: function(){ snoozeBackupReminder(); backupFile(); render(); },
   snoozeBackup: function(){ snoozeBackupReminder(); render(); toast("هفكّرك بعد أسبوع"); },
