@@ -10,19 +10,23 @@
 <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
-  --ink:#0d2b3e;          /* حبر السجلات المدرسية */
-  --ink-2:#1c4a63;
-  --paper:#eef1ec;        /* ورق الكشوف */
+  /* لوحة ألوان أهدى للعين — أزرق مخضرّ عميق مع رمادي دافي */
+  --ink:#12303f;          /* الحبر الأساسي */
+  --ink-2:#24566d;
+  --paper:#f2f5f7;        /* خلفية الصفحة */
   --panel:#ffffff;
-  --line:#d5dbd4;
-  --line-2:#e8ece7;
-  --seal:#0f6b52;         /* ختم المدرسة */
-  --gold:#b07d1f;
-  --danger:#a5322a;
-  --warn:#c07414;
-  --muted:#5d6b72;
-  --shadow:0 1px 2px rgba(13,43,62,.06),0 8px 24px -12px rgba(13,43,62,.18);
-  --r:12px;
+  --line:#dae1e6;
+  --line-2:#eaeff2;
+  --seal:#0e7c66;         /* اللون المميز — أخضر مزرقّ */
+  --seal-2:#0a5f4e;
+  --gold:#b8862b;
+  --danger:#b3403a;
+  --warn:#c47d18;
+  --ok:#0e7c66;
+  --muted:#63737d;
+  --acc:#1f6f8b;          /* أزرق للتمييز */
+  --shadow:0 1px 2px rgba(18,48,63,.05),0 10px 28px -14px rgba(18,48,63,.16);
+  --r:13px;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
@@ -349,7 +353,7 @@ table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
     <div class="lhead">
       <div class="seal">س</div>
       <h1>سجـل</h1>
-      <p>نظام إدارة المدرسة الثانوية<br><span id="loginYear"></span></p>
+      <p>نظام إدارة المدرسة الثانوية</p>
     </div>
     <div class="lcard" id="loginCard"></div>
     <div class="lfoot">مبني على آخر قرارات وزارة التربية والتعليم<br>للثانوية العامة ونظام البكالوريا المصرية
@@ -1666,6 +1670,8 @@ function renderSearchResults(q){
     });
   });
   box.innerHTML = h;
+  var _pin = document.getElementById("pin");
+  if(_pin && !_pin.disabled) _pin.focus();
 }
 /* بيوديك للنتيجة، وبيبدّل القسم تلقائيًا لو كانت في القسم التاني */
 function gsOpen(kind, id){
@@ -4261,6 +4267,13 @@ function applySort(list, tbl, valueOf){
     return String(va).localeCompare(String(vb), ["ar","en"], {numeric:true}) * dir;
   });
 }
+/* تعريفات أعمدة الجدول حسب نوعه */
+function stuOrTchDefs(id){ return (id==="teachers") ? tchColDefs() : stuColDefs(); }
+/* الأعمدة المحذوفة نهائيًا */
+function colDropped(tbl, k){
+  var c = tblCfg(tbl);
+  return !!(c.dropped && c.dropped[k]);
+}
 function stuColDefs(){
   var defs = [
     { k:"idx",   label:"م",             core:true },
@@ -4301,6 +4314,8 @@ function stuColDefs(){
     if(synMatch(fieldKey(f.label), fieldKey("الشعبة"))) return;
     defs.push({ k:"xf:"+f.id, label:f.label });
   });
+  /* الأعمدة المحذوفة نهائيًا مبتظهرش */
+  defs = defs.filter(function(d){ return !colDropped("students", d.k); });
   return defs;
 }
 /* قيمة الشعبة/المسار — من الحقل الأساسي أو من عمود إضافي بنفس المعنى */
@@ -4427,6 +4442,8 @@ function tchColDefs(){
     if(baseColOf(f.label, "teacher")) return;
     defs.push({ k:"xf:"+f.id, label:f.label });
   });
+  /* الأعمدة المحذوفة نهائيًا مبتظهرش */
+  defs = defs.filter(function(d){ return !colDropped("teachers", d.k); });
   return defs;
 }
 /* قيمة خانة المعلم كنص — للفرز */
@@ -9018,11 +9035,42 @@ var ACTS = {
       toastUndo("اتحذف العمود"+(n? " و"+n+" قيمة" : ""));
       return;
     }
-    /* العمود الأساسي: بيتخفي مش بيتحذف */
-    var c = tblCfg(id);
-    c.hide[k] = 1;
-    saveNow(); render(); modalTableCfg(id, UI.tcDefs, UI.tcTitle);
-    toast("العمود الأساسي اتخفى — بياناته محفوظة");
+    /* عمود أساسي: بنحذفه من الجدول ونمسح قيمه من كل السجلات */
+    var LOCKED = { idx:1, name:1, natId:1 };
+    if(LOCKED[k]){ toast("العمود ده أساس البيانات — مبيتحذفش"); return; }
+    var arr2 = (scope==="teacher") ? DB.teachers : DB.students;
+    var FIELD = (scope==="teacher")
+      ? { code:"code", subject:"subject", hire:"hireDate", finG:"finGrade", finD:"finDate",
+          job:"jobNow", qual:"qual", qualT:"qualType", cadre:"cadreJob", phone:"phone", gender:"gender" }
+      : { level:["level","homeLevel"], cls:"classId", edu:"edu", track:"bacTrack", subj:"bacSubject",
+          seat:"seat", phone:"phone", guard:"guardian", gender:"gender", birth:"birth",
+          gov:"birthGov", joined:"joined", prev:"prevClass", rel:"religion",
+          act:"actId", voc:"vocId" };
+    var keys = FIELD[k];
+    var lbl2 = colLabelOf("base:"+k, scope, num(UI.stuLevel,0));
+    var n2 = 0;
+    if(keys){
+      keys = Array.isArray(keys) ? keys : [keys];
+      arr2.forEach(function(o){
+        if(keys.some(function(kk){ return String(o[kk]||"").trim()!==""; })) n2++;
+      });
+    }
+    if(!confirm("حذف عمود «"+lbl2+"» نهائيًا؟\n"+
+      (n2? n2+" قيمة مسجّلة هتتمسح من كل السجلات." : "مفيش قيم مسجّلة فيه.")+"\n"+
+      "العمود هيختفي من الكشف والطباعة والتصدير.\nمعاك «تراجع» بعد الحذف.")) return;
+    markUndo("حذف عمود");
+    if(keys){
+      arr2.forEach(function(o){ keys.forEach(function(kk){ delete o[kk]; }); });
+    }
+    /* بنسجّله كمحذوف — فما يرجعش يظهر */
+    var cfg2 = tblCfg(id);
+    if(!cfg2.dropped) cfg2.dropped = {};
+    cfg2.dropped[k] = 1;
+    delete cfg2.hide[k];
+    delete cfg2.label[k];
+    idxBump();
+    saveNow(); render(); modalTableCfg(id, stuOrTchDefs(id), UI.tcTitle);
+    toastUndo("اتحذف العمود"+(n2? " و"+n2+" قيمة" : ""));
   },
   tcSave: function(el){
     tcKeep(el.dataset.t);
@@ -9943,7 +9991,6 @@ function boot(){
   lc.addEventListener("click", function(e){
     var el = e.target.closest("[data-lact]");
     if(!el) return;
-    if(el.dataset.lact==="sec"){ UI.sector = el.dataset.s; renderLogin(); }
     if(el.dataset.lact==="pick"){ UI.pick = el.dataset.id; renderLogin(); }
     if(el.dataset.lact==="go"){ doLogin(); }
     if(el.dataset.lact==="first"){
@@ -12653,13 +12700,6 @@ function lockLeft(){
 
 /* ---------- شاشة الدخول: اختيار القسم ثم الرقم السري ---------- */
 function renderLogin(){
-  var el = document.getElementById("loginYear");
-  if(el){
-    var mgr = DB.users.filter(function(u){ return u.role==="manager"; })[0];
-    el.innerHTML = esc(DB.meta.school) +
-      (mgr ? '<br><span style="font-size:12px">مدير المدرسة: <b>'+esc(mgr.name)+'</b></span>' : '') +
-      '<br><span style="font-size:11.5px;opacity:.8">العام الدراسي '+esc(DB.meta.year)+'</span>';
-  }
   var box = document.getElementById("loginCard");
   if(!box) return;
 
@@ -12687,47 +12727,51 @@ function renderLogin(){
   }
 
   var h = '';
-  var picked = UI.sector==="reg" || UI.sector==="srv";
+  var lock = lockLeft();
 
-  h += '<div style="font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:9px;text-align:center">'+
-    (picked ? 'اكتب كلمة السر للدخول' : 'اختر طريقة الدخول')+'</div>';
+  /* ١) بيانات المدرسة في إطار مرتّب */
+  h += '<div style="background:linear-gradient(160deg,#f7fafb,#eef4f6);border:1px solid var(--line);'+
+    'border-radius:var(--r);padding:15px 13px;margin-bottom:15px;text-align:center">'+
+    '<div style="font-size:11.5px;color:var(--muted);letter-spacing:.02em">'+
+      esc(DB.meta.moderia||"")+(DB.meta.edara? ' — '+esc(DB.meta.edara) : '')+'</div>'+
+    '<div style="font-family:Cairo,sans-serif;font-weight:800;font-size:16.5px;color:var(--ink);'+
+      'margin:6px 0 4px;line-height:1.45">'+esc(DB.meta.school||"المدرسة")+'</div>'+
+    (function(){
+      var mgr = DB.users.filter(function(u){ return u.role==="manager"; })[0];
+      return mgr ? '<div style="font-size:12px;color:var(--ink-2)">مدير المدرسة: <b>'+esc(mgr.name)+'</b></div>' : '';
+    })()+
+    '<div style="font-size:11.5px;color:var(--muted);margin-top:5px;padding-top:7px;'+
+      'border-top:1px solid var(--line-2)">العام الدراسي '+esc(DB.meta.year||"")+'</div>'+
+    '</div>';
 
-  SECTORS.forEach(function(x){
-    h += '<button class="who'+(UI.sector===x.id?" on":"")+'" data-lact="sec" data-s="'+x.id+'">'+
-      '<span class="av">'+esc(x.av)+'</span>'+
-      '<span class="tx"><b>الدخول '+esc(x.name)+'</b><small>'+esc(x.full)+'</small></span>'+
-      (UI.sector===x.id?'<span class="tag ok">✓</span>':'<span class="chev">‹</span>')+'</button>';
-  });
-
-  if(picked){
-    var lock = lockLeft();
-    h += '<div style="margin-top:12px">'+
-      '<input type="password" id="pin" autocomplete="off" placeholder="••••••••" '+
-      (lock?'disabled ':'')+
-      'style="text-align:center;letter-spacing:.34em;font-size:19px;padding:13px 11px;'+
-      'font-family:Cairo,sans-serif;text-transform:uppercase;direction:ltr">'+
-      '<button class="btn block" data-lact="go" style="margin-top:10px"'+(lock?' disabled':'')+'>دخول</button>';
-    if(lock){
-      h += '<div class="note bad" id="lockNote" style="margin-top:11px;text-align:center">'+
-        'محاولات كتير غلط. استنى <b id="lockSec">'+lock+'</b> ثانية.</div>';
-    }else if(tries().n > 0){
-      h += '<div class="note warn" style="margin-top:11px;text-align:center;font-size:12px">'+
-        'الرقم غلط. لو نسيته، إدارة المدرسة تقدر تشوفه لك.</div>';
-    }
-    h += '</div>';
+  /* ٢) كلمة السر ثم زر الدخول للمدرسة */
+  h += '<input type="password" id="pin" autocomplete="off" placeholder="كلمة السر" '+
+    (lock?'disabled ':'')+
+    'style="text-align:center;letter-spacing:.28em;font-size:18px;padding:14px 11px;'+
+    'font-family:Cairo,sans-serif;direction:ltr;border-radius:var(--r)">'+
+    '<button class="btn block" data-lact="go" style="margin-top:10px;padding:14px;font-size:15px"'+
+    (lock?' disabled':'')+'>الدخول إلى المدرسة</button>';
+  if(lock){
+    h += '<div class="note bad" id="lockNote" style="margin-top:11px;text-align:center">'+
+      'محاولات كتير غلط. استنى <b id="lockSec">'+lock+'</b> ثانية.</div>';
+  }else if(tries().n > 0){
+    h += '<div class="note warn" style="margin-top:11px;text-align:center;font-size:12px">'+
+      'كلمة السر غلط. لو نسيتها، إدارة المدرسة تقدر تشوفها لك.</div>';
   }
 
-  /* الدخول كطالب */
-  h += '<button class="who" data-lact="stu" style="margin-top:'+(picked?"12px":"7px")+';border-color:var(--gold);background:#fdfaf3">'+
-    '<span class="av" style="background:var(--gold)">ط</span>'+
-    '<span class="tx"><b>الدخول كطالب</b><small>ملء استمارات المدرسة — من غير رقم سري</small></span>'+
-    '<span class="chev">‹</span></button>';
-
-  /* دخول ولي الأمر بالرقم القومي للطالب */
-  h += '<button class="who" data-lact="par" style="margin-top:7px;border-color:var(--ok);background:#f4faf4">'+
-    '<span class="av" style="background:var(--ok)">و</span>'+
-    '<span class="tx"><b>الدخول كولي أمر</b><small>بالرقم القومي للطالب — متابعة يومية</small></span>'+
-    '<span class="chev">‹</span></button>';
+  /* ٣) الطالب وولي الأمر */
+  h += '<div style="margin-top:16px;padding-top:13px;border-top:1px solid var(--line-2)">'+
+    '<div style="font-size:11.5px;color:var(--muted);text-align:center;margin-bottom:9px">'+
+    'من غير كلمة سر</div>'+
+    '<button class="who" data-lact="stu" style="border-color:var(--gold);background:#fdfaf4">'+
+      '<span class="av" style="background:var(--gold)">ط</span>'+
+      '<span class="tx"><b>دخول الطالب</b><small>ملء استمارات المدرسة</small></span>'+
+      '<span class="chev">‹</span></button>'+
+    '<button class="who" data-lact="par" style="margin-top:8px;border-color:var(--seal);background:#f3faf8">'+
+      '<span class="av" style="background:var(--seal)">و</span>'+
+      '<span class="tx"><b>دخول ولي الأمر</b><small>بالرقم القومي للطالب — متابعة يومية</small></span>'+
+      '<span class="chev">‹</span></button>'+
+    '</div>';
 
   var c = syncCfgLoad();
   var linked = !!(c && c.enabled && c.code);
