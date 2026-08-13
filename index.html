@@ -326,6 +326,12 @@ table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
   font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap
 }
 .chips button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+/* عدّاد جوه الشريحة — بيبان كبادج مش كنص ملزوق */
+.chips button small{
+  display:inline-block;margin-inline-start:5px;padding:1px 7px;border-radius:999px;
+  background:var(--line-2);color:var(--muted);font-size:11px;font-weight:700;line-height:1.5
+}
+.chips button.on small{background:rgba(255,255,255,.22);color:#fff}
 
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
@@ -4316,11 +4322,12 @@ function modalTableCfg(id, defs, title){
           '<input type="text" class="tcName" data-k="'+esc(d.k)+'" value="'+esc(colName(id,d))+'" '+
           'style="width:100%;padding:5px 7px;border:1px solid var(--line-2);border-radius:7px;font:inherit;font-size:13px">'+
           (d.core? '<small style="color:var(--muted)">أساسي — مبيتحذفش</small>' :
+            d.keep? '<small style="color:var(--muted)">عمود محوري — بيتخفي بس مبيتحذفش</small>' :
             (nUsed? '<small style="color:var(--muted)">'+nUsed+' قيمة مسجّلة</small>' : ''))+
           '</span>'+
         '<button class="btn ghost sm" data-act="tcUp" data-t="'+esc(id)+'" data-k="'+esc(d.k)+'"'+(i===0?" disabled":"")+'>▲</button>'+
         '<button class="btn ghost sm" data-act="tcDown" data-t="'+esc(id)+'" data-k="'+esc(d.k)+'"'+(i===ordered.length-1?" disabled":"")+'>▼</button>'+
-        (d.core? '' :
+        ((d.core||d.keep)? '' :
           '<button class="btn ghost sm" data-act="tcDel" data-t="'+esc(id)+'" data-k="'+esc(d.k)+'" '+
           'style="color:var(--danger)">حذف</button>')+
         '</div>';
@@ -4545,8 +4552,8 @@ function stuColDefs(){
     { k:"code",  label:"كود الطالب" },
     { k:"natId", label:"الرقم القومي" },
     { k:"level", label:"الصف" },
-    { k:"cls",   label:"الفصل" },
-    { k:"edu",   label:"النوعية" },
+    { k:"cls",   label:"الفصل",         keep:true },
+    { k:"edu",   label:"نوعية التعليم",  keep:true },
     { k:"track", label:(num(UI.stuLevel,0)===3 ? "الشعبة" : "المسار") },
     { k:"subj",  label:"مادة التخصص" },
     { k:"phone", label:"الهاتف",        off:true },
@@ -4579,8 +4586,9 @@ function stuColDefs(){
     if(synMatch(fieldKey(f.label), fieldKey("الشعبة"))) return;
     defs.push({ k:"xf:"+f.id, label:f.label });
   });
-  /* الأعمدة المحذوفة نهائيًا مبتظهرش */
-  defs = defs.filter(function(d){ return !colDropped("students", d.k); });
+  /* الأعمدة المحذوفة نهائيًا مبتظهرش — إلا المحمية (keep) فدي عمودها الأساسي
+     في تقسيم الطلاب والطباعة، وحذفها كان بيضيّع بيان مهم من الكشوف */
+  defs = defs.filter(function(d){ return d.keep || !colDropped("students", d.k); });
   return defs;
 }
 /* قيمة الشعبة/المسار — من الحقل الأساسي أو من عمود إضافي بنفس المعنى */
@@ -6754,14 +6762,55 @@ function viewStudents(){
 
   h += schedRoleNote("بيانات الطلاب");
   /* شريط الفئات — انتظام · خدمات · منازل */
+  /* ============================================================
+     التنقّل في قسم الطلاب — صفّين واضحين ومنفصلين:
+     (١) نوعية التعليم  (٢) الصف الدراسي
+     كل نوعية بياناتها مستقلة تمامًا، وكل صف مربوط باستمارته.
+     ============================================================ */
+  /* وعاء عدّ الصفوف: من غير فلتر الصف عشان الأرقام ما تتناقضش */
+  var lvlBase = stuApply(pool, Object.assign({}, f, {lvl:""}));
   var _noneN = catStudents("none").length;
-  h += '<div class="chips noprint" style="margin-bottom:10px">'+
-    ["reg","srv","home"].concat(_noneN||_cat==="none"?["none"]:[]).map(function(ct){
-      var n = catStudents(ct).length;
-      return '<button class="'+(_cat===ct?"on":"")+'" data-act="stuCat" data-c="'+ct+'"'+
-        (ct==="none"?' style="border-color:var(--danger);color:var(--danger)"':'')+'>'+
-        esc(catName(ct))+' ('+n+')</button>';
-    }).join("")+'</div>';
+  var _cats  = ["reg","srv","home"].concat(_noneN||_cat==="none" ? ["none"] : []);
+  var _catIcon = { reg:"👥", srv:"🕐", home:"🏠", none:"⚠" };
+
+  h += '<div class="card noprint" style="margin-bottom:12px"><div class="bd" style="padding:11px 12px">'+
+    /* الصف الأول: نوعية التعليم */
+    '<div style="font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:6px;'+
+      'font-family:Cairo,sans-serif;letter-spacing:.02em">١ · نوعية التعليم</div>'+
+    '<div class="chips" style="padding-bottom:4px">'+
+      _cats.map(function(ct){
+        var n = catStudents(ct).length;
+        var on = (_cat===ct);
+        return '<button class="'+(on?"on":"")+'" data-act="stuCat" data-c="'+ct+'"'+
+          (ct==="none"&&!on?' style="border-color:var(--danger);color:var(--danger)"':'')+'>'+
+          _catIcon[ct]+' '+esc(catName(ct))+' <small>'+n+'</small></button>';
+      }).join("")+
+    '</div>'+
+    '<div style="height:1px;background:var(--line-2);margin:9px 0"></div>'+
+    /* الصف التاني: الصف الدراسي */
+    '<div style="font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:6px;'+
+      'font-family:Cairo,sans-serif">٢ · الصف الدراسي</div>'+
+    '<div class="chips" style="padding-bottom:2px">'+
+      '<button class="'+(!_lv?"on":"")+'" data-act="stuLvl" data-l="0">كل الصفوف <small>'+lvlBase.length+'</small></button>'+
+      LEVELS.map(function(l){
+        var n = lvlBase.filter(function(x){ return studentLevelOf(x)===l.id; }).length;
+        return '<button class="'+(_lv===l.id?"on":"")+'" data-act="stuLvl" data-l="'+l.id+'">'+
+          esc(l.name)+' <small>'+n+'</small></button>';
+      }).join("")+
+    '</div>'+
+    /* سطر التأكيد: انت واقف فين دلوقتي + استمارة الصف */
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px;'+
+      'padding-top:9px;border-top:1px solid var(--line-2)">'+
+      '<span style="font-size:12.5px"><b>معروض:</b> '+esc(catName(_cat))+
+        (_lv? ' · '+esc(levelName(_lv))+' · '+esc(levelSysName(_lv)) : ' · كل الصفوف')+
+        ' — <b>'+list.length+'</b> طالب</span>'+
+      '<span class="spacer" style="flex:1"></span>'+
+      (_lv && canManageForms()
+        ? '<button class="btn ghost sm" data-act="stuLvlForm" data-l="'+_lv+'">☆ استمارة '+esc(levelName(_lv))+'</button>'
+        : '')+
+    '</div>'+
+    '</div></div>';
+
   if(_cat==="none"){
     /* الاسترجاع الأول — أسهل وأدق من التحديد اليدوي */
     var recPool = DB.students.filter(function(s){
@@ -6795,16 +6844,6 @@ function viewStudents(){
     h += '<div class="note">قسم الخدمات منفصل تمامًا عن الانتظام — فصوله وطلابه ليهم كيانهم الخاص، '+
       'حتى لو الاسم متشابه.</div>';
   }
-  /* تبويبات الصفوف — العدّ من وعاء الفئة نفسه، من غير فلتر الصف
-     عشان ما يحصلش تناقض بين «كل الصفوف» والشرائح */
-  var lvlBase = stuApply(pool, Object.assign({}, f, {lvl:""}));
-  h += '<div class="chips noprint">'+
-    '<button class="'+(!_lv?"on":"")+'" data-act="stuLvl" data-l="0">كل الصفوف ('+lvlBase.length+')</button>'+
-    LEVELS.map(function(l){
-      var n = lvlBase.filter(function(x){ return studentLevelOf(x)===l.id; }).length;
-      return '<button class="'+(_lv===l.id?"on":"")+'" data-act="stuLvl" data-l="'+l.id+'">'+
-        esc(l.name)+' ('+n+')</button>';
-    }).join("")+'</div>';
   if(_lv){
     list = list.filter(function(x){ return studentLevelOf(x)===_lv; });
     /* فلتر «الناقص» — بيوريك اللي محتاج استكمال بس */
@@ -6902,7 +6941,10 @@ function viewStudents(){
       '<button class="btn ghost sm" data-act="tblSort" data-t="students" data-k="'+esc(_ss.k)+'">↕ اعكس</button>'+
       '<button class="btn ghost sm" data-act="tblSortOff" data-t="students">✕ إلغاء الترتيب</button></div>';
   }
-  h += printHd("كشف بأسماء الطلاب");
+  /* ترويسة الطباعة بتقول النوعية والصف — عشان الكشف المطبوع يبان هو بتاع مين */
+  h += printHd("كشف بأسماء " + catName(_cat) +
+        (_lv ? " — " + levelName(_lv) : " — كل الصفوف") +
+        " (" + list.length + " طالب)");
 
   h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' طالب</h3>'+
     (canBulk?'<button class="btn ghost sm noprint" data-act="bulkEditStudents">✎ تعديل المحددين</button>'+
@@ -10830,6 +10872,18 @@ var ACTS = {
     logOp("تحديد نوعية التعليم", eduName(e)+" — "+n+" طالب");
     render();
     toastUndo("اتحدّد "+n+" طالب "+eduName(e));
+  },
+  /* استمارة الصف — كل صف مربوط باستمارته حتى لو التبويبات منفصلة */
+  stuLvlForm: function(el){
+    var L = num(el.dataset.l, 0);
+    formsInit();
+    var mine = (DB.forms||[]).filter(function(f){ return num(f.level,0)===L; });
+    UI.tab = "forms"; UI.sub = null;
+    if(mine.length===1){ UI.sub = { form: mine[0].id }; }
+    else if(!mine.length){ UI.newFormLvl = L; }
+    UI.formsLvl = L;
+    render();
+    if(!mine.length) toast(esc(levelName(L))+" لسه مالوش استمارة — اعملها من «+ استمارة جديدة»");
   },
   stuLvl: function(el){ UI.stuLevel = num(el.dataset.l,0); UI.stuMiss = null; setPage("stu",1); render(); },
   goStudents: function(){ UI.tab="students"; UI.sub=null; UI.stuLevel=0; UI.stuMiss=null; render(); },
