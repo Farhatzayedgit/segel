@@ -12547,7 +12547,7 @@ function autoMap(header, schema){
 
 /* ---------- نافذة الاستيراد ---------- */
 function openImport(target, ctx){
-  UI.imp = { target:target, ctx:ctx||{}, grid:null, header:-1, map:[], mode:"add" };
+  UI.imp = { target:target, ctx:ctx||{}, grid:null, header:-1, map:[], mode:"update" };
   var sc = IMPORT_SCHEMAS[target];
   openModal(mHead(sc.title)+
     '<div class="mb">'+
@@ -12675,12 +12675,18 @@ function impRenderMap(){
         ? 'الأعمدة اللي على «تقييم أسبوعي» هتتاخد بالترتيب: أول عمود = التقييم ١، وهكذا لحد ١٢.'
         : 'الأعمدة اللي على «يوم حضور» لازم عنوانها يكون تاريخ. اللي مش تاريخ هيتتجاهل.')+'</div>';
   }
-  h += '<label class="f" style="margin-top:10px"><span>لو الاسم موجود قبل كده</span>'+
+  h += '<label class="f" style="margin-top:10px"><span>لو الطالب مسجّل عندنا قبل كده</span>'+
     '<select id="impMode">'+
-    '<option value="add"'+(UI.imp.mode==="add"?" selected":"")+'>تخطّي المكرر (الأأمن)</option>'+
-    '<option value="update"'+(UI.imp.mode==="update"?" selected":"")+'>تحديث البيانات الموجودة</option>'+
-    '<option value="dup"'+(UI.imp.mode==="dup"?" selected":"")+'>إضافته تاني على أي حال</option>'+
-    '</select></label>';
+    '<option value="update"'+(UI.imp.mode!=="add"&&UI.imp.mode!=="dup"?" selected":"")+'>'+
+      'حدّث بياناته من الملف (المستحسن)</option>'+
+    '<option value="add"'+(UI.imp.mode==="add"?" selected":"")+'>'+
+      'تخطّاه ومتغيّرش فيه حاجة</option>'+
+    '<option value="dup"'+(UI.imp.mode==="dup"?" selected":"")+'>'+
+      'سجّله تاني كطالب جديد (بيعمل تكرار)</option>'+
+    '</select>'+
+    '<small style="color:var(--muted);font-size:11.5px">«حدّث بياناته» بيملا الناقص ويصحّح المتغيّر '+
+    'من غير ما يعمل تكرار — الربط بالرقم القومي أو كود الطالب. '+
+    'الفاضي في الملف مبيمسحش المليان في القاعدة.</small></label>';
   h += '</div><div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
     '<button class="btn seal" data-act="impRun">استيراد '+body.length+' سطر</button></div>';
 
@@ -12704,7 +12710,7 @@ function impOptions(sc, sel, colIdx){
 /* ---------- التنفيذ ---------- */
 function impRun(){
   var t = UI.imp.target, g = UI.imp.grid, hr = UI.imp.header, map = UI.imp.map;
-  UI.imp.mode = val("impMode") || "add";
+  UI.imp.mode = val("impMode") || "update";
   var rows = g.slice(hr+1).filter(function(r){ return r.some(function(c){ return c!==""; }); });
   var recs = rows.map(function(r){
     var o = {__extra:[]};
@@ -13016,6 +13022,14 @@ function impStudents(recs){
   var notes = [];
   if(newCls) notes.push("اتعمل <b>"+newCls+"</b> فصل جديد من أسماء الفصول اللي في الملف — راجعها من شاشة الفصول.");
   if(r.dup)  notes.push("<b>"+r.dup+"</b> صف اتخطّى لأن رقمه القومي متكرر جوه نفس الملف.");
+  /* التخطّي الصامت هو أخطر حاجة في الاستيراد: المستخدم بيفتكر إن البيانات دخلت
+     وهي ما دخلتش. فلازم يتقال بصوت عالي مع سببه وحله. */
+  if(r.skip){
+    notes.push('<span style="color:var(--danger)">⚠ <b>'+r.skip+' طالب اتخطّى ومادخلش</b> — '+
+      'دول مسجّلين عندنا بالفعل، وإنت اخترت «تخطّاه ومتغيّرش فيه حاجة». '+
+      '<b>يعني بياناتهم في الملف ما اتحدّثتش.</b> '+
+      'لو عايز بياناتهم تتحدّث، ارفع الملف تاني واختار «حدّث بياناته من الملف».</span>');
+  }
   var dist = [];
   if(r.reg)  dist.push(r.reg+" انتظام");
   if(r.srv)  dist.push(r.srv+" خدمات");
