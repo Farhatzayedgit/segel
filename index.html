@@ -3421,20 +3421,20 @@ function healthChecks(){
   var dupCols = [];
   xfList("student").forEach(function(f){
     var b = baseColOf(f.label, "student");
-    if(b) dupCols.push({ f:f, base:b, scope:"student" });
+    if(b) dupCols.push({ f:f, base:b, scope:"student", baseLabel: baseColLabel(b,"student",0) });
   });
   xfList("teacher").forEach(function(f){
     var b = baseColOf(f.label, "teacher");
-    if(b) dupCols.push({ f:f, base:b, scope:"teacher" });
+    if(b) dupCols.push({ f:f, base:b, scope:"teacher", baseLabel: baseColLabel(b,"teacher",0) });
   });
   UI.dupCols = dupCols;
   out.push({ id:"dupcols", ok: dupCols.length===0, level:"warn",
     title:"أعمدة إضافية بتكرّر بيانات أساسية", n:dupCols.length,
     desc: dupCols.length
       ? dupCols.map(function(x){ return "«"+x.f.label+"» ← "+baseColLabel(x.base,x.scope,0); }).join(" · ")+
-        " — البيانات هتتنقل للعمود الأساسي والعمود الزيادة هيتشال."
+        " — اضغط «معالجة» تختار لكل عمود: دمج ونقل، ولا نقل بس، ولا حذف."
       : "مفيش أعمدة مكررة — كل بيان في مكانه.",
-    act:"mergeDupCols", btn:"دمج ونقل" });
+    act:"mergeDupCols", btn:"معالجة الأعمدة" });
   /* ١ن الرقم القومي محور البيانات — أي تكرار أو نقص خطر */
   var natDup = {}, natBad = 0;
   DB.students.forEach(function(x){
@@ -4846,10 +4846,10 @@ function stuCellValue(d, s){
     case "subj":  return s.bacSubject||"";
     case "seat":  return s.seat||"";
     case "phone": return s.phone||"";
-    case "guard": return s.guardian||"";
-    case "gender":return s.gender||"";
-    case "birth": return s.birth||"";
-    case "gov":   return s.birthGov||"";
+    case "guard": return stuVal(s,"guardian");
+    case "gender":return stuVal(s,"gender");
+    case "birth": return stuVal(s,"birth");
+    case "gov":   return stuVal(s,"birthGov");
     case "act":   return s.actId||"";
     case "voc":   return s.vocId||"";
     case "joined":return s.joined||"";
@@ -4964,10 +4964,11 @@ function stuCell(d, s, n, can){
                     (tv? esc(tv) : '<span style="color:var(--danger)">غير محدد</span>')+'</small></td>';
     case "subj":  return '<td'+cellEdit("subj",s.id)+'><small>'+esc(s.bacSubject||"—")+'</small></td>';
     case "phone": return '<td class="num"'+cellEdit("phone",s.id)+' style="direction:ltr;text-align:right">'+esc(s.phone||"—")+'</td>';
-    case "guard": return '<td'+cellEdit("guard",s.id)+'><small>'+esc(s.guardian||"—")+'</small></td>';
-    case "gender":return '<td'+cellEdit("gender",s.id)+'><small>'+esc(s.gender||"—")+'</small></td>';
-    case "birth": return '<td class="num">'+esc(s.birth?fmtDate(s.birth):"—")+'</td>';
-    case "gov":   return '<td><small>'+esc(s.birthGov||"—")+'</small></td>';
+    case "guard": return '<td'+cellEdit("guard",s.id)+'>'+drvCell(s,"guardian",stuVal(s,"guardian"))+'</td>';
+    case "gender":return '<td'+cellEdit("gender",s.id)+'>'+drvCell(s,"gender",stuVal(s,"gender"))+'</td>';
+    case "birth": var bv = stuVal(s,"birth");
+                  return '<td class="num">'+drvCell(s,"birth", bv?fmtDate(bv):"", true)+'</td>';
+    case "gov":   return '<td>'+drvCell(s,"birthGov",stuVal(s,"birthGov"))+'</td>';
     case "act":   return '<td><small>'+esc(s.actId?actName(s.actId):"—")+'</small></td>';
     case "voc":   return '<td><small>'+esc(s.vocId?actName(s.vocId):"—")+'</small></td>';
     case "abs":   var st = attendStats(s.id, s.classId);
@@ -7499,10 +7500,10 @@ function clsRosterVal(k, s, i, c){
     case "natId":  return s.natId||"";
     case "code":   return s.code||"";
     case "seat":   return s.seat||"";
-    case "gender": return s.gender||"";
+    case "gender": return stuVal(s,"gender");
     case "rel":    return s.religion||"";
-    case "birth":  return s.birth? fmtDate(s.birth) : "";
-    case "guard":  return s.guardian||"";
+    case "birth":  var b2 = stuVal(s,"birth"); return b2? fmtDate(b2) : "";
+    case "guard":  return stuVal(s,"guardian");
     case "phone":  return s.phone||"";
     case "track":  return c? trackName(c.system, s.bacTrack||c.track) : "";
     case "subj":   return s.bacSubject||"";
@@ -11020,36 +11021,89 @@ var ACTS = {
     UI.stuLevel=0; UI.stuMiss=null; UI.filters={}; render();
   },
   goTeachers: function(){ UI.tab="teachers"; UI.sub=null; render(); },
+  /* ============================================================
+     الأعمدة المكررة — نافذة اختيارات بدل تنفيذ أعمى
+     لكل عمود مكرر تختار: دمج ونقل · نقل بس · حذف · سيبه زي ما هو
+     ============================================================ */
   mergeDupCols: function(){
     var list = UI.dupCols || [];
     if(!list.length){ toast("مفيش أعمدة مكررة"); return; }
-    if(!confirm("هتتنقل بيانات "+list.length+" عمود للأعمدة الأساسية، والأعمدة الزيادة هتتشال.\n"+
-      "القيم مش هتضيع — هتتحط في مكانها الصح.")) return;
-    markUndo("دمج الأعمدة المكررة");
-    var moved = 0, removed = 0;
-    list.forEach(function(x){
+    openModal(mHead("الأعمدة المكررة ("+list.length+")")+
+      '<div class="mb">'+
+      '<div class="note">كل عمود من دول اتعمل يدوي وفيه عمود أساسي بنفس المعنى. '+
+      'اختار تعمل إيه في كل واحد — <b>القيم مش هتضيع إلا لو اخترت «حذف» صراحةً</b>.</div>'+
+      list.map(function(x, i){
+        var filled = 0;
+        var arr = (x.scope==="teacher") ? DB.teachers : DB.students;
+        arr.forEach(function(o){
+          var v = xfGet(o, x.f.id);
+          if(v!==undefined && v!==null && String(v).trim()!=="") filled++;
+        });
+        return '<div style="border:1px solid var(--line-2);border-radius:10px;padding:10px;margin-bottom:9px">'+
+          '<div style="font-weight:700;font-family:Cairo,sans-serif;margin-bottom:3px">'+
+            '«'+esc(x.f.label)+'» ← '+esc(x.baseLabel || x.base)+'</div>'+
+          '<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">'+
+            esc(x.scope==="teacher"?"عمود معلمين":"عمود طلاب")+' · <b>'+filled+'</b> قيمة مسجّلة فيه</div>'+
+          '<select class="dupAct" data-i="'+i+'" style="width:100%;padding:8px 10px;'+
+            'border:1px solid var(--line-2);border-radius:9px;font:inherit">'+
+            '<option value="merge">دمج ونقل — القيم تروح للعمود الأساسي والعمود ده يتشال</option>'+
+            '<option value="move">نقل بس — القيم تروح والعمود يفضل موجود فاضي</option>'+
+            '<option value="del">حذف — العمود وقيمه يتشالوا خالص</option>'+
+            '<option value="keep">سيبه زي ما هو</option>'+
+          '</select></div>';
+      }).join("")+
+      '<div class="note warn">«دمج ونقل» مبيمسحش المليان: لو العمود الأساسي فيه قيمة، بتفضل زي ما هي.</div>'+
+      '</div>'+
+      '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+      '<button class="btn" data-act="dupApply">تنفيذ</button></div>');
+  },
+  dupApply: function(){
+    var list = UI.dupCols || [];
+    if(!list.length){ closeModal(); return; }
+    var picks = {};
+    Array.prototype.slice.call(document.querySelectorAll(".dupAct")).forEach(function(sel){
+      picks[Number(sel.dataset.i)] = sel.value;
+    });
+    var doing = list.filter(function(x,i){ return picks[i] && picks[i]!=="keep"; });
+    if(!doing.length){ closeModal(); toast("مفيش تغيير"); return; }
+    var dels = list.filter(function(x,i){ return picks[i]==="del"; }).length;
+    if(dels && !confirm(dels+" عمود هيتحذف بقيمه نهائيًا. متأكد؟\n\nمعاك «تراجع» بعد التنفيذ.")) return;
+
+    markUndo("معالجة الأعمدة المكررة");
+    var moved = 0, removed = 0, wiped = 0;
+    list.forEach(function(x, i){
+      var act = picks[i] || "keep";
+      if(act==="keep") return;
       var arr = (x.scope==="teacher") ? DB.teachers : DB.students;
-      arr.forEach(function(o){
-        var v = xfGet(o, x.f.id);
-        if(v===undefined || v===null || String(v).trim()==="") return;
-        if(x.scope==="student"){
-          if(setBaseCol(o, x.base, v, studentLevelOf(o))) moved++;
-        }else{
-          var map = { name:"name", code:"code", natId:"natId", subject:"subject",
-                      hire:"hireDate", finG:"finGrade", finD:"finDate", job:"jobNow",
-                      qual:"qual", qualT:"qualType", cadre:"cadreJob", phone:"phone", gender:"gender" };
-          var key = map[x.base];
-          if(key && !String(o[key]||"").trim()){ o[key] = String(v); moved++; }
-        }
-        if(o.extra) delete o.extra[x.f.id];
-      });
-      var lst = xfList(x.scope);
-      var i = lst.indexOf(x.f);
-      if(i>=0){ lst.splice(i,1); removed++; }
+      if(act==="merge" || act==="move"){
+        arr.forEach(function(o){
+          var v = xfGet(o, x.f.id);
+          if(v===undefined || v===null || String(v).trim()==="") return;
+          if(x.scope==="student"){
+            if(setBaseCol(o, x.base, v, studentLevelOf(o))) moved++;
+          }else{
+            var map = { name:"name", code:"code", natId:"natId", subject:"subject",
+                        hire:"hireDate", finG:"finGrade", finD:"finDate", job:"jobNow",
+                        qual:"qual", qualT:"qualType", cadre:"cadreJob", phone:"phone", gender:"gender" };
+            var key = map[x.base];
+            if(key && !String(o[key]||"").trim()){ o[key] = String(v); moved++; }
+          }
+          if(o.extra) delete o.extra[x.f.id];
+        });
+      }
+      if(act==="del"){
+        arr.forEach(function(o){ if(o.extra && o.extra[x.f.id]!==undefined){ delete o.extra[x.f.id]; wiped++; } });
+      }
+      if(act==="merge" || act==="del"){
+        var lst = xfList(x.scope);
+        var k = lst.indexOf(x.f);
+        if(k>=0){ lst.splice(k,1); removed++; }
+      }
     });
     UI.dupCols = null;
-    saveNow(); render();
-    toastUndo("اتنقل "+moved+" قيمة · واتشال "+removed+" عمود مكرر");
+    saveNow(); closeModal(); render();
+    logOp("معالجة الأعمدة المكررة", "نقل "+moved+" · شيل "+removed+" عمود"+(wiped?" · مسح "+wiped+" قيمة":""));
+    toastUndo("اتنقل "+moved+" قيمة · اتشال "+removed+" عمود"+(wiped?" · اتمسح "+wiped+" قيمة":""));
   },
   fixTracks: function(){
     var L = num(UI.stuLevel,0);
@@ -17475,23 +17529,24 @@ function ageAt1Oct(birth, year){
   return yy+" س "+mm+" ش "+dd+" ي";
 }
 function regCellValue(col, s, i){
+  /* كل بيان بيتقرا بالاشتقاق: المتسجّل الأول وإلا اللي ينفع يطلع من غيره */
   switch(col){
     case "idx":        return String(i+1);
     case "name":       return s.name||"";
     case "natId":      return s.natId||"";
     case "code":       return s.code||"";
     case "joined":     return s.joined? fmtDate(s.joined) : "";
-    case "birth":      return s.birth? fmtDate(s.birth) : "";
-    case "birthPlace": return s.gov||"";
-    case "age1oct":    return ageAt1Oct(s.birth);
+    case "birth":      var b = stuVal(s,"birth");   return b? fmtDate(b) : "";
+    case "birthPlace": return stuVal(s,"gov");
+    case "age1oct":    return stuVal(s,"age1oct");
     case "rel":        return s.religion||"";
-    case "nat":        return s.nationality || "مصري";
-    case "gender":     return s.gender||"";
-    case "guard":      return s.guardian||"";
+    case "nat":        return stuVal(s,"nationality");
+    case "gender":     return stuVal(s,"gender");
+    case "guard":      return stuVal(s,"guardian");
     case "guardJob":   return s.guardJob||"";
     case "addr":       return s.address||"";
     case "phone":      return s.phone||"";
-    case "cls":        return (classById(s.classId)||{}).name || "";
+    case "cls":        return stuVal(s,"cls");
     case "prev":       return s.prevClass||"";
     case "abs":        return String(num(s.abs,0));
     case "late":       return String(num(s.late,0));
@@ -17522,6 +17577,87 @@ function regStudents(doc, opt){
 function regDocById(id){
   for(var i=0;i<REG_DOCS.length;i++) if(REG_DOCS[i].id===id) return REG_DOCS[i];
   return null;
+}
+
+/* ============================================================
+   الاشتقاق التلقائي — أي بيان ينفع يطلع من بيان تاني بيطلع لوحده
+   ما بنخزّنش المشتق في قاعدة البيانات؛ بنحسبه وقت العرض.
+   فلو الوكيل عدّل الرقم القومي، الميلاد والنوع والمحافظة يتغيّروا معاه.
+   واللي متسجّل صراحةً بيغلب المشتق دايمًا.
+
+   الشجرة:
+     الرقم القومي → تاريخ الميلاد · النوع · محافظة الميلاد
+     تاريخ الميلاد → السن في أول أكتوبر · سنة الميلاد
+     اسم الطالب   → اسم ولي الأمر (الاسم بعد أول كلمة)
+     الفصل        → اسم الفصل · الصف · المسار/الشعبة · القسم
+   ============================================================ */
+function stuDerived(s){
+  if(!s) return {};
+  if(s.__drv && s.__drvKey === (s.natId||"")+"|"+(s.name||"")+"|"+(s.classId||"")+"|"+(s.birth||""))
+    return s.__drv;                                   /* كاش خفيف — بيتلغي لوحده لو البيان اتغيّر */
+  var d = {};
+  var info = parseNationalId(s.natId);
+  if(info){
+    d.birth  = info.birth;
+    d.gender = info.gender;
+    d.gov    = info.govName;
+    d.birthGov = info.govName;          /* الكشف الأساسي بيسمّيه birthGov */
+    d.birthYear = info.birthYear;
+  }
+  var birth = s.birth || d.birth || "";
+  if(birth){
+    d.age1oct = ageAt1Oct(birth);
+    if(!d.birthYear){
+      var y = Number(String(birth).slice(0,4));
+      if(y) d.birthYear = y;
+    }
+  }
+  var g = guardianFromName(s.name);
+  if(g) d.guardian = g;
+  var c = classById(s.classId);
+  if(c){
+    d.cls   = c.name;
+    d.level = c.level;
+    d.track = trackName(c.system, s.bacTrack || c.track);
+    d.sector= classSector(c);
+  }else if(studentLevelOf(s)){
+    d.level = studentLevelOf(s);
+  }
+  d.nationality = "مصري";
+  try{
+    Object.defineProperty(s, "__drv", {value:d, writable:true, enumerable:false, configurable:true});
+    Object.defineProperty(s, "__drvKey",
+      {value:(s.natId||"")+"|"+(s.name||"")+"|"+(s.classId||"")+"|"+(s.birth||""),
+       writable:true, enumerable:false, configurable:true});
+  }catch(e){}
+  return d;
+}
+/* خلية بتوضّح إن البيان مشتق مش متسجّل — بخط مائل خفيف */
+function drvCell(s, key, txt, plain){
+  var v = txt==null ? "" : String(txt);
+  if(!v) return plain ? "—" : '<small>—</small>';
+  var drv = stuIsDerived(s, key);
+  var body = plain ? esc(v) : '<small>'+esc(v)+'</small>';
+  return drv
+    ? '<span style="opacity:.72;font-style:italic" title="مستخرج تلقائيًا من بيان تاني">'+body+'</span>'
+    : body;
+}
+/* القيمة النهائية: المتسجّل الأول، وبعده المشتق */
+function stuVal(s, key){
+  if(!s) return "";
+  var direct = s[key];
+  if(direct !== undefined && direct !== null && String(direct).trim() !== "") return String(direct);
+  var d = stuDerived(s);
+  var v = d[key];
+  return (v === undefined || v === null) ? "" : String(v);
+}
+/* البيان ده مشتق ولا متسجّل؟ — عشان الواجهة توضّح مصدره */
+function stuIsDerived(s, key){
+  if(!s) return false;
+  var direct = s[key];
+  if(direct !== undefined && direct !== null && String(direct).trim() !== "") return false;
+  var d = stuDerived(s);
+  return d[key] !== undefined && d[key] !== null && String(d[key]) !== "";
 }
 
 /* شاشة سجل إداري واحد — بأعمدته الرسمية وبيانات الطلاب الحقيقية */
