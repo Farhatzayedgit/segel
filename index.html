@@ -903,6 +903,7 @@ function load(){
     migrateSectors();
     migrateLevels();
     migrateClassSystems();
+    migrateKeepCols();
     curriculumInit();
     migrateSubjectHours();
     actInit();
@@ -4049,6 +4050,25 @@ function tblCfg(id){
 function colName(id, def){
   var c = tblCfg(id);
   return c.label[def.k] || def.label;
+}
+/* ============================================================
+   ترحيل لمرة واحدة: رجوع الأعمدة المحورية
+   «نوعية التعليم» و«الفصل» بقوا أساس تقسيم الطلاب، فلو حد كان
+   مخفيهم أو حاذفهم من إعدادات الجدول بيرجعوا مرة واحدة بس.
+   ============================================================ */
+function migrateKeepCols(){
+  if(DB.keepColMig) return 0;
+  DB.keepColMig = 1;
+  var n = 0;
+  ["students","home"].forEach(function(tbl){
+    var c = DB.tables && DB.tables[tbl];
+    if(!c) return;
+    ["edu","cls"].forEach(function(k){
+      if(c.hide && c.hide[k]){ delete c.hide[k]; n++; }
+      if(c.dropped && c.dropped[k]){ delete c.dropped[k]; n++; }
+    });
+  });
+  return n;
 }
 function colHidden(id, def){
   if(def.core) return false;                 /* أعمدة أساسية مبتتخفيش */
