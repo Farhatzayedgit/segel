@@ -16544,6 +16544,31 @@ function studentFormHTML(f){
     'value="'+esc(v.natId||"")+'" placeholder="30012345600123"></label>';
   UI.cascadeMap = {};
   (f.fields||[]).forEach(function(fd){
+    /* بيان من ملف الطالب: بيظهر فاضي والطالب بيملاه.
+       لو البيان ليه اختيارات فرعية (زي المسار) بتظهر تحته. */
+    if(fd.type==="student" || fd.type==="stucascade"){
+      var lv = num(fd.level,0) || formTargetLevel(f) || 0;
+      var ask = askableByCol(fd.col, lv);
+      var lbl = fd.label || (ask? ask.label : fd.col);
+      var cur0 = vals[fd.id]!=null ? vals[fd.id] : "";
+      var star0 = fd.required?' <span style="color:var(--danger)">*</span>':'';
+      if(fd.type==="stucascade"){
+        UI.cascadeMap[fd.id] = Object.assign({}, fd, { level:lv, label:lbl });
+        h += cascadeFieldHTML(UI.cascadeMap[fd.id], vals);
+        return;
+      }
+      h += '<label class="f"><span>'+esc(lbl)+star0+'</span>';
+      if(ask && ask.type==="select"){
+        h += '<select id="cff_'+fd.id+'"><option value="">— اختر —</option>'+
+          (ask.options||[]).map(function(o){
+            return '<option'+(cur0===o?" selected":"")+'>'+esc(o)+'</option>'; }).join("")+'</select>';
+      }else{
+        var it0 = ask ? (ask.type==="date"?"date":(ask.type==="tel"?"tel":"text")) : "text";
+        h += '<input type="'+it0+'" id="cff_'+fd.id+'" value="'+esc(cur0)+'">';
+      }
+      h += '</label>';
+      return;
+    }
     /* الحقول المتسلسلة ليها بناء خاص — اختيار رئيسي بيفتح اختيارات فرعية */
     if(isCascadeField(fd)){
       UI.cascadeMap[fd.id] = fd;
@@ -16681,6 +16706,7 @@ function saveCustomForm(fid){
       var allowed = cascadeSubsOf(fd, vv);
       if(sv && allowed.indexOf(sv)<0) sv = "";
       values[cascadeSubKey(fd)] = sv;
+      /* لو التقسيم ده مالوش مواد فرعية (زي شعب الثانوية العامة) الرئيسي بس هو المطلوب */
       if(fd.required && vv && allowed.length && !sv && !missing) missing = cascadeSubLabel(fd);
     }
   });
@@ -17260,6 +17286,7 @@ var FIELD_TYPES = [
   {id:"date",     name:"تاريخ"},
   {id:"tel",      name:"هاتف"},
   {id:"select",   name:"اختيار من قائمة"},
+  {id:"student",  name:"بيان من ملف الطالب (الطالب يملاه)"},
   {id:"cascade",  name:"اختيار متسلسل (اختيار ← اختيارات فرعية)"},
   {id:"track",    name:"مسار البكالوريا + مادة التخصص (تلقائي)"}
 ];
@@ -17271,7 +17298,58 @@ var FIELD_TYPES = [
    • track: حقل جاهز بيقرا المسارات ومواد التخصص من «الهيكل الدراسي» مباشرة،
      فلما الوكيل يعدّل مواد التخصص، الاستمارة بتتغيّر معاها لوحدها.
    ============================================================ */
-function isCascadeField(fd){ return fd && (fd.type==="cascade" || fd.type==="track"); }
+/* ============================================================
+   بيانات ملف الطالب اللي الاستمارة تقدر تطلبها
+   بدل ما الوكيل يكتب اسم الحقل بإيده ويطلع عمود جديد مكرر،
+   بيختار البيان من ملف الطالب نفسه — والإجابة بترجع لعموده
+   الأصلي وقت الترحيل، من غير أعمدة زيادة.
+   الأعمدة بتختلف حسب الصف: الثاني مسارات، الثالث شعب، الأول مفيش.
+   ============================================================ */
+var STU_ASKABLE = [
+  { col:"phone",  label:"هاتف ولي الأمر", type:"tel"  },
+  { col:"guard",  label:"اسم ولي الأمر",  type:"text" },
+  { col:"rel",    label:"الديانة",        type:"select", options:["مسلم","مسيحي"] },
+  { col:"gender", label:"النوع",          type:"select", options:["ذكر","أنثى"] },
+  { col:"birth",  label:"تاريخ الميلاد",  type:"date" },
+  { col:"gov",    label:"محافظة الميلاد", type:"text" },
+  { col:"prev",   label:"الفصل السابق",   type:"text" },
+  { col:"cls",    label:"الفصل",          type:"text" },
+  { col:"edu",    label:"نوعية التعليم",  type:"select", options:["نظامي","خدمات","منازل"] },
+  { col:"seat",   label:"رقم الجلوس",     type:"text", levels:[3] },
+  { col:"track",  label:"__TRACK__",      type:"cascade", levels:[2,3] },
+  { col:"joined", label:"تاريخ القيد",    type:"date" }
+];
+/* البيانات المتاحة لصف معيّن */
+function askableFor(level){
+  var L = num(level,0);
+  return STU_ASKABLE.filter(function(a){
+    if(a.levels && L && a.levels.indexOf(L)<0) return false;
+    if(a.col==="track" && L && !levelHasTracks(L)) return false;
+    return true;
+  }).map(function(a){
+    var o = Object.assign({}, a);
+    if(a.col==="track") o.label = L ? trackWord(L) : "المسار / الشعبة";
+    return o;
+  });
+}
+function askableByCol(col, level){
+  var list = askableFor(level);
+  for(var i=0;i<list.length;i++) if(list[i].col===col) return list[i];
+  return null;
+}
+/* مسارات/شعب الصف + موادها — نفس ترتيب الهيكل الدراسي */
+function levelTrackPairs(level){
+  var L = num(level,0);
+  if(!L || !levelHasTracks(L)) return [];
+  curriculumInit();
+  return allTracks(sysOfLevel(L)).map(function(t){
+    var subs = curSubjects(curKey(L, sysOfLevel(L), t.id))
+      .filter(function(x){ return x.elective; })
+      .map(function(x){ return x.name; });
+    return { p:t.name, key:t.id, subs:subs };
+  });
+}
+function isCascadeField(fd){ return fd && (fd.type==="cascade" || fd.type==="track" || fd.type==="stucascade"); }
 /* نص المحرر ← قوائم متسلسلة. كل سطر: «الرئيسي : فرعي، فرعي» */
 function parseCascadeText(txt){
   return String(txt||"").split(/\n/).map(function(line){
@@ -17302,11 +17380,20 @@ function cascadeSummary(fd){
 function cascadeSubLabel(fd){
   if(!fd) return "الاختيار الفرعي";
   if(fd.type==="track") return "مادة التخصص";
+  if(fd.type==="stucascade"){
+    /* الثالث شعب من غير مادة تخصص، الثاني بكالوريا بمادة تخصص */
+    var L = num(fd.level,0);
+    return (L===3 || levelSys(L)==="gen") ? "المادة الاختيارية" : "مادة التخصص";
+  }
   return String(fd.subLabel||"").trim() || "الاختيار الفرعي";
 }
 /* أزواج (رئيسي ← فرعية) لأي حقل متسلسل، مهما كان نوعه */
 function cascadePairs(fd){
   if(!fd) return [];
+  /* بيان «المسار/الشعبة» من ملف الطالب — القوائم من الهيكل الدراسي لصف الاستمارة */
+  if(fd.type==="stucascade" || (fd.type==="student" && fd.col==="track")){
+    return levelTrackPairs(fd.level || num((UI.formDraft||{}).level,0) || 0);
+  }
   if(fd.type==="track"){
     return wishTracks().map(function(t){
       return { p:t.name, key:t.id, subs:(t.subjects||[]).slice() };
@@ -17336,6 +17423,8 @@ function cascadeFieldHTML(fd, vals){
       return '<option value="'+esc(x.p)+'"'+(pv===x.p?" selected":"")+'>'+esc(x.p)+'</option>';
     }).join("")+'</select></label>';
   var subs = cascadeSubsOf(fd, pv);
+  /* تقسيم من غير مواد فرعية خالص (زي شعب الثانوية العامة) — مفيش داعي للقسم ده */
+  if(!pr.some(function(x){ return (x.subs||[]).length; })) return h;
   h += '<label class="f" id="cscw_'+fd.id+'"'+(subs.length?'':' style="display:none"')+'>'+
     '<span>'+esc(cascadeSubLabel(fd))+(fd.required?' *':'')+'</span>'+
     '<select id="cff_'+cascadeSubKey(fd)+'">'+
@@ -17683,9 +17772,22 @@ function formRows(f){
     var vals = sub.values||sub.vals||{};
     var lvl = 0, phone = "", edu = "", guardian = "", trk = "", subj = "", prev = "", rel = "";
     var extra = {};                       /* الحقول اللي مالهاش مكان في بيانات الطالب */
+    var base = {};                        /* بيانات ملف الطالب اللي الاستمارة طلبتها بالاسم */
     flds.forEach(function(fd){
       var v = vals[fd.id];
       if(v==null || String(v).trim()==="") return;
+      /* ============================================================
+         بيان مطلوب من ملف الطالب — بيروح لعموده الأصلي مباشرة،
+         من غير ما نعمل عمود إضافي ولا نخمّن من عنوان الحقل.
+         ============================================================ */
+      if(fd.type==="student" || fd.type==="stucascade"){
+        base[fd.col] = String(v).trim();
+        if(fd.type==="stucascade"){
+          var sv0 = vals[fd.id+"__sub"];
+          if(sv0!=null && String(sv0).trim()!=="") base.subj = String(sv0).trim();
+        }
+        return;
+      }
       var lb = normAr(fd.label||"");
       /* الحقول اللي ليها مكان معروف في ملف الطالب */
       if(!lvl && /^صف|الصف|مستوي|سنه دراسيه|مرحله/.test(lb)){ lvl = parseLevel(v)||0; if(lvl) return; }
@@ -17701,10 +17803,21 @@ function formRows(f){
       /* أي حاجة تانية = بيان إضافي بعنوانه زي ما هو */
       extra[fd.label] = String(v);
     });
-    return { key:sub.natId, name:sub.name, natId:sub.natId,
+    /* البيانات المطلوبة من ملف الطالب بتغلب اللي اتخمّن من العناوين */
+    if(base.phone) phone = toEnDigits(String(base.phone)).replace(/[^\d+]/g,"");
+    if(base.guard) guardian = cleanName(base.guard);
+    if(base.prev)  prev = String(base.prev).trim();
+    if(base.rel)   rel = /مسيح|قبط/.test(normAr(String(base.rel)))?"مسيحي":"مسلم";
+    if(base.edu)   edu = parseEdu(base.edu) || edu;
+    if(base.subj)  subj = String(base.subj).trim();
+    if(base.track){
+      var tid0 = trackIdFromText(base.track, defL || lvl) || parseWishTrack(base.track);
+      if(tid0) trk = tid0;
+    }
+    return { key:sub.natId, name:sub.name, natId:sub.natId, code:sub.code||"",
              level: defL || lvl || 0, phone:phone, edu:edu, guardian:guardian,
              bacTrack:trk, bacSubject:subj, prevClass:prev, religion:rel,
-             extra:extra, tag:fmtDate(sub.date), src:sub };
+             base:base, extra:extra, tag:fmtDate(sub.date), src:sub };
   });
 }
 /* ============================================================
@@ -18103,6 +18216,18 @@ function migrateRowToStudent(r, opt){
   var sec = isHome ? (r.sector || "reg") : (eduSector(edu) || r.sector || curSector());
   var lvl = num(opt.level,0) || num(r.level,0);
 
+  /* البيانات اللي الاستمارة طلبتها بالاسم من ملف الطالب — بتروح لأعمدتها */
+  function applyBase(st){
+    if(!r.base) return 0;
+    var k = 0, L2 = lvl || studentLevelOf(st);
+    ["gender","birth","gov","seat","cls","joined"].forEach(function(col){
+      var v = r.base[col];
+      if(v===undefined || v===null || String(v).trim()==="") return;
+      if(setBaseCol(st, col, v, L2)) k++;
+    });
+    return k;
+  }
+
   /* أي بيان في الاستمارة مالوش عمود — بنعمل له عمود */
   function applyExtra(st){
     if(!r.extra) return 0;
@@ -18155,6 +18280,7 @@ function migrateRowToStudent(r, opt){
       if(isHome) exists.classId = "";
       ch++;
     }
+    ch += applyBase(exists);
     ch += applyExtra(exists);
     /* تسكين تلقائي لو لسه من غير فصل */
     if(opt.autoPlace && !isHomeStudent(exists) && !classById(exists.classId)){
@@ -18177,6 +18303,7 @@ function migrateRowToStudent(r, opt){
   };
   setStudentLevel(s, lvl);
   stampSrc(s, opt.formId ? ("form:"+opt.formId) : "form");
+  applyBase(s);
   applyExtra(s);
   enrichStudent(s);
   DB.students.push(s);
@@ -18904,15 +19031,21 @@ function renderFormBuilder(){
       return '<div style="border:1px solid var(--line);border-radius:9px;padding:9px;margin-bottom:7px">'+
         '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+
         '<b style="flex:1;min-width:110px">'+esc(fd.label||"(بدون عنوان)")+'</b>'+
-        '<span class="tag">'+esc(fieldTypeName(fd.type))+(fd.required?" · إجباري":"")+'</span>'+
+        '<span class="tag'+((fd.type==="student"||fd.type==="stucascade")?" gold":"")+'">'+
+          ((fd.type==="student"||fd.type==="stucascade")
+            ? "من ملف الطالب" : esc(fieldTypeName(fd.type)))+
+          (fd.required?" · إجباري":"")+'</span>'+
         (used?'<span class="tag info">'+used+' إجابة</span>':'')+
         '<button class="btn ghost sm" data-act="fbUpField" data-i="'+i+'"'+(i===0?" disabled":"")+'>▲</button>'+
         '<button class="btn ghost sm" data-act="fbDownField" data-i="'+i+'"'+(i===d.fields.length-1?" disabled":"")+'>▼</button>'+
         '<button class="btn ghost sm" data-act="fbEditField" data-i="'+i+'">تعديل</button>'+
         '<button class="btn ghost sm" data-act="fbDelField" data-i="'+i+'" style="color:var(--danger)">حذف</button></div>'+
         (fd.type==="select"&&fd.options&&fd.options.length?'<small style="color:var(--muted)">خيارات: '+esc(fd.options.join("، "))+'</small>':'')+
-        (isCascadeField(fd)?'<small style="color:var(--muted)">'+esc(cascadeSummary(fd))+
-          ' <span class="tag">← '+esc(cascadeSubLabel(fd))+'</span></small>':'')+
+        ((fd.type==="student"||fd.type==="stucascade")
+          ? '<small style="color:var(--muted)">الإجابة هتترحّل لعمود «'+esc(fd.label)+'» في ملف الطالب'+
+            (fd.type==="stucascade"?' · ومعاه «'+esc(cascadeSubLabel(fd))+'»':'')+'</small>'
+          : (isCascadeField(fd)?'<small style="color:var(--muted)">'+esc(cascadeSummary(fd))+
+              ' <span class="tag">← '+esc(cascadeSubLabel(fd))+'</span></small>':''))+
         '</div>';
     }
     /* وضع التعديل — نفس الحقل بمعرّفه، فالإجابات القديمة بتفضل مربوطة */
@@ -18990,19 +19123,45 @@ function renderFormBuilder(){
             'placeholder="الطب وعلوم الحياة : الأحياء، الكيمياء&#10;الهندسة وعلوم الحاسب : الرياضيات، الفيزياء"></textarea>'+
           '<small style="color:var(--muted);font-size:11.5px">اكتب الاختيار الرئيسي، وبعده نقطتين، وبعدها الاختيارات الفرعية مفصولة بفاصلة. الطالب هيختار الرئيسي فالفرعية بتظهرله لوحدها.</small></label>'+
       '</div>'+
+      '<div id="fb_stuWrap" style="display:none">'+
+        '<label class="f"><span>أنهي بيان من ملف الطالب؟</span>'+
+          '<select id="fb_stu">'+
+            askableFor(num((UI.formDraft||{}).level,0)).map(function(a){
+              return '<option value="'+a.col+'">'+esc(a.label)+
+                (a.type==="cascade"?' (ومعاه الاختيارات الفرعية)':'')+'</option>';
+            }).join("")+
+          '</select>'+
+          '<small style="color:var(--muted);font-size:11.5px">هيظهر للطالب <b>فاضي</b> يملاه، '+
+          'وإجابته هترجع لعموده في ملف الطالب وقت الترحيل — من غير ما يتعمل عمود جديد. '+
+          (num((UI.formDraft||{}).level,0)
+            ? 'البيانات المعروضة بتاعة '+esc(levelName(num(UI.formDraft.level,0)))+'.'
+            : 'اختار صف الاستمارة الأول عشان تظهرلك بيانات الصف بالظبط.')+'</small></label>'+
+      '</div>'+
       '<div id="fb_trkNote" class="note" style="display:none">حقل جاهز: الطالب هيختار <b>مسار البكالوريا</b>، وبعدها <b>مادة التخصص</b> بتظهرله من مواد المسار اللي اختاره. القوائم بتتقرا من «الهيكل الدراسي» — لما تعدّل مواد التخصص هناك، الاستمارة بتتغيّر معاها لوحدها.</div>'+
       '<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="fb_req" style="width:18px;height:18px"><span>حقل إجباري</span></label>'+
       '<button class="btn ghost block" data-act="fbAddField">+ إضافة الحقل للاستمارة</button>'+
     '</div>'+
     '</div>'+mFoot("حفظ الاستمارة","saveForm"));
+  /* تغيير الصف بيغيّر البيانات المتاحة (الثاني مسارات · الثالث شعب · الأول مفيش) */
+  var lvSel = document.getElementById("fb_lvl");
+  if(lvSel) lvSel.onchange = function(){
+    if(UI.formDraft) UI.formDraft.level = num(lvSel.value,0);
+    var box = document.getElementById("fb_stu");
+    if(box) box.innerHTML = askableFor(num(lvSel.value,0)).map(function(a){
+      return '<option value="'+a.col+'">'+esc(a.label)+
+        (a.type==="cascade"?' (ومعاه الاختيارات الفرعية)':'')+'</option>';
+    }).join("");
+  };
   var sel = document.getElementById("fb_ft");
   if(sel) sel.onchange = function(){
     var w = document.getElementById("fb_optWrap");
     var c = document.getElementById("fb_cscWrap");
     var t = document.getElementById("fb_trkNote");
+    var u = document.getElementById("fb_stuWrap");
     if(w) w.style.display = sel.value==="select"  ? "block" : "none";
     if(c) c.style.display = sel.value==="cascade" ? "block" : "none";
     if(t) t.style.display = sel.value==="track"   ? "block" : "none";
+    if(u) u.style.display = sel.value==="student" ? "block" : "none";
   };
   /* وضع تعديل حقل متسلسل */
   var esel = document.getElementById("fe_t");
@@ -19158,8 +19317,29 @@ Object.assign(ACTS, {
         }
       }
     }
-    if(!label){ toast("اكتب اسم الحقل"); return; }
     var type = val("fb_ft") || "text";
+    /* بيان من ملف الطالب: العنوان والنوع بيتحددوا من البيان نفسه،
+       والمسار/الشعبة بيبقى متسلسل تلقائيًا (مسار ← مادة تخصص) */
+    if(type==="student"){
+      var lvF = num(d.level,0);
+      var col = val("fb_stu");
+      var ask = askableByCol(col, lvF);
+      if(!ask){ toast("اختار البيان المطلوب"); return; }
+      if(d.fields.some(function(x){ return (x.type==="student"||x.type==="stucascade") && x.col===col; })){
+        toast("البيان ده مطلوب في الاستمارة بالفعل"); return;
+      }
+      var fdS = { id:uid("fd"), col:col, label:ask.label, level:lvF,
+        type: ask.type==="cascade" ? "stucascade" : "student",
+        required: !!(document.getElementById("fb_req") && document.getElementById("fb_req").checked) };
+      if(fdS.type==="stucascade" && !levelTrackPairs(lvF).length){
+        toast(lvF ? "مفيش "+trackWord(lvF)+" في الهيكل الدراسي للصف ده"
+                  : "اختار صف الاستمارة الأول"); return;
+      }
+      d.fields.push(fdS);
+      renderFormBuilder();
+      return;
+    }
+    if(!label){ toast("اكتب اسم الحقل"); return; }
     var fd = { id:uid("fd"), label:label, type:type,
       required: !!(document.getElementById("fb_req") && document.getElementById("fb_req").checked) };
     if(type==="select"){
