@@ -1881,7 +1881,7 @@ function renderSearchResults(q){
   if(!box) return;
   if(!String(q||"").trim()){
     box.innerHTML = '<div class="empty"><b>اكتب حرفين على الأقل</b>'+
-      '<p>البحث بيلف على الطلاب والمعلمين والفصول في القسمين — نظامي وخدمات.</p></div>';
+      '<p>البحث بيلف على الطلاب والمعلمين والفصول في القسمين — انتظام وخدمات.</p></div>';
     return;
   }
   var res = globalSearch(q);
@@ -3229,7 +3229,7 @@ function modalExtraFields(scope){
   openModal(mHead(title)+
     '<div class="mb">'+
     '<div class="note">أي بيان تضيفه هنا هيظهر في تعديل '+(scope==="teacher"?"المعلمين":"الطلاب")+
-    ' (نظامي وخدمات ومنازل)، وفي ملف كل واحد، وفي التصدير.'+
+    ' (انتظام وخدمات ومنازل)، وفي ملف كل واحد، وفي التصدير.'+
     (scope==="student"? ' وتقدر تحدد <b>يخص أنهي صفوف</b> — زي «الشعبة» للصف الثالث بس.' : '')+'</div>'+
     (rows || '<div class="empty"><b>مفيش بيانات إضافية</b></div>')+
     '<div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">'+
@@ -3730,7 +3730,7 @@ function setupSteps(){
       desc:"اسم المدرسة والإدارة والمديرية والعام الدراسي — بيظهروا في كل كشف وورقة.",
       act:"go_settings", btn:"الإعدادات" },
     { id:2, title:"الفصول", done: cls>0, n:cls,
-      desc:"أنشئ فصول كل صف في قسمه (نظامي / خدمات) بمساراتها.",
+      desc:"أنشئ فصول كل صف في قسمه (انتظام / خدمات) بمساراتها.",
       act:"goClasses", btn:"الفصول" },
     { id:3, title:"الهيكل الدراسي", done: cls>0 && subs===cls, n:subs+"/"+cls,
       desc:"راجع مواد كل صف وحصصها، وبعدين ولّد المواد لكل فصل.",
@@ -3739,7 +3739,7 @@ function setupSteps(){
       desc:"ارفع كشف العاملين، وتأكد إن مادة التدريس مكتوبة لكل معلم — عليها بيتوقف التوزيع.",
       act:"goTeachers", btn:"المعلمون" },
     { id:5, title:"الطلاب", done: studs>0, n:studs,
-      desc:"ارفع الطلاب بعمود «نوعية التعليم» عشان يتوزّعوا على نظامي وخدمات ومنازل لوحدهم.",
+      desc:"ارفع الطلاب بعمود «نوعية التعليم» عشان يتوزّعوا على انتظام وخدمات ومنازل لوحدهم.",
       act:"goStudents", btn:"الطلاب" },
     { id:6, title:"الأنشطة", done: !actUnassigned("activity").length && !!myStudents().length,
       desc:"وزّع الطلاب على الأنشطة وحدّد معلم كل نشاط.",
@@ -6694,7 +6694,7 @@ function viewStudents(){
     if(mis.length){
       h += '<div class="note bad noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
         '<span style="flex:1;min-width:200px"><b>'+mis.length+' طالب في القسم الغلط</b> — نوعيتهم '+
-        'مش مطابقة لقسم فصلهم (زي طالب خدمات متسكّن في فصل نظامي)، علشان كده بيظهروا في الكشف الغلط.</span>'+
+        'مش مطابقة لقسم فصلهم (زي طالب خدمات متسكّن في فصل انتظام)، علشان كده بيظهروا في الكشف الغلط.</span>'+
         '<button class="btn seal sm" data-act="fixSectors">تصحيح التسكين</button></div>';
     }
   }
@@ -8358,7 +8358,7 @@ function viewSettings(){
     '<button class="btn" data-act="saveLevels">حفظ نظام الصفوف والسعة</button></div></div>';
 
   h += '<div class="card"><div class="hd"><h3>توزيع درجات المادة — الثانوية العامة</h3></div><div class="bd">'+
-    '<div class="note warn">ده بيتطبّق على <b>الصف الأول الثانوي</b> (بالنظامين) و<b>الثاني والثالث الثانوية العامة</b> فقط. '+
+    '<div class="note warn">ده بيتطبّق على <b>الصف الأول الثانوي</b> (بنظام البكالوريا والثانوية العامة) و<b>الثاني والثالث الثانوية العامة</b> فقط. '+
     'فصول البكالوريا في الصفين الثاني والثالث ليها نظام تاني بالكامل في البطاقة اللي تحت.</div>'+
     '<div class="note">التوزيع المعتمد من الوزارة: '+
     '<b>٣٠٪</b> امتحان نهاية الفصل، <b>١٥٪</b> اختبار الشهر الأول، <b>١٥٪</b> اختبار الشهر الثاني، '+
@@ -12194,7 +12194,7 @@ var IMPORT_SCHEMAS = {
   },
   students:{
     title:"استيراد الطلاب",
-    hint:"محتاج عمود الاسم، ومعاه <b>الرقم القومي</b> أو <b>كود الطالب</b> — أي واحد فيهم بيمنع التكرار ويربط الطالب بالقاعدة. لو الطلاب لسه مالهمش أرقام قومية (زي الصف الأول)، ارفعهم بكود الطالب وهو اللي هيبقى المفتاح. لو الملف فيه عمود «نوعية التعليم» (نظامي/خدمات/منازل) البرنامج هيوزّعهم على أقسامهم لوحده، والمنازل مش هيتسكّنوا على فصول.",
+    hint:"محتاج عمود الاسم، ومعاه <b>الرقم القومي</b> أو <b>كود الطالب</b> — أي واحد فيهم بيمنع التكرار ويربط الطالب بالقاعدة. لو الطلاب لسه مالهمش أرقام قومية (زي الصف الأول)، ارفعهم بكود الطالب وهو اللي هيبقى المفتاح. لو الملف فيه عمود «نوعية التعليم» (انتظام/خدمات/منازل) البرنامج هيوزّعهم على أقسامهم لوحده، والمنازل مش هيتسكّنوا على فصول.",
     fields:[
       {k:"name", label:"اسم الطالب", req:true, multi:true, al:["اسم الطالب","الاسم","اسم","الطالب","اسم رباعي","الاسم رباعي","student","name","اسم التلميذ"]},
       {k:"code", label:"كود الطالب", al:["كود الطالب","الكود","كود","رقم الطالب","كود التلميذ","رقم الملف","code","student code","id"]},
@@ -12205,7 +12205,7 @@ var IMPORT_SCHEMAS = {
       {k:"religion", label:"الديانة", al:["الديانه","الديانة","دين","religion"]},
       {k:"cls", label:"الفصل", al:["الفصل","فصل","الشعبه","الشعبة","class","section","المجموعه"]},
       {k:"level", label:"الصف", al:["الصف","السنه","السنة","grade","level","المرحله"]},
-      {k:"edu", label:"نوعية التعليم (نظامي/خدمات/منازل)", al:["نوعيه التعليم","نوعية التعليم","النوعيه","النوعية","النظام","نظام الدراسه","نظام الدراسة","القسم","الفتره","الفترة","نوع التعليم","edu","type"]},
+      {k:"edu", label:"نوعية التعليم (انتظام/خدمات/منازل)", al:["نوعيه التعليم","نوعية التعليم","النوعيه","النوعية","النظام","نظام الدراسه","نظام الدراسة","القسم","الفتره","الفترة","نوع التعليم","edu","type"]},
       {k:"track", label:"المسار", al:["المسار","مسار","الشعبه العلميه","التخصص","track"]},
       {k:"subject", label:"مادة التخصص", al:["ماده التخصص","مادة التخصص","الماده","المادة","subject"]},
       {k:"notes", label:"ملاحظات", al:["ملاحظات","ملاحظه","بيان","notes","remark"]}
@@ -12633,8 +12633,8 @@ function impResult(r){
   MODAL.innerHTML = mHead("نتيجة الاستيراد") + h;
 }
 
-/* البحث عن فصل بالاسم — لازم يراعي القسم، لأن «٢/٤ نظامي» غير «٢/٤ خدمات».
-   من غير كده طالب الخدمات بيتحط في فصل نظامي ويظهر في الكشف الغلط. */
+/* البحث عن فصل بالاسم — لازم يراعي القسم، لأن «٢/٤ انتظام» غير «٢/٤ خدمات».
+   من غير كده طالب الخدمات بيتحط في فصل انتظام ويظهر في الكشف الغلط. */
 function findClassByName(name, sector){
   if(!name) return null;
   var n = normAr(name);
@@ -12880,7 +12880,7 @@ function impStudents(recs){
   if(newCls) notes.push("اتعمل <b>"+newCls+"</b> فصل جديد من أسماء الفصول اللي في الملف — راجعها من شاشة الفصول.");
   if(r.dup)  notes.push("<b>"+r.dup+"</b> صف اتخطّى لأن رقمه القومي متكرر جوه نفس الملف.");
   var dist = [];
-  if(r.reg)  dist.push(r.reg+" نظامي");
+  if(r.reg)  dist.push(r.reg+" انتظام");
   if(r.srv)  dist.push(r.srv+" خدمات");
   if(r.home) dist.push(r.home+" منازل");
   if(dist.length) notes.push("التوزيع حسب النوعية: <b>"+dist.join(" · ")+"</b>.");
@@ -14034,7 +14034,7 @@ function viewStaffOne(id){
     var asg = assignsOfTeacher(s.teacherId);
     h += '<div class="card"><div class="hd"><h3>النصاب والتكليفات</h3></div><div class="bd">'+
       '<div class="stats">'+
-      stat("النصاب (نظامي)", teacherLoad(s.teacherId), "حصة","acc")+
+      stat("النصاب (انتظام)", teacherLoad(s.teacherId), "حصة","acc")+
       stat("حصص هذه الفترة", per.length, "حصة","")+
       stat("التكليفات", asg.length, "فصل ومادة","")+
       stat("الفصول", (function(){var u={};asg.forEach(function(a){u[a.classId]=1;});return Object.keys(u).length;})(), "فصل","")+
@@ -14148,7 +14148,7 @@ function viewStaffStats(){
   /* الأنصبة */
   h += '<div class="card"><div class="hd"><h3>أنصبة المعلمين</h3></div><div class="bd flush"><div class="tbl-wrap">'+
     '<table class="tbl"><thead><tr><th>م</th><th>المعلم</th><th>الوظيفة</th><th>الفصول</th>'+
-    '<th>النصاب (نظامي)</th><th>غياب</th><th>إجازات</th><th>نسبة الحضور</th></tr></thead><tbody>';
+    '<th>النصاب (انتظام)</th><th>غياب</th><th>إجازات</th><th>نسبة الحضور</th></tr></thead><tbody>';
   var teachers = list.filter(function(s){ return s.kind==="teacher"; })
     .sort(function(a,b){ return teacherLoad(b.teacherId) - teacherLoad(a.teacherId); });
   if(!teachers.length) h += '<tr><td colspan="8"><div class="empty"><b>مفيش معلمين</b></div></td></tr>';
@@ -15914,22 +15914,22 @@ function holidayBlock(ds, extra){
     '</div></div></div>';
 }
 /* ============================================================
-   القسمان: النظامي والخدمات — فترتان منفصلتان
+   القسمان: الانتظام والخدمات — فترتان منفصلتان
    ------------------------------------------------------------
-   الخدمات فترة تانية بعد النظامي، وليها:
+   الخدمات فترة تانية بعد الانتظام، وليها:
    • توقيتاتها (الطابور، بداية الحصص، عددها، نهاية اليوم)
    • إشرافها المستقل (مشرف عام ومواقع)
    • طاقمها (ممكن مدير أو وكيل أو مدرسين مختلفين)
    • حضور عاملين منفصل لكل فترة
-   ونصاب المعلم بيتحسب على النظامي بس، حتى لو بيدرّس في الاتنين.
+   ونصاب المعلم بيتحسب على الانتظام بس، حتى لو بيدرّس في الاتنين.
    ============================================================ */
 
 var SECTORS = [
-  {id:"reg", name:"نظامي", full:"الفترة الأولى — النظامي", av:"ن"},
+  {id:"reg", name:"انتظام", full:"الفترة الأولى — الانتظام", av:"ن"},
   {id:"srv", name:"خدمات", full:"الفترة الثانية — الخدمات", av:"خ"}
 ];
-function sectorName(id){ return id==="srv" ? "خدمات" : "نظامي"; }
-function sectorFull(id){ return id==="srv" ? "الفترة الثانية — الخدمات" : "الفترة الأولى — النظامي"; }
+function sectorName(id){ return id==="srv" ? "خدمات" : "انتظام"; }
+function sectorFull(id){ return id==="srv" ? "الفترة الثانية — الخدمات" : "الفترة الأولى — الانتظام"; }
 function curSector(){ return UI.sector==="srv" ? "srv" : "reg"; }
 function classSector(c){ return (c && c.sector==="srv") ? "srv" : "reg"; }
 function inSector(c){ return classSector(c) === curSector(); }
@@ -16033,7 +16033,7 @@ function userSectors(u){
 }
 function userInSector(u, sec){ return userSectors(u).indexOf(sec) >= 0; }
 
-/* ---------- النصاب: على النظامي بس ---------- */
+/* ---------- النصاب: على الانتظام بس ---------- */
 function teacherLoad(tid){
   return DB.schedule.filter(function(s){
     return s.teacherId===tid && classSector(classById(s.classId))==="reg";
@@ -16171,7 +16171,7 @@ function viewTimes(){
   var r = secCfg("reg"), s = secCfg("srv");
   if(toMin(s.assembly)!==null && toMin(r.end)!==null && toMin(s.assembly) < toMin(r.end)){
     h += '<div class="note bad"><b>تعارض:</b> طابور الخدمات ('+esc(s.assembly)+
-      ') قبل نهاية اليوم النظامي ('+esc(r.end)+'). راجع التوقيتات.</div>';
+      ') قبل نهاية اليوم الدراسي ('+esc(r.end)+'). راجع التوقيتات.</div>';
   }
   h += '<div class="note">التوقيتات دي بتظهر في لوحة اليوم وجداول الحصص والتقرير اليومي، '+
     'وعدد الحصص بيحدد شكل الجدول لكل فترة.</div>';
@@ -16254,7 +16254,7 @@ function wishTracks(){
 }
 /* نوعية التعليم — بتحدد الطالب هيظهر في أنهي قسم */
 var EDU_TYPES = [
-  {id:"reg",  name:"نظامي", sector:"reg", note:"الفترة الأولى — دراسة منتظمة"},
+  {id:"reg",  name:"انتظام", sector:"reg", note:"الفترة الأولى — دراسة منتظمة"},
   {id:"srv",  name:"خدمات", sector:"srv", note:"الفترة الثانية — فصول الخدمات"},
   {id:"home", name:"منازل", sector:"reg", note:"انتساب — امتحانات فقط"}
 ];
@@ -16610,7 +16610,7 @@ function formDoneHTML(o){
    ============================================================ */
 /* ============================================================
    جمهور الاستمارة: موجهة لأنهي نوعيات تعليم؟
-   الافتراضي: الكل (نظامي + خدمات + منازل)
+   الافتراضي: الكل (انتظام + خدمات + منازل)
    ============================================================ */
 var EDU_IDS = ["reg","srv","home"];
 function formAudience(f){
@@ -17314,7 +17314,7 @@ var STU_ASKABLE = [
   { col:"gov",    label:"محافظة الميلاد", type:"text" },
   { col:"prev",   label:"الفصل السابق",   type:"text" },
   { col:"cls",    label:"الفصل",          type:"text" },
-  { col:"edu",    label:"نوعية التعليم",  type:"select", options:["نظامي","خدمات","منازل"] },
+  { col:"edu",    label:"نوعية التعليم",  type:"select", options:["انتظام","خدمات","منازل"] },
   { col:"seat",   label:"رقم الجلوس",     type:"text", levels:[3] },
   { col:"track",  label:"__TRACK__",      type:"cascade", levels:[2,3] },
   { col:"joined", label:"تاريخ القيد",    type:"date" }
@@ -18689,7 +18689,7 @@ function modalFormMigrate(fid, mode){
   var cnt = { reg:0, srv:0, home:0 };
   rows.forEach(function(r){ var e = r.edu||"reg"; if(cnt[e]!==undefined) cnt[e]++; else cnt.reg++; });
   var eduBreak = [];
-  if(cnt.reg)  eduBreak.push(cnt.reg+" نظامي");
+  if(cnt.reg)  eduBreak.push(cnt.reg+" انتظام");
   if(cnt.srv)  eduBreak.push(cnt.srv+" خدمات");
   if(cnt.home) eduBreak.push(cnt.home+" منازل");
   eduBreak = eduBreak.join(" · ") || "—";
@@ -18893,7 +18893,7 @@ function doFormMigrate(el, mode){
   UI.fmDone = false;
   var before = xfList("student").length;
   markUndo("ترحيل من استمارة");
-  /* نوعية كل طالب هي اللي تحدد قسمه، والتسكين تلقائي للنظامي والخدمات */
+  /* نوعية كل طالب هي اللي تحدد قسمه، والتسكين تلقائي للانتظام والخدمات */
   var r = migrateFormRows(f, picked, { level:lvl });
   setLastMig(fid);                 /* عشان اللي بعدها يبقى «جديد» */
   var newCols = xfList("student").length - before;
