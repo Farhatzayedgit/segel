@@ -371,7 +371,6 @@ table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
     </div>
     <div class="spacer"></div>
     <button class="iconbtn" id="btnSearch" title="بحث سريع (اضغط /)">بحث</button>
-    <button class="iconbtn" id="btnSector" title="تبديل القسم (نظامي / خدمات)" data-act="switchSector">⇄</button>
     <button class="iconbtn" id="btnPrint" title="طباعة الشاشة">⎙</button>
     <button class="iconbtn" id="btnOut" title="تسجيل الخروج">⏻</button>
   </header>
@@ -1477,7 +1476,6 @@ var NAV = {
 
     ["_g","الطلاب"],
     ["students","الطلاب","students"],
-    ["home","المنازل","home"],
     ["absence","غياب الطلاب","absence"],
     ["eligib","الأهلية للامتحان","attend"],
     ["wishes","استمارات الطلاب","grades"],
@@ -1517,7 +1515,6 @@ var NAV = {
 
     ["_g","الطلاب"],
     ["students","الطلاب","students"],
-    ["home","المنازل","home"],
     ["wishes","استمارات الطلاب","grades"],
     ["eligib","الأهلية للامتحان","attend"],
     ["parents","أولياء الأمور","forms"],
@@ -1782,7 +1779,7 @@ function render(){
     case "insight":    h = viewInsight(); break;
     case "eligib":     h = viewEligibility(); break;
     case "oplog":      h = viewOpLog(); break;
-    case "home":       h = viewHome(); break;
+    case "home":       UI.stuCat = "home"; UI.tab = "students"; h = viewStudents(); break;
     case "students":   h = UI.sub&&UI.sub.student ? viewStudent(UI.sub.student) : viewStudents(); break;
     case "classes":    h = UI.sub&&UI.sub.cls ? viewClass(UI.sub.cls) : viewClasses(); break;
     case "teachers":   h = UI.sub&&UI.sub.teacher ? viewTeacher(UI.sub.teacher) : viewTeachers(); break;
@@ -4658,7 +4655,17 @@ function stBtn(id, label, cur){
 function viewScheduleHub(){
   var can = roleIs("deputy") || roleIs("manager") || roleIs("admin");
   var t = schedTab();
-  var h = '<div class="chips noprint">'+
+  /* الجدول منفصل لكل قسم — الخدمات ليها جدولها */
+  var sec = UI.schedSec || "reg";
+  UI.sector = sec;
+  var h = '<div class="chips noprint" style="margin-bottom:10px">'+
+    ["reg","srv"].map(function(x){
+      var n = DB.classes.filter(function(c){ return classSector(c)===x; }).length;
+      return '<button class="'+(sec===x?"on":"")+'" data-act="schedSec" data-v="'+x+'">'+
+        (x==="reg"?"جدول الانتظام":"جدول الخدمات")+' ('+n+' فصل)</button>';
+    }).join("")+'</div>'+
+    (sec==="srv"? '<div class="note">جدول الخدمات منفصل تمامًا عن الانتظام — فصوله ومعلميه ليهم كيانهم الخاص.</div>' : '')+
+    '<div class="chips noprint">'+
     stBtn("grid","جداول الفصول",t)+
     stBtn("tch","جداول المعلمين",t)+
     (can? stBtn("up","رفع الجدول",t) : "")+
@@ -5044,26 +5051,48 @@ function viewMySchedule(){
   });
   return h + '</tbody></table></div></div></div>';
 }
+/* ============================================================
+   فئة الطلاب المعروضة: انتظام · خدمات · منازل
+   القسم مبقاش بيتبدّل من الهيدر — الفئة هي اللي بتحدد كل حاجة.
+   ============================================================ */
+function stuCat(){ return UI.stuCat || "reg"; }
+function catStudents(cat){
+  cat = cat || stuCat();
+  return DB.students.filter(function(s){
+    if(s.status==="left") return false;
+    if(cat==="home") return isHomeStudent(s);
+    if(cat==="srv")  return (s.edu==="srv") && !isHomeStudent(s);
+    return (!s.edu || s.edu==="reg") && !isHomeStudent(s);
+  });
+}
+function catName(cat){
+  return cat==="home" ? "طلاب المنازل" : (cat==="srv" ? "طلاب الخدمات" : "طلاب الانتظام");
+}
+/* فصول الفئة — الخدمات منفصلة تمامًا عن الانتظام */
+function catClasses(cat){
+  cat = cat || stuCat();
+  if(cat==="home") return [];
+  var want = (cat==="srv") ? "srv" : "reg";
+  return DB.classes.filter(function(c){ return classSector(c)===want; });
+}
 function viewStudents(){
   stuDefaultsOnce();
+  /* الفئة بتحدّد القسم عشان كل الدوال القديمة تشتغل صح */
+  var _cat = stuCat();
+  UI.sector = (_cat==="srv") ? "srv" : "reg";
   var _lv = num(UI.stuLevel, 0);
   var f = UI.filters;
-  var mine = myClassIds();
-  /* الوعاء الكامل لطلاب القسم الحالي — الفلاتر بتتحسب منه */
-  var pool = DB.students.filter(function(s){
-    if(s.status==="left") return false;
-    if(isHomeStudent(s)) return false;              /* المنازل ليهم تبويب لوحدهم */
-    var c = classById(s.classId);
-    if(!c) return studentSector(s)===curSector();   /* غير مسكّن: حسب قسمه */
-    return !!mine[s.classId];                       /* مسكّن: لازم يكون في القسم الحالي */
-  });
+  /* الوعاء: طلاب الفئة المختارة بس — الخدمات منفصلة تمامًا */
+  var pool = catStudents(_cat);
   var list = stuApply(pool, f).sort(function(a,b){ return sortAr(a.name,b.name); });
 
   var can = UI.user.role!=="student";
   var g0 = gate("classes");
   if(g0) return pageHd("الطلاب","")+g0;
-  var unassigned = (roleIs("deputy")) ? unassignedStudents() : [];
-  var sub = myStudents().length+" طالب في قسم "+sectorName(curSector())+
+  var _all = catStudents(_cat);
+  var unassigned = (_cat!=="home" && roleIs("deputy"))
+    ? _all.filter(function(x){ return !classById(x.classId); }) : [];
+  var sub = _all.length+" "+catName(_cat)+
     (unassigned.length ? " · "+unassigned.length+" غير مسكّن" : "");
   var h = pageHd("الطلاب", sub,
     (roleIs("deputy")?'<button class="btn" data-act="addStudent">+ إضافة طالب</button>'+
@@ -5102,8 +5131,26 @@ function viewStudents(){
       '</div>';
   }
 
-  h += stuFilterBar(pool, f, ["lvl","track","sub","cls","edu"]);
+  /* الفلاتر: المنازل مالهاش فصول، والخدمات نوعيتها معروفة */
+  h += stuFilterBar(pool, f,
+    _cat==="home" ? ["lvl","track","sub"]
+    : (_cat==="srv" ? ["lvl","track","sub","cls"]
+    : ["lvl","track","sub","cls","edu"]));
 
+  /* شريط الفئات — انتظام · خدمات · منازل */
+  h += '<div class="chips noprint" style="margin-bottom:10px">'+
+    ["reg","srv","home"].map(function(ct){
+      var n = catStudents(ct).length;
+      return '<button class="'+(_cat===ct?"on":"")+'" data-act="stuCat" data-c="'+ct+'">'+
+        esc(catName(ct))+' ('+n+')</button>';
+    }).join("")+'</div>';
+  if(_cat==="home"){
+    h += '<div class="note">طلاب المنازل مالهمش فصول ولا أعمال سنة ولا غياب — '+
+      'البيانات هنا للعرض والتعديل والطباعة بس.</div>';
+  }else if(_cat==="srv"){
+    h += '<div class="note">قسم الخدمات منفصل تمامًا عن الانتظام — فصوله وطلابه ليهم كيانهم الخاص، '+
+      'حتى لو الاسم متشابه.</div>';
+  }
   /* تبويبات الصفوف — كل صف وأعمدته */
   h += '<div class="chips noprint">'+
     '<button class="'+(!_lv?"on":"")+'" data-act="stuLvl" data-l="0">كل الصفوف ('+list.length+')</button>'+
@@ -5663,63 +5710,10 @@ function classAttendRate(cid){
 /* ============================================================
    المنـازل — طلاب الانتساب (امتحانات فقط: مفيش فصول ولا أعمال سنة)
    ============================================================ */
+/* المنازل بقت فئة جوّه كشف الطلاب — بنوجّه لنفس الشاشة */
 function viewHome(){
-  var f = UI.filters;
-  var all = homeStudents();
-  var byLvl = {};
-  all.forEach(function(s){ var L=num(studentLevelOf(s),0); byLvl[L]=(byLvl[L]||0)+1; });
-
-  var list = stuApply(all, f);
-
-  var isDep = roleIs("deputy") || roleIs("manager");
-  var h = pageHd("المنازل", all.length+" طالب منازل في قسم "+sectorName(curSector())+" — انتساب، امتحانات فقط",
-    (isDep?'<button class="btn" data-act="addHome">+ إضافة طالب منازل</button>'+
-      '<button class="btn ghost" data-act="homeFromForm" style="margin-right:6px">⇪ ترحيل من استمارة</button>'+
-      '<button class="btn ghost sm" data-act="xfManage" data-s="student" style="margin-right:6px">+ بيان إضافي</button>'+
-      impBtn("home",{},"استيراد ملف"):''));
-
-  h += '<div class="note noprint" style="margin-bottom:10px">طلاب المنازل مالهمش فصول ولا أعمال سنة ولا غياب — الشاشة دي لعرض بياناتهم وتصديرها بس.</div>';
-
-  h += '<div class="stats" style="margin-bottom:12px">'+
-    stat("إجمالي المنازل", all.length, "في "+sectorName(curSector()), "acc")+
-    LEVELS.map(function(l){
-      return stat(l.name, byLvl[l.id]||0, "طالب", (byLvl[l.id]?"acc-g":""));
-    }).join("")+'</div>';
-
-  h += stuFilterBar(all, f, ["lvl","track","sub"]);
-
-  var pgH = pageSlice(list, "home");
-  h += printHd("كشف طلاب المنازل — انتساب");
-  h += '<div class="card"><div class="hd"><h3>النتيجة: '+list.length+' طالب</h3>'+
-    exportBtns(true)+'</div>'+
-    '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
-    '<th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الصف</th><th>تاريخ الميلاد</th>'+
-    '<th>النوع</th><th>المحافظة</th><th>ولي الأمر</th><th>الهاتف</th>'+
-    xfList("student").map(function(f){ return '<th>'+esc(f.label)+'</th>'; }).join("")+
-    (isDep?'<th class="noprint"></th>':'')+'</tr></thead><tbody>';
-  if(!list.length){
-    h += '<tr><td colspan="'+((isDep?10:9)+xfList("student").length)+'"><div class="empty"><div class="big">'+icon("students",34)+'</div><b>مفيش طلاب منازل</b>'+
-      '<p>'+(all.length?'جرّب تغيّر الفلاتر.':'ضيف طالب، أو ارفع ملف إكسيل/PDF، أو رحّل من استمارة سجّلها الطلاب.')+'</p></div></td></tr>';
-  }
-  pgH.rows.forEach(function(s,i){
-    var info = parseNationalId(s.natId);
-    h += '<tr>'+
-      '<td class="rownum">'+(pgH.from+i)+'</td>'+
-      '<td><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
-      '<td class="num" style="direction:ltr;text-align:right">'+esc(s.natId||"—")+'</td>'+
-      '<td>'+esc(studentLevelOf(s)?levelName(studentLevelOf(s)):"—")+'</td>'+
-      '<td class="num">'+esc(s.birth?fmtDate(s.birth):"—")+'</td>'+
-      '<td>'+esc(s.gender||(info?info.gender:"—"))+'</td>'+
-      '<td>'+esc(s.birthGov||(info?info.govName:"—"))+'</td>'+
-      '<td>'+esc(s.guardian||"—")+'</td>'+
-      '<td class="num" style="direction:ltr;text-align:right">'+esc(s.phone||"—")+'</td>'+
-      xfList("student").map(function(f){ return '<td><small>'+esc(xfGet(s,f.id)||"—")+'</small></td>'; }).join("")+
-      (isDep?'<td class="noprint"><button class="btn ghost sm" data-act="editHome" data-id="'+s.id+'">تعديل</button>'+
-        '<button class="btn ghost sm" data-act="delHome" data-id="'+s.id+'" style="color:var(--danger);margin-right:4px">حذف</button></td>':'')+
-      '</tr>';
-  });
-  h += '</tbody></table></div>'+pageBar(pgH,"home")+'</div></div>';
-  return h;
+  UI.stuCat = "home";
+  return viewStudents();
 }
 function modalHome(id){
   var s = id ? studentById(id) : null;
@@ -8254,6 +8248,8 @@ var ACTS = {
   gsOpen: function(el){ gsOpen(el.dataset.kind, el.dataset.id); },
   goPage: function(el){ setPage(el.dataset.k, num(el.dataset.p,1)); render(); },
   /* ---------- الجدول ---------- */
+  schedSec:   function(el){ UI.schedSec = el.dataset.v; UI.sector = el.dataset.v;
+                            UI.filters.schedCls = ""; UI.sub = {st:"grid"}; render(); },
   schTab:     function(el){ UI.sub = { st: el.dataset.t }; UI.schPrev = null; render(); },
   mySchTab:   function(el){ UI.mySchTab = el.dataset.t; render(); },
   openAtt:    function(el){ UI.tab="myclasses"; UI.sub={ a: el.dataset.id, t:"att" }; render(); },
@@ -8507,6 +8503,12 @@ var ACTS = {
     var st = sortState(el.dataset.t);
     st.k = ""; st.dir = 1;
     save(); render();
+  },
+  stuCat: function(el){
+    UI.stuCat = el.dataset.c;
+    UI.sector = (UI.stuCat==="srv") ? "srv" : "reg";
+    UI.stuLevel = 0; UI.stuMiss = null; UI.filters = {};
+    setPage("stu",1); render();
   },
   stuLvl: function(el){ UI.stuLevel = num(el.dataset.l,0); UI.stuMiss = null; setPage("stu",1); render(); },
   goStudents: function(){ UI.tab="students"; UI.sub=null; UI.stuLevel=0; UI.stuMiss=null; render(); },
@@ -12374,20 +12376,15 @@ function firstTabOf(role){
 }
 function doLogin(){
   if(lockLeft() > 0) return;
-  if(UI.sector!=="reg" && UI.sector!=="srv"){ toast("اختار القسم الأول"); return; }
+  UI.sector = "reg";        /* مفيش اختيار قسم عند الدخول — الفئات جوّه */
   var el = document.getElementById("pin");
   var v = normPin(el ? el.value : "");
   if(!v){ toast("اكتب كلمة السر"); return; }
 
-  var u = null, wrongSector = null;
+  /* الدخول بكلمة السر بس — مفيش أقسام */
+  var u = null;
   for(var i=0;i<DB.users.length;i++){
-    if(String(DB.users[i].pin) !== v) continue;
-    if(userInSector(DB.users[i], curSector())){ u = DB.users[i]; break; }
-    wrongSector = DB.users[i];
-  }
-  if(!u && wrongSector){
-    toast("حسابك مسجّل على فترة "+sectorName(userSectors(wrongSector)[0])+" — اختارها من فوق");
-    return;
+    if(String(DB.users[i].pin) === v){ u = DB.users[i]; break; }
   }
   if(!u){
     setTries(tries().n + 1);
