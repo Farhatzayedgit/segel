@@ -6762,14 +6762,20 @@ function viewStudents(){
         (ct==="none"?' style="border-color:var(--danger);color:var(--danger)"':'')+'>'+
         esc(catName(ct))+' ('+n+')</button>';
     }).join("")+'</div>';
-  if(roleIs("deputy") && _cat!=="none" && list.length){
-    h += '<div class="note noprint" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
-      '<span style="flex:1;min-width:200px;font-size:12.5px">لو الطلاب دول اتحطّوا في الفئة دي بالغلط '+
-      '(استيراد قديم من غير عمود نوعية التعليم)، ارجّعهم «غير محدد» وارفع الملف تاني بالعمود الصح.</span>'+
-      '<button class="btn ghost sm" data-act="resetEdu" style="color:var(--danger)">↺ إرجاع النوعية «غير محدد»</button>'+
-      '</div>';
-  }
   if(_cat==="none"){
+    /* الاسترجاع الأول — أسهل وأدق من التحديد اليدوي */
+    var recPool = DB.students.filter(function(s){
+      return s.status!=="left" && eduUndefined(s) &&
+             (s.sector==="reg" || s.sector==="srv"); });
+    if(roleIs("deputy") && recPool.length){
+      var rReg = recPool.filter(function(s){ return s.sector==="reg"; }).length;
+      var rSrv = recPool.filter(function(s){ return s.sector==="srv"; }).length;
+      h += '<div class="note ok" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
+        '<span style="flex:1;min-width:220px"><b>ينفع نسترجع نوعية '+recPool.length+' طالب</b> — '+
+        'القسم بتاعهم لسه محفوظ على سجلاتهم: <b>'+rReg+'</b> انتظام · <b>'+rSrv+'</b> خدمات. '+
+        'الاسترجاع بيرجّع النوعية من القسم ده من غير ما يلمس أي بيان تاني.</span>'+
+        '<button class="btn seal" data-act="recoverEdu">↻ استرجاع النوعية</button></div>';
+    }
     h += '<div class="note bad"><b>الطلاب دول نوعية تعليمهم مش محددة.</b> '+
       'يعني ملف الاستيراد ما كانش فيه عمود «نوعية التعليم»، أو قيمه ما كانتش مفهومة. '+
       '<b>البرنامج ما حطّهمش انتظام عشان ما يخربش بياناتك.</b><br>'+
@@ -10761,25 +10767,38 @@ var ACTS = {
     UI.stuLevel = 0; UI.stuMiss = null; UI.filters = {};
     setPage("stu",1); render();
   },
-  resetEdu: function(){
-    /* المعروضين دلوقتي بس — بعد الفئة والفلاتر والصف */
-    var pool = stuApply(catStudents(stuCat()), UI.filters);
-    var lv = num(UI.stuLevel,0);
-    if(lv) pool = pool.filter(function(x){ return studentLevelOf(x)===lv; });
-    if(!pool.length){ toast("مفيش طلاب معروضين"); return; }
-    if(!confirm("إرجاع نوعية التعليم لـ "+pool.length+" طالب لحالة «غير محدد»؟\n\n"+
-      "دول الطلاب المعروضين دلوقتي بالفلاتر الحالية.\n"+
-      "بياناتهم التانية كلها هتفضل زي ما هي — النوعية بس هي اللي هتترجّع.\n"+
-      "بعدها ارفع ملف الإكسيل تاني وفيه عمود «نوعية التعليم» وهيتحدّثوا بالمفتاح من غير تكرار.\n\n"+
-      "معاك «تراجع» بعد التنفيذ.")) return;
-    markUndo("إرجاع نوعية التعليم");
+  /* ============================================================
+     استرجاع نوعية التعليم من القسم المحفوظ
+     لما النوعية بتتمسح، الـ sector بيفضل متخزّن على الطالب زي ما هو —
+     وهو اللي بيتحدد منه القسم أصلًا. فبنرجّع النوعية منه.
+     srv → خدمات · reg → انتظام · واللي مالوش فصل ونوعيته كانت منازل
+     بيفضل غير محدد عشان ما نخمّنش عليه.
+     ============================================================ */
+  recoverEdu: function(){
+    var pool = DB.students.filter(function(s){
+      return s.status!=="left" && eduUndefined(s) &&
+             (s.sector==="reg" || s.sector==="srv"); });
+    if(!pool.length){ toast("مفيش طلاب ينفع نسترجع نوعيتهم"); return; }
+    var nReg = pool.filter(function(s){ return s.sector==="reg"; }).length;
+    var nSrv = pool.filter(function(s){ return s.sector==="srv"; }).length;
+    var rest = DB.students.filter(function(s){
+      return s.status!=="left" && eduUndefined(s) && s.sector!=="reg" && s.sector!=="srv"; }).length;
+    if(!confirm("استرجاع نوعية التعليم لـ "+pool.length+" طالب من القسم المحفوظ؟\n\n"+
+      "• "+nReg+" طالب قسمهم المحفوظ «انتظام»\n"+
+      "• "+nSrv+" طالب قسمهم المحفوظ «خدمات»\n"+
+      (rest? "• "+rest+" طالب مالهمش قسم محفوظ — هيفضلوا «غير محدد» عشان ما نخمّنش عليهم\n" : "")+
+      "\nمعاك «تراجع» بعد التنفيذ.")) return;
+    markUndo("استرجاع نوعية التعليم");
     var n = 0;
-    pool.forEach(function(s){ delete s.edu; s.eduUnset = 1; n++; });
+    pool.forEach(function(s){
+      s.edu = (s.sector==="srv") ? "srv" : "reg";
+      delete s.eduUnset; n++;
+    });
     saveNow();
-    logOp("إرجاع نوعية التعليم", n+" طالب");
-    UI.stuCat = "none"; UI.filters = {}; UI.stuLevel = 0;
+    logOp("استرجاع نوعية التعليم", n+" طالب من القسم المحفوظ");
+    UI.stuCat = (nSrv>nReg) ? "srv" : "reg"; UI.filters = {}; UI.stuLevel = 0;
     render();
-    toastUndo("رجّع "+n+" طالب «غير محدد»");
+    toastUndo("اترجّع "+n+" طالب");
   },
   setEduAll: function(el){
     var e = el.dataset.e;
