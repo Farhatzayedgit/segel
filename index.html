@@ -65,9 +65,36 @@ header.top .spacer{flex:1}
 }
 .iconbtn:active{background:rgba(255,255,255,.22)}
 
-.wrap{max-width:1180px;margin:0 auto;padding:14px 12px 92px}
+.wrap{max-width:1180px;margin:0 auto;padding:14px 12px 92px;min-width:0}
 @media(min-width:900px){
-  .wrap{display:grid;grid-template-columns:216px 1fr;gap:18px;padding:18px 18px 40px;align-items:start}
+  .wrap{display:grid;grid-template-columns:216px minmax(0,1fr);gap:18px;padding:18px 18px 40px;align-items:start}
+}
+
+/* ============================================================
+   ضبط العرض — أهم قاعدة في التنسيق كله
+   عناصر الـ grid و flex عرضها الأدنى الافتراضي = محتواها، يعني أي
+   جدول عريض بيفشخ الصفحة كلها ويطلّع المحتوى بره الشاشة.
+   min-width:0 بترجّعهم يحترموا حدود العمود، والجدول يسكرول جوه إطاره.
+   ============================================================ */
+html{overflow-x:hidden}
+body{max-width:100%;overflow-x:hidden}
+.wrap>main, main#view{min-width:0;max-width:100%}
+.wrap>*{min-width:0}
+.card,.card>.hd,.card>.bd{min-width:0;max-width:100%}
+.stats,.grid2,.grid3{min-width:0}
+/* أي محتوى طويل من غير مسافات (روابط، أرقام) ما يفشخش الكارت */
+.card>.bd,.note,.list-item .tx{overflow-wrap:anywhere;word-break:break-word}
+/* المودال ما يعدّيش حدود الشاشة */
+.modal{max-width:min(560px,calc(100vw - 24px))}
+.modal .mb{overflow-wrap:anywhere}
+/* الشاشات الصغيرة: تكديس بدل تزنيق */
+@media(max-width:640px){
+  .grid2,.grid3{grid-template-columns:1fr}
+  .pagehd h2{font-size:18px}
+  .card>.bd{padding:11px 12px}
+  .wrap{padding:12px 10px 92px}
+  table.tbl{font-size:12.5px}
+  table.tbl th,table.tbl td{padding:8px}
 }
 
 /* ====== التنقل ====== */
@@ -160,8 +187,9 @@ textarea{min-height:70px;resize:vertical}
 @media(max-width:520px){.grid2{grid-template-columns:1fr}}
 
 /* ====== الجداول ====== */
-.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table.tbl{width:100%;border-collapse:collapse;font-size:13.5px;min-width:100%}
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;overscroll-behavior-x:contain}
+/* العرض = الأكبر بين ١٠٠٪ ومحتوى الجدول — فمفيش كبس ومفيش فشخ للصفحة */
+table.tbl{width:100%;border-collapse:collapse;font-size:13.5px;min-width:max-content}
 table.tbl th{
   background:#f4f6f3;font-size:11.5px;font-weight:700;color:var(--muted);text-align:right;
   padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0
@@ -290,7 +318,9 @@ table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .note.bad{background:#fbeceb;border-color:#f0cdca;color:var(--danger)}
 .note b{font-weight:700}
 
-.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;-webkit-overflow-scrolling:touch}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;-webkit-overflow-scrolling:touch;
+  max-width:100%;scroll-snap-type:x proximity;scrollbar-width:thin;overscroll-behavior-x:contain}
+.chips button{scroll-snap-align:start}
 .chips button{
   flex:0 0 auto;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);
   font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap
@@ -14626,22 +14656,14 @@ function evType(id){ for(var i=0;i<EVENT_TYPES.length;i++) if(EVENT_TYPES[i].id=
 function postKindName(k){ for(var i=0;i<POST_KINDS.length;i++) if(POST_KINDS[i].id===k) return POST_KINDS[i].name; return "موقع"; }
 
 function supInit(){
-  if(!Array.isArray(DB.locations)) DB.locations = [];
-  if(!Array.isArray(DB.dutyPlan))  DB.dutyPlan  = [];
   if(!Array.isArray(DB.events))    DB.events    = [];
   if(!DB.duty || typeof DB.duty!=="object") DB.duty = {};
   staffInit();
 }
-function locById(id){ supInit(); for(var i=0;i<DB.locations.length;i++) if(DB.locations[i].id===id) return DB.locations[i]; return null; }
-function locName(id){ var l = locById(id); return l? l.name : "—"; }
+/* نظام مواقع الإشراف اتلغى بالكامل — المشرف العام بس، من تبويب الإشراف اليومي */
 
 /* اليوم الشغّال في كل شاشات الإشراف */
 function supDate(){ return (UI.sub && UI.sub.d) || today(); }
-function sectorLocations(){
-  supInit();
-  var sec = curSector();
-  return DB.locations.filter(function(l){ return (l.sector||"reg")===sec; });
-}
 function dutyOf(date){
   supInit();
   var k = dutyKeyOf(date);
@@ -14650,29 +14672,19 @@ function dutyOf(date){
   if(!d.posts || typeof d.posts!=="object") d.posts = {};
   return d;
 }
-/* المناوب المخطط له في اليوم ده من الجدول الأسبوعي */
-function plannedGeneral(day){
-  supInit();
-  var sec = curSector();
-  var p = DB.dutyPlan.filter(function(x){
-    return x.kind==="general" && x.day===day && (x.sector||"reg")===sec; })[0];
-  return p ? p.staffId : "";
-}
-function plannedPost(day, locId){
-  supInit();
-  var sec = curSector();
-  var p = DB.dutyPlan.filter(function(x){
-    return x.kind==="post" && x.day===day && x.locationId===locId && (x.sector||"reg")===sec; })[0];
-  return p ? p.staffId : "";
-}
-/* المشرف الفعلي: اللي اتسجّل اليوم، وإلا اللي في الخطة */
+/* ============================================================
+   المشرف العام — مصدر واحد للحقيقة: جدول الإشراف الأسبوعي
+   اللي في تبويب «الإشراف اليومي». مفيش تعيين يومي منفصل ولا
+   إعدادات إشراف قديمة — كل بيان إشراف بيتقرا من هناك.
+   ============================================================ */
 function generalToday(date){
-  var d = dutyOf(date), dw = dayOfWeek(date);
-  return d.general || plannedGeneral(dw);
+  /* جدول الإشراف بيخزّن teacherId — وباقي الشاشات بتتعامل بـ staffId ("T"+id) */
+  var tid = dutySupOf(dayOfWeek(date), curSector());
+  return tid ? ("T"+tid) : "";
 }
-function postToday(date, locId){
-  var d = dutyOf(date), dw = dayOfWeek(date);
-  return d.posts[locId] || plannedPost(dw, locId);
+/* المعلم المشرف النهاردة — بالـ teacherId مباشرة */
+function generalTeacherToday(date){
+  return dutySupOf(dayOfWeek(date), curSector()) || "";
 }
 
 /* ---------- مؤشرات اليوم ---------- */
@@ -14861,19 +14873,6 @@ function viewToday(){
   h += tasksCard();
   if(roleIs("manager") || roleIs("deputy")) h += sessionsCard();
 
-  /* المشرف العام */
-  h += '<div class="card"><div class="hd"><div style="flex:1"><span class="eyebrow">المناوبة</span>'+
-    '<h3>المشرف العام اليومي</h3></div>'+
-    (canRun?'<button class="btn ghost sm noprint" data-act="setGeneral" data-d="'+date+'">'+(gen?"تغيير":"تعيين")+'</button>':'')+
-    '</div><div class="bd">'+
-    (gen
-      ? '<div class="list-item" style="border:0;padding:0"><span class="av">'+esc(initials(gen.name))+'</span>'+
-        '<span class="tx"><b>'+esc(gen.name)+'</b><small>'+esc(gen.job)+
-        (dutyOf(date).general?'':' · حسب جدول الإشراف الأسبوعي')+'</small></span></div>'
-      : '<div class="note bad">مفيش مشرف عام معيَّن النهاردة. '+
-        (canRun?'عيّنه دلوقتي أو اضبط جدول الإشراف الأسبوعي.':'كلّم المدير أو وكيل شئون العاملين.')+'</div>')+
-    '</div></div>';
-
   /* المؤشرات */
   h += '<div class="stats" style="margin-bottom:12px">'+
     stat("حضور العاملين", p.staff.all - p.staff.absent.length + " / " + p.staff.all,
@@ -14918,15 +14917,16 @@ function viewToday(){
   });
   h += '</div></div>';
 
-  /* المشرف العام النهاردة — بديل نظام المواقع الملغي */
-  var _gen = generalToday(date);
-  var _gs  = _gen ? staffById(_gen) : null;
+  /* المشرف العام النهاردة — بيتقرا من تبويب «الإشراف اليومي» بس */
+  var _gt = generalTeacherToday(date);
+  var _gs = _gt ? teacherById(_gt) : null;
   h += '<div class="card"><div class="hd"><h3>المشرف العام النهاردة</h3>'+
     (canRun?'<button class="btn ghost sm noprint" data-act="tab" data-tab="duty">جدول الإشراف الأسبوعي</button>':'')+
     '</div><div class="bd flush">';
   if(_gs){
     h += '<div class="list-item"><span class="av">'+esc(initials(_gs.name))+'</span>'+
-      '<span class="tx"><b>'+esc(_gs.name)+'</b><small>'+esc(_gs.job||"معلم")+' · مشرف عام '+esc(DAYS[dw]||"")+'</small></span>'+
+      '<span class="tx"><b>'+esc(_gs.name)+'</b><small>'+esc(jobOfTeacher(_gs.id))+
+      (_gs.subject?' · '+esc(_gs.subject):'')+' · مشرف '+esc(DAYS[dw]||"")+'</small></span>'+
       '<span class="tag ok">مكلّف</span></div>';
   }else{
     h += '<div class="empty"><b>مفيش مشرف عام لليوم ده</b>'+
@@ -15131,19 +15131,6 @@ function modalEvent(date){
 
 Object.assign(ACTS, {
   supToday: function(){ UI.sub = Object.assign({}, UI.sub, {d: today()}); render(); },
-  setGeneral: function(el){
-    var d = el.dataset.d;
-    openModal(mHead("المشرف العام — "+fmtDate(d))+
-      '<div class="mb">'+staffPickHTML("dg_s", generalToday(d), "المشرف العام النهاردة")+
-      '<div class="note">ده تعيين لليوم ده بس، مش هيغيّر الجدول الأسبوعي.</div></div>'+
-      mFoot("حفظ","saveGeneral"));
-    MODAL.dataset.d = d;
-  },
-  saveGeneral: function(){
-    var d = MODAL.dataset.d;
-    dutyOf(d).general = val("dg_s");
-    save(); closeModal(); render(); toast("اتحفظ");
-  },
   addEvent: function(el){ modalEvent(el.dataset.d); },
   saveEvent: function(){
     supInit();
@@ -15580,14 +15567,14 @@ function myDutyToday(){
   var gen = generalToday(date)===sid;
   return { any: gen, general:gen, posts:[], date:date };
 }
+/* مناوبات المعلم في الأسبوع — من جدول الإشراف في تبويب «الإشراف اليومي» */
 function myDutyWeek(){
-  supInit();
   var u = UI.user;
   if(!u || !u.teacherId) return [];
-  var sid = "T"+u.teacherId;
   var sec = curSector();
-  return DB.dutyPlan.filter(function(p){
-    return p.staffId===sid && isSchoolDayIdx(p.day) && (p.sector||"reg")===sec; });
+  return dutyDaysOf(u.teacherId)
+    .filter(function(d){ return isSchoolDayIdx(d) && dutySupOf(d, sec)===u.teacherId; })
+    .map(function(d){ return { day:d, kind:"general", staffId:"T"+u.teacherId, sector:sec }; });
 }
 
 Object.assign(ACTS, {
