@@ -16539,9 +16539,13 @@ function studentFormHTML(f){
     (f.desc?'<div style="font-size:12px;color:var(--muted);line-height:1.7;margin-top:3px">'+esc(f.desc)+'</div>':'')+'</div>';
   h += '<label class="f"><span>الاسم رباعي زي ما هو في شهادة الميلاد</span>'+
     '<input type="text" id="cf_name" value="'+esc(v.name||"")+'" placeholder="مثال: أحمد محمد علي حسن"></label>';
-  h += '<label class="f"><span>الرقم القومي (١٤ رقم)</span>'+
-    '<input type="text" id="cf_nat" inputmode="numeric" maxlength="14" style="letter-spacing:.12em;direction:ltr;text-align:center" '+
-    'value="'+esc(v.natId||"")+'" placeholder="30012345600123"></label>';
+  var kb = formKeyBy(f), kd = keyColDef(kb, formTargetLevel(f));
+  h += '<label class="f"><span>'+esc(kd.label)+'</span>'+
+    '<input type="text" id="cf_nat" inputmode="'+esc(kd.mode)+'" maxlength="'+kd.max+'" '+
+    'style="letter-spacing:'+(kb==="natId"?".12em":".04em")+';direction:ltr;text-align:center" '+
+    'value="'+esc(v.natId||"")+'" placeholder="'+esc(kd.ph)+'">'+
+    '<small style="color:var(--muted);font-size:11.5px">'+esc(kd.hint)+
+    ' — لازم يكون مطابق للمسجّل في المدرسة.</small></label>';
   UI.cascadeMap = {};
   (f.fields||[]).forEach(function(fd){
     /* بيان من ملف الطالب: بيظهر فاضي والطالب بيملاه.
@@ -16689,10 +16693,12 @@ function levelGateCheck(f, nat){
 function saveCustomForm(fid){
   var f = formById(fid); if(!f){ toast("الاستمارة مش موجودة"); return; }
   var nEl = document.getElementById("cf_name"), natEl = document.getElementById("cf_nat");
+  var keyBy = formKeyBy(f);
   var name = cleanName(nEl?nEl.value:"");
-  var nat = toEnDigits(natEl?natEl.value:"").replace(/\D/g,"");
+  var raw = natEl ? natEl.value : "";
+  var nat = keyNorm(keyBy, raw);
   var err = nameCheck(name); if(err){ toast(err); return; }
-  err = natIdCheck(nat); if(err){ toast(err); return; }
+  err = keyFormatCheck(keyBy, raw); if(err){ toast(err); return; }
   var values = {}, missing = null;
   (f.fields||[]).forEach(function(fd){
     var e = document.getElementById("cff_"+fd.id);
@@ -16712,8 +16718,8 @@ function saveCustomForm(fid){
   });
   if(missing){ toast("اكتب: "+missing); return; }
   formsInit();
-  /* الاستمارة مخصصة لصف واحد — الرقم القومي لازم يكون مسجّل في الصف ده */
-  var gate = levelGateCheck(f, nat);
+  /* المفتاح لازم يكون مسجّل — لو غلط الاستمارة بترفض فورًا */
+  var gate = keyGateCheck(f, raw);
   if(gate){ toast(gate); return; }
   if(!Array.isArray(DB.formSubs[fid])) DB.formSubs[fid] = [];
   var now = new Date();
@@ -16721,30 +16727,33 @@ function saveCustomForm(fid){
 
   /* الرقم القومي هو المفتاح: مسجّل قبل كده = تحديث بياناته، مش تسجيل جديد ولا رفض.
      الفاضي مبيمسحش المليان — البيان القديم بيفضل لو الطالب ساب الحقل فاضي. */
-  var dupS = subByNat(fid, nat, null);
+  var dupS = subByKey(f, nat, null);
   if(dupS){
-    var raw = (DB.formSubs[fid]||[]).filter(function(x){ return x.id===dupS.id; })[0] || dupS;
-    raw.name   = name || raw.name;
-    raw.natId  = nat;                        /* الرقم القومي ثابت — مفتاح السجل */
-    raw.values = raw.values || {};
+    var rec = (DB.formSubs[fid]||[]).filter(function(x){ return x.id===dupS.id; })[0] || dupS;
+    rec.name   = name || rec.name;
+    rec.keyBy  = keyBy;
+    rec.keyVal = nat;                        /* المفتاح ثابت — هو اللي بيعرّف السجل */
+    if(keyBy==="natId") rec.natId = nat;
+    rec.values = rec.values || {};
     for(var kk in values){
       if(values[kk]!==undefined && values[kk]!==null && String(values[kk]).trim()!=="")
-        raw.values[kk] = values[kk];
+        rec.values[kk] = values[kk];
     }
-    raw.date = today(); raw.time = hhmm; raw.at = Date.now();
-    delete raw.migAt; delete raw.migrated;   /* اتغيّرت بياناته — يرجع مستجد عشان يتحدّث */
+    rec.date = today(); rec.time = hhmm; rec.at = Date.now();
+    delete rec.migAt; delete rec.migrated;   /* اتغيّرت بياناته — يرجع مستجد عشان يتحدّث */
     saveNow();
-    UI.formDone = { formTitle:f.title, name:name, natId:nat, updated:true };
+    UI.formDone = { formTitle:f.title, name:name, natId:nat, keyLabel:keyColDef(keyBy,0).label, updated:true };
     UI.stu = false; UI.stuForm = null; UI.stuVals = null;
     renderLogin();
     return;
   }
   DB.formSubs[fid].push({
-    id:uid("sub"), name:name, natId:nat, values:values, date:today(),
+    id:uid("sub"), name:name, natId:(keyBy==="natId"?nat:""),
+    keyBy:keyBy, keyVal:nat, values:values, date:today(),
     time:hhmm, at: Date.now()
   });
   saveNow();
-  UI.formDone = { formTitle:f.title, name:name, natId:nat };
+  UI.formDone = { formTitle:f.title, name:name, natId:nat, keyLabel:keyColDef(keyBy,0).label };
   UI.stu = false; UI.stuForm = null; UI.stuVals = null;
   renderLogin();
 }
@@ -16754,14 +16763,14 @@ function formExcel(fid){
   if(!f){ toast("الاستمارة مش موجودة"); return; }
   var subs = formSubsOf(fid);
   if(!subs.length){ toast("مفيش تسجيلات للتصدير"); return; }
-  var head = ["م","الاسم رباعي","الرقم القومي"];
+  var head = ["م","الاسم رباعي", formKeyLabel(f)];
   (f.fields||[]).forEach(function(fd){
     head.push(fd.label);
     if(isCascadeField(fd)) head.push(cascadeSubLabel(fd));   /* الاختيار الفرعي عمود لوحده */
   });
   head = head.concat(["تاريخ التسجيل","وقت التسجيل"]);
   var rows = subs.map(function(s,i){
-    var base = [i+1, s.name, s.natId];
+    var base = [i+1, s.name, (s.keyVal!=null ? s.keyVal : s.natId)];
     (f.fields||[]).forEach(function(fd){
       var v=(s.values||{})[fd.id];
       base.push(v==null?"":(fd.type==="date"?fmtDate(v):v));
@@ -17470,6 +17479,106 @@ function formSubsOf(id){
   formsInit();
   return Array.isArray(DB.formSubs[id]) ? DB.formSubs[id] : [];
 }
+/* ============================================================
+   مفتاح الاستمارة
+   البيان اللي الطالب بيتعرّف بيه. لازم يكون متسجّل في القاعدة —
+   لو الطالب كتبه غلط الاستمارة بترفض فورًا. وهو اللي الترحيل
+   بيربط بيه الإجابات بملف الطالب، وبيفضل ثابت ما بيتغيّرش،
+   وباقي البيانات كلها بتتحدّث من الاستمارة.
+   ============================================================ */
+var KEY_COLS = [
+  { col:"natId", label:"الرقم القومي", hint:"١٤ رقم — المفتاح الرسمي",
+    ph:"30012345600123", mode:"numeric", max:14 },
+  { col:"code",  label:"كود الطالب",   hint:"كود المدرسة — للطلاب اللي لسه مالهمش رقم قومي",
+    ph:"مثال: 1001", mode:"text", max:20 },
+  { col:"seat",  label:"رقم الجلوس",   hint:"من كشوف الوزارة", levels:[3],
+    ph:"مثال: 12345", mode:"numeric", max:12 }
+];
+function keyColsFor(level){
+  var L = num(level,0);
+  return KEY_COLS.filter(function(k){ return !(k.levels && L && k.levels.indexOf(L)<0); });
+}
+function keyColDef(col, level){
+  var list = keyColsFor(level);
+  for(var i=0;i<list.length;i++) if(list[i].col===col) return list[i];
+  return KEY_COLS[0];
+}
+/* مفتاح الاستمارة — الافتراضي الرقم القومي (زي القديم) */
+function formKeyBy(f){
+  var k = f && f.keyBy;
+  return (k==="code" || k==="seat" || k==="natId") ? k : "natId";
+}
+function formKeyLabel(f){ return keyColDef(formKeyBy(f), formTargetLevel(f)).label; }
+/* تطبيع قيمة المفتاح حسب نوعه */
+function keyNorm(keyBy, v){
+  if(keyBy==="code") return normCode(v);
+  return toEnDigits(String(v==null?"":v)).replace(/\D/g,"");
+}
+/* قيمة المفتاح من ملف الطالب */
+function studentKeyVal(keyBy, s){
+  if(!s) return "";
+  if(keyBy==="code") return normCode(s.code);
+  if(keyBy==="seat") return keyNorm("seat", s.seat);
+  return keyNorm("natId", s.natId);
+}
+/* الطالب صاحب المفتاح ده */
+function studentByKey(keyBy, v){
+  var k = keyNorm(keyBy, v);
+  if(!k) return null;
+  for(var i=0;i<DB.students.length;i++){
+    if(DB.students[i].status==="left") continue;
+    if(studentKeyVal(keyBy, DB.students[i])===k) return DB.students[i];
+  }
+  return null;
+}
+/* التحقق من شكل المفتاح قبل ما ندوّر عليه */
+function keyFormatCheck(keyBy, v){
+  var k = keyNorm(keyBy, v);
+  var d = keyColDef(keyBy, 0);
+  if(!k) return "اكتب "+d.label;
+  if(keyBy==="natId") return natIdCheck(v);
+  if(keyBy==="seat" && k.length<2) return "رقم الجلوس مش مظبوط";
+  if(keyBy==="code" && k.length<2) return "كود الطالب مش مظبوط";
+  return null;
+}
+/* ============================================================
+   بوابة المفتاح — قلب الحكاية
+   بترفض أي طالب مش موجود في القاعدة، أو موجود في صف تاني،
+   أو نوعية تعليمه مش من نوعيات الاستمارة.
+   ============================================================ */
+function keyGateCheck(f, v){
+  var keyBy = formKeyBy(f);
+  var d = keyColDef(keyBy, formTargetLevel(f));
+  var fmt = keyFormatCheck(keyBy, v);
+  if(fmt) return fmt;
+  if(!formStrict(f)) return "";                 /* استمارة مفتوحة للكل */
+  var st = studentByKey(keyBy, v);
+  if(!st) return d.label+" ده مش مسجّل في المدرسة. راجع البيانات وحاول تاني، أو كلّم شئون الطلاب.";
+  var L = formTargetLevel(f);
+  if(L && studentLevelOf(st) !== L){
+    return "الاستمارة دي لطلاب "+levelName(L)+" بس، وإنت مسجّل في "+
+      (studentLevelOf(st)? levelName(studentLevelOf(st)) : "صف غير محدد")+".";
+  }
+  var aud = formAudience(f);
+  if(aud.length!==EDU_IDS.length && aud.indexOf(st.edu||"reg") < 0){
+    return "الاستمارة دي لطلاب "+aud.map(function(x){ return eduName(x); }).join(" و")+
+      " بس، وإنت مسجّل "+eduName(st.edu||"reg")+".";
+  }
+  return "";
+}
+/* تسجيل بنفس المفتاح في نفس الاستمارة */
+function subByKey(f, v, exceptId){
+  var keyBy = formKeyBy(f);
+  var k = keyNorm(keyBy, v);
+  if(!k) return null;
+  var list = formSubsOf(f.id);
+  for(var i=0;i<list.length;i++){
+    if(list[i].id===exceptId) continue;
+    if(keyNorm(keyBy, list[i].keyVal!=null ? list[i].keyVal : list[i].natId)===k) return list[i];
+  }
+  return null;
+}
+
 function subByNat(formId, nat, exceptId){
   var n = toEnDigits(String(nat||"")).replace(/\D/g,"");
   var list = formSubsOf(formId);
@@ -17814,7 +17923,13 @@ function formRows(f){
       var tid0 = trackIdFromText(base.track, defL || lvl) || parseWishTrack(base.track);
       if(tid0) trk = tid0;
     }
-    return { key:sub.natId, name:sub.name, natId:sub.natId, code:sub.code||"",
+    var kb2 = sub.keyBy || formKeyBy(f);
+    var kv2 = sub.keyVal!=null ? sub.keyVal : sub.natId;
+    return { key:kv2, name:sub.name,
+             natId: kb2==="natId" ? kv2 : (sub.natId||""),
+             code:  kb2==="code"  ? kv2 : (sub.code||""),
+             seat:  kb2==="seat"  ? kv2 : "",
+             keyBy:kb2, keyVal:kv2,
              level: defL || lvl || 0, phone:phone, edu:edu, guardian:guardian,
              bacTrack:trk, bacSubject:subj, prevClass:prev, religion:rel,
              base:base, extra:extra, tag:fmtDate(sub.date), src:sub };
@@ -18205,10 +18320,18 @@ function stampRowMigrated(r, sid){
 }
 function migrateRowToStudent(r, opt){
   opt = opt || {};
+  var keyBy = r.keyBy || "natId";
+  var keyVal = keyNorm(keyBy, r.keyVal!=null ? r.keyVal : (keyBy==="code"? r.code : (keyBy==="seat"? r.seat : r.natId)));
   var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
   var name = cleanName(r.name||"");
   if(!name) return {ok:false, reason:"بدون اسم"};
-  if(!nat || nat.length!==14 || !parseNationalId(nat)) return {ok:false, reason:"رقم قومي غير صحيح"};
+  /* التحقق حسب نوع المفتاح — مش دايمًا رقم قومي */
+  if(keyBy==="natId"){
+    if(!nat || nat.length!==14 || !parseNationalId(nat)) return {ok:false, reason:"رقم قومي غير صحيح"};
+    keyVal = nat;
+  }else if(!keyVal){
+    return {ok:false, reason:keyColDef(keyBy,0).label+" ناقص"};
+  }
 
   /* نوعية الطالب هي اللي بتحدد قسمه — مش القسم اللي الوكيل واقف فيه */
   var edu = r.edu || "reg";
@@ -18255,13 +18378,15 @@ function migrateRowToStudent(r, opt){
     return n;
   }
 
-  var exists = nat ? DB.students.filter(function(s){ return s.natId===nat; })[0] : null;
+  var exists = studentByKey(keyBy, keyVal);
+  if(!exists && nat) exists = DB.students.filter(function(s){ return s.natId===nat; })[0] || null;
 
   /* ---------- الرقم القومي موجود: تحديث بس، من غير تكرار ---------- */
   if(exists){
     var ch = 0;
     function put(k, v){
       if(k==="natId") return;                           /* الرقم القومي المسجّل هو الأساس — ما يتعدّلش أبدًا */
+      if(k===keyBy) return;                             /* ولا مفتاح الاستمارة — هو اللي عرّفنا الطالب */
       if(v===undefined || v===null || v==="") return;   /* الفاضي مبيمسحش المليان */
       if(String(exists[k]||"") === String(v)) return;
       exists[k] = v; ch++;
@@ -18296,6 +18421,8 @@ function migrateRowToStudent(r, opt){
   var s = {
     id: uid("s"), status:"active", joined: today(),
     name: name, natId: nat, classId: "",
+    code: keyBy==="code" ? keyVal : (r.code||""),
+    seat: keyBy==="seat" ? keyVal : "",
     edu: edu, sector: sec,
     phone: r.phone || "", guardian: r.guardian || "", religion: r.religion || "",
     prevClass: r.prevClass || "", bacTrack: r.bacTrack || "", bacSubject: r.bacSubject || "",
@@ -18658,8 +18785,10 @@ function modalFormMigrate(fid, mode){
   var f = (fid==="track") ? {id:"track", title:"استمارة تحديد المسار", level:num(DB.trackLevel,2)} : formById(fid);
   if(!f){ toast("الاستمارة مش موجودة"); return; }
   var allRows = formRows(f).filter(function(r){
-    var nat = toEnDigits(String(r.natId||"")).replace(/\D/g,"");
-    return nat && nat.length===14;
+    var kb = r.keyBy || "natId";
+    var kv = keyNorm(kb, r.keyVal!=null ? r.keyVal : r.natId);
+    if(kb==="natId") return kv.length===14 && !!parseNationalId(kv);
+    return !!kv;
   });
   /* «المستجدون» = اللي سجّلوا بعد آخر ترحيل */
   var onlyNew = (UI.migMode==="new");
@@ -18943,7 +19072,7 @@ function viewFormSubs(f){
   h += '<div class="card"><div class="hd"><h3>'+subs.length+' تسجيل</h3>'+
     ''+exportBtns(true)+'</div>'+
     '<div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
-    '<th>م</th><th>الاسم</th><th>الرقم القومي</th>';
+    '<th>م</th><th>الاسم</th><th>'+esc(formKeyLabel(f))+'</th>';
   (f.fields||[]).forEach(function(fd){
     h += '<th>'+esc(fd.label)+'</th>';
     if(isCascadeField(fd)) h += '<th>'+esc(cascadeSubLabel(fd))+'</th>';
@@ -18953,12 +19082,12 @@ function viewFormSubs(f){
   subs.forEach(function(s,i){
     h += '<tr><td class="rownum">'+(i+1)+'</td>'+
       '<td><b style="font-weight:600">'+esc(s.name)+'</b></td>'+
-      '<td class="num" style="direction:ltr">'+esc(s.natId)+'</td>';
+      '<td class="num" style="direction:ltr">'+esc(s.keyVal!=null ? s.keyVal : (s.natId||"—"))+'</td>';
     (f.fields||[]).forEach(function(fd){
       var v=(s.values||{})[fd.id];
       h += '<td>'+esc(v==null||v===""?"—":(fd.type==="date"?fmtDate(v):v))+'</td>';
       if(isCascadeField(fd)){
-        var sv2 = (sb.values||{})[cascadeSubKey(fd)];
+        var sv2 = (s.values||{})[cascadeSubKey(fd)];
         h += '<td>'+esc(sv2==null||sv2===""?"—":sv2)+'</td>';
       }
     });
@@ -18983,9 +19112,9 @@ function modalFormBuilder(id){
   }
   var f = id ? formById(id) : null;
   UI.formDraft = f ? { id:f.id, title:f.title, desc:f.desc||"", level:num(f.level,0),
-                       strictNat: f.strictNat!==false, edus: formAudience(f),
+                       strictNat: f.strictNat!==false, keyBy: formKeyBy(f), edus: formAudience(f),
                        fields:(f.fields||[]).map(function(x){ return Object.assign({},x); }) }
-                   : { id:null, title:"", desc:"", level:num(UI.newFormLvl,0), strictNat:true,
+                   : { id:null, title:"", desc:"", level:num(UI.newFormLvl,0), strictNat:true, keyBy:"natId",
                        edus: EDU_IDS.slice(), fields:[] };
   UI.newFormLvl = 0;
   UI.fbEdit = null;
@@ -19000,6 +19129,11 @@ function keepDraftTop(d){
   }
   var lv = val("fb_lvl"); if(lv!=="") d.level = num(lv,0);
   var st = val("fb_strict"); if(st!=="") d.strictNat = (st!=="0");
+  var kb0 = val("fb_key");
+  if(kb0==="code"||kb0==="seat"||kb0==="natId") d.keyBy = kb0;
+  /* لو الصف اتغيّر والمفتاح مابقاش متاح فيه، نرجّع الرقم القومي */
+  if(d.keyBy && !keyColsFor(num(d.level,0)).some(function(k){ return k.col===d.keyBy; }))
+    d.keyBy = "natId";
   var boxes = Array.prototype.slice.call(document.querySelectorAll(".fbEdu"));
   if(boxes.length){
     var picked = boxes.filter(function(b){ return b.checked; }).map(function(b){ return b.dataset.e; });
@@ -19448,13 +19582,17 @@ Object.assign(ACTS, {
     formsInit();
     var lvl = num(val("fb_lvl"),0);
     var strict = val("fb_strict")!=="0";
+    var kb1 = val("fb_key");
+    var keyBy = (kb1==="code"||kb1==="seat"||kb1==="natId") ? kb1 : (d.keyBy||"natId");
+    if(!keyColsFor(lvl).some(function(k){ return k.col===keyBy; })) keyBy = "natId";
     if(d.id){
       var f = formById(d.id);
       if(f){ f.title = title; f.desc = val("fb_desc").trim(); f.level = lvl;
-             f.strictNat = strict; f.edus = d.edus || EDU_IDS.slice(); f.fields = d.fields; }
+             f.strictNat = strict; f.keyBy = keyBy;
+             f.edus = d.edus || EDU_IDS.slice(); f.fields = d.fields; }
     }else{
       DB.forms.push({ id:uid("form"), title:title, desc:val("fb_desc").trim(), level:lvl,
-                      strictNat:strict, edus:(d.edus||EDU_IDS.slice()),
+                      strictNat:strict, keyBy:keyBy, edus:(d.edus||EDU_IDS.slice()),
                       status:"open", fields:d.fields, createdAt:today() });
     }
     UI.formDraft = null; saveNow(); closeModal(); render(); toast("اتحفظت الاستمارة");
