@@ -17932,47 +17932,91 @@ function autoFillPlan(level, sec, order, includePlaced){
     count[c.id] = includePlaced ? 0 : studentsOf(c.id).length;
   });
   var moves = [], skipped = [];
+
+  /* بنجمّع الطلاب حسب المسار/الشعبة — كل مجموعة بتتوزّع على فصولها هي بس */
+  var groups = {}, order2 = [];
   pool.forEach(function(s){
     var fit = classes.filter(function(c){ return classFitsStudent(c, s).ok; });
     if(!fit.length){
-      skipped.push({ s:s, why: s.bacTrack
-        ? "مفيش فصل لـ"+trackWord(L)+" «"+trackName(sysOfLevel(L), s.bacTrack)+"»"
-        : "الطالب مالوش "+trackWord(L)+" محدد" });
+      skipped.push({ s:s, why: (levelHasTracks(L) && !s.bacTrack)
+        ? "الطالب مالوش "+trackWord(L)+" محدد"
+        : "مفيش فصل مناسب في الصف ده" });
       return;
     }
-    /* الأقل عددًا الأول، والمليان بيتخطى */
-    var open = fit.filter(function(c){ return count[c.id] < classCap(); });
-    if(!open.length){
-      skipped.push({ s:s, why:"فصول "+trackWord(L)+" كلها وصلت السعة ("+classCap()+")" });
-      return;
+    var key = levelHasTracks(L) ? String(s.bacTrack||"") : "__all";
+    if(!groups[key]){ groups[key] = { list:[], classes:fit }; order2.push(key); }
+    groups[key].list.push(s);
+  });
+
+  order2.forEach(function(key){
+    var g = groups[key];
+    /* فصول المجموعة بترتيب اسمها — عشان الشرائح تمشي ١ ثم ٢ ثم ٣ */
+    var cls = g.classes.slice().sort(function(a,b){ return sortAr(a.name,b.name); });
+    var total = g.list.length + cls.reduce(function(a,c){ return a + (count[c.id]||0); }, 0);
+    var k = cls.length;
+    /* الهدف: توزيع متساوي قدر الإمكان، من غير ما نعدّي السعة */
+    var base = Math.floor(total/k), rem = total % k;
+    var take = cls.map(function(c, i){
+      var target = Math.min(classCap(), base + (i<rem ? 1 : 0));
+      return Math.max(0, target - (count[c.id]||0));
+    });
+    /* الباقي من غير مكان بسبب السعة — بنوزّعه على أي فصل لسه فيه فراغ */
+    var planned = take.reduce(function(a,b){ return a+b; }, 0);
+    var left = g.list.length - planned;
+    for(var pass=0; left>0 && pass<200; pass++){
+      var moved = false;
+      for(var i2=0; i2<k && left>0; i2++){
+        if((count[cls[i2].id]||0) + take[i2] < classCap()){ take[i2]++; left--; moved = true; }
+      }
+      if(!moved) break;
     }
-    open.sort(function(a,b){ return count[a.id]-count[b.id] || sortAr(a.name,b.name); });
-    var pick = open[0];
-    count[pick.id]++;
-    if(s.classId !== pick.id) moves.push({ s:s, to:pick });
+    /* التوزيع الفعلي: كل فصل بياخد شريحة متتابعة من القائمة المرتّبة */
+    var idx = 0;
+    cls.forEach(function(c, i){
+      for(var t2=0; t2<take[i] && idx<g.list.length; t2++){
+        var s2 = g.list[idx++];
+        count[c.id] = (count[c.id]||0) + 1;
+        if(s2.classId !== c.id) moves.push({ s:s2, to:c });
+      }
+    });
+    /* اللي مالقاش مكان خالص */
+    while(idx < g.list.length){
+      skipped.push({ s:g.list[idx++],
+        why:"فصول "+(levelHasTracks(L)?trackWord(L):"الصف")+" كلها وصلت السعة ("+classCap()+")" });
+    }
   });
   return { moves:moves, skipped:skipped, classes:classes, count:count, pool:pool.length };
 }
-/* الفصول الناقصة عشان كل الطلاب يلاقوا مكان — بتتحسب من غير ما تتعمل */
+/* الفصول الناقصة عشان كل الطلاب يلاقوا مكان — بتتحسب من غير ما تتعمل.
+   بتشتغل حتى لو الصف مالوش ولا فصل واحد. */
 function autoFillNeeds(level, sec, includePlaced){
   var L = Number(level);
-  if(!levelHasTracks(L)) return [];
   var classes = DB.classes.filter(function(c){
     return Number(c.level)===L && classSector(c)===sec;
   });
   var pool = autoFillPool(L, sec).filter(function(s){
-    return (includePlaced ? true : !classById(s.classId)) && s.bacTrack;
+    return includePlaced ? true : !classById(s.classId);
   });
+  if(!pool.length) return [];
   var need = [];
+  function roomIn(list){
+    return list.reduce(function(a,c){
+      return a + Math.max(0, classCap() - (includePlaced ? 0 : studentsOf(c.id).length));
+    }, 0);
+  }
+  /* صف من غير تقسيم (سنة تمهيدية) — فصول عامة */
+  if(!levelHasTracks(L)){
+    var short0 = pool.length - roomIn(classes);
+    if(short0 > 0) need.push({ track:null, add:Math.ceil(short0/classCap()),
+                               studs:pool.length, have:classes.length });
+    return need;
+  }
+  /* صف بيتقسّم — فصول لكل مسار/شعبة على حدة */
   allTracks(sysOfLevel(L)).forEach(function(t){
     var studs = pool.filter(function(s){ return s.bacTrack===t.id; }).length;
     if(!studs) return;
     var have = classes.filter(function(c){ return c.track===t.id; });
-    /* الأماكن المتاحة دلوقتي */
-    var room = have.reduce(function(a,c){
-      return a + Math.max(0, classCap() - (includePlaced ? 0 : studentsOf(c.id).length));
-    }, 0);
-    var short = studs - room;
+    var short = studs - roomIn(have);
     if(short > 0) need.push({ track:t, add:Math.ceil(short/classCap()), studs:studs, have:have.length });
   });
   return need;
@@ -17981,11 +18025,12 @@ function autoFillCreate(level, sec, needs){
   var L = Number(level), made = 0;
   needs.forEach(function(nd){
     for(var k=0;k<nd.add;k++){
+      /* رقم مش مستخدم — الاسم بيبقى «٢/٣ الطب وعلوم الحياة» أو «١/٢» للصف التمهيدي */
       var idx = 1, nm;
-      do { nm = L+"/"+idx+" "+nd.track.name; idx++; }
+      do { nm = L+"/"+idx+(nd.track? " "+nd.track.name : ""); idx++; }
       while(DB.classes.some(function(x){ return normAr(x.name)===normAr(nm); }) && idx<80);
       DB.classes.push({ id:uid("c"), name:nm, level:L, system:sysOfLevel(L),
-                        track:nd.track.id, sector:sec, room:"" });
+                        track:nd.track ? nd.track.id : "none", sector:sec, room:"" });
       made++;
     }
   });
@@ -17993,16 +18038,28 @@ function autoFillCreate(level, sec, needs){
   return made;
 }
 function modalAutoFill(){
+  /* الصفوف اللي فيها طلاب — حتى لو مالهاش ولا فصل واحد، البرنامج هينشئها */
   var lvls = LEVELS.filter(function(l){
-    return DB.classes.some(function(c){ return Number(c.level)===l.id && classSector(c)===curSector(); });
+    return DB.students.some(function(s){
+      return s.status!=="left" && !isHomeStudent(s) &&
+             studentLevelOf(s)===l.id && studentSector(s)===curSector();
+    }) || DB.classes.some(function(c){ return Number(c.level)===l.id && classSector(c)===curSector(); });
   });
-  if(!lvls.length){ toast("مفيش فصول في القسم ده"); return; }
+  if(!lvls.length){ toast("مفيش طلاب ولا فصول في القسم ده"); return; }
   openModal(mHead("ملء الفصول تلقائيًا")+
     '<div class="mb">'+
     '<div class="note">بيوزّع الطلاب على فصول صفهم. <b>المسار/الشعبة مش بتتخالف أبدًا</b> — '+
-      'الطالب بيروح لفصل مساره بس، واللي مالوش مسار بيفضل غير مسكّن وهتشوفه في التقرير.</div>'+
+      'الطالب بيروح لفصل مساره بس. ولو الصف مالوش فصول خالص، البرنامج بينشئها.</div>'+
     '<label class="f"><span>الصف</span><select id="af_lvl">'+
-      lvls.map(function(l){ return '<option value="'+l.id+'">'+esc(l.name)+' — '+esc(levelSysName(l.id))+'</option>'; }).join("")+
+      lvls.map(function(l){
+        var nCls = DB.classes.filter(function(c){ return Number(c.level)===l.id && classSector(c)===curSector(); }).length;
+        var nStu = DB.students.filter(function(s){
+          return s.status!=="left" && !isHomeStudent(s) &&
+                 studentLevelOf(s)===l.id && studentSector(s)===curSector() && !classById(s.classId);
+        }).length;
+        return '<option value="'+l.id+'">'+esc(l.name)+' — '+esc(levelSysName(l.id))+
+               ' · '+nCls+' فصل · '+nStu+' غير مسكّن</option>';
+      }).join("")+
     '</select></label>'+
     '<label class="f"><span>طريقة التوزيع</span><select id="af_ord">'+
       '<option value="abc">ترتيب أبجدي — الأسماء بالترتيب على الفصول</option>'+
@@ -18015,13 +18072,22 @@ function modalAutoFill(){
     '<label style="display:flex;align-items:flex-start;gap:9px;padding:8px 0;cursor:pointer">'+
       '<input type="checkbox" id="af_make" checked style="width:18px;height:18px;margin-top:2px">'+
       '<span><b style="font-weight:600">أنشئ فصول إضافية لو مش كفاية</b>'+
-      '<br><small style="color:var(--muted)">لو عدد الطلاب أكبر من سعة فصول '+esc(trackWord(num(val("af_lvl"),2)))+
-      '، البرنامج بيعمل فصول جديدة بدل ما يسيب طلاب برّه.</small></span></label>'+
+      '<br><small style="color:var(--muted)">لو الصف مالوش فصول، أو عدد الطلاب أكبر من السعة المتاحة، '+
+      'البرنامج بيعمل الفصول المطلوبة بدل ما يسيب طلاب برّه.</small></span></label>'+
     '<div class="note warn">سعة الفصل الحالية <b>'+classCap()+'</b> طالب — غيّرها من الإعدادات.</div>'+
     '<div id="af_prev"></div>'+
     '</div>'+
     '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
     '<button class="btn" data-act="afPreview">معاينة التوزيع</button></div>');
+  /* تغيير الصف بيمسح المعاينة القديمة عشان ما تلخبطش */
+  var ls = document.getElementById("af_lvl");
+  if(ls) ls.onchange = function(){
+    var pv = document.getElementById("af_prev"); if(pv) pv.innerHTML = "";
+    UI.afPlan = null;
+    var mf = MODAL.querySelector(".mf");
+    if(mf) mf.innerHTML = '<button class="btn ghost" data-act="close">إلغاء</button>'+
+      '<button class="btn" data-act="afPreview">معاينة التوزيع</button>';
+  };
 }
 function afRead(){
   return { lvl:num(val("af_lvl"),1), ord:val("af_ord"),
@@ -18036,8 +18102,10 @@ function autoFillPreview(){
   if(needs.length){
     needs.forEach(function(nd){
       for(var k=0;k<nd.add;k++)
-        made.push({ id:"__new"+made.length, name:o.lvl+"/؟ "+nd.track.name, level:o.lvl,
-                    system:sysOfLevel(o.lvl), track:nd.track.id, sector:curSector(), _new:true });
+        made.push({ id:"__new"+made.length,
+                    name:o.lvl+"/؟"+(nd.track? " "+nd.track.name : "")+" (جديد)", level:o.lvl,
+                    system:sysOfLevel(o.lvl), track:nd.track ? nd.track.id : "none",
+                    sector:curSector(), _new:true });
     });
     DB.classes = DB.classes.concat(made); idxBump();
   }
@@ -18053,12 +18121,14 @@ function autoFillPreview(){
   if(needs.length){
     h += '<div class="note ok"><b>فصول جديدة هتتعمل:</b><br>'+
       needs.map(function(nd){
-        return esc(nd.track.name)+" — <b>"+nd.add+"</b> فصل ("+nd.studs+" طالب، متاح "+nd.have+" فصل)";
+        return esc(nd.track ? nd.track.name : levelName(o.lvl))+
+               " — <b>"+nd.add+"</b> فصل ("+nd.studs+" طالب، متاح "+nd.have+" فصل)";
       }).join("<br>")+'</div>';
   }
   if(p.classes.length){
     h += '<div class="tbl-wrap" style="max-height:30vh;overflow:auto"><table class="tbl"><thead><tr>'+
-      '<th>الفصل</th><th>'+esc(trackWord(o.lvl))+'</th><th>العدد بعد التوزيع</th></tr></thead><tbody>';
+      '<th>الفصل</th><th>'+(levelHasTracks(o.lvl)?esc(trackWord(o.lvl)):'النوع')+
+      '</th><th>العدد بعد التوزيع</th></tr></thead><tbody>';
     p.classes.forEach(function(c){
       var n = p.count[c.id]||0;
       h += '<tr><td><b style="font-weight:600">'+esc(c.name)+'</b></td>'+
