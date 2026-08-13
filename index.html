@@ -5067,6 +5067,16 @@ function genAllSchedules(sec, opts){
       order.forEach(function(st){
         var cid = st.c.id;
         if(schedCell(cid, d, p)) return;
+        /* السقف اليومي: بنوزّع حصص الفصل على الأيام بالتساوي
+           فصل عايز ٣٧ حصة على ٥ أيام = ٨,٨,٧,٧,٧ مش ٨,٨,٨,٨,٥ */
+        var want0 = st.items.reduce(function(a,i){ return a+i.need; }, 0);
+        var dayIdx = days.indexOf(d);
+        var quota = Math.floor(want0/days.length) + ((dayIdx < (want0 % days.length)) ? 1 : 0);
+        var used = DB.schedule.filter(function(z){
+          return z.classId===cid && Number(z.day)===d; }).length;
+        if(used >= quota) return;                      /* اليوم أخد نصيبه */
+        /* المادة اللي في الحصة اللي قبلها — عشان ما نحطش نفسها ورا بعض */
+        var prev = (p>1) ? schedCell(cid, d, p-1) : null;
         var best = null, bestScore = -1e9;
         st.items.forEach(function(it){
           if(it.left <= 0) return;
@@ -5088,6 +5098,7 @@ function genAllSchedules(sec, opts){
             return z.classId===cid && z.subjectId===it.su.id && Number(z.period)===p; }).length;
           score -= samePer * 25;
           score -= onDay * 15;
+          if(prev && prev.subjectId===it.su.id) score -= 60;    /* مش ورا بعض */
           if(score > bestScore){ bestScore = score; best = it; }
         });
         if(!best) return;
@@ -5101,70 +5112,43 @@ function genAllSchedules(sec, opts){
   state.forEach(function(st){
     var cid = st.c.id;
     st.items.filter(function(x){ return x.left>0; }).forEach(function(it){
-      days.forEach(function(d){
-        for(var p=1; p<=P && it.left>0; p++){
-          if(schedCell(cid, d, p)) continue;
-          if(it.tid){
-            if(tchBusyAt(it.tid, d, p)) continue;
-            if(!opts.ignoreNisab && tchLoad(it.tid) >= nisabOf(it.tid)) return;
+      /* جولتين: الأولى بقيد «مرة في اليوم»، والتانية بدونه لو لسه فاضل */
+      for(var pass=0; pass<2 && it.left>0; pass++){
+        for(var k=0;k<days.length && it.left>0;k++){
+          var d = days[k];
+          if(pass===0 && subjOnDay(cid, it.su.id, d) > 0) continue;
+          for(var p=1; p<=P && it.left>0; p++){
+            if(schedCell(cid, d, p)) continue;
+            if(it.tid){
+              if(tchBusyAt(it.tid, d, p)) continue;
+              if(!opts.ignoreNisab && tchLoad(it.tid) >= nisabOf(it.tid)) return;
+            }
+            var pv = (p>1) ? schedCell(cid, d, p-1) : null;
+            if(pv && pv.subjectId===it.su.id) continue;
+            DB.schedule.push({ id:uid("h"), classId:cid, day:d, period:p,
+                               subjectId:it.su.id, teacherId:it.tid||"" });
+            it.left--; res.placed++;
           }
-          DB.schedule.push({ id:uid("h"), classId:cid, day:d, period:p,
-                             subjectId:it.su.id, teacherId:it.tid||"" });
-          it.left--; res.placed++;
         }
-      });
+      }
     });
   });
   /* تكثيف: بنرصّ حصص كل فصل من أول الأسبوع — الفراغ يتجمّع في الآخر
      بدل ما يبقى خانات فاضية وسط الجدول */
   state.forEach(function(st){
     var cid = st.c.id;
-    var mine = DB.schedule.filter(function(x){ return x.classId===cid; });
-    if(!mine.length) return;
-    /* الخانات المتاحة بالترتيب */
-    var slots = [];
-    days.forEach(function(d){ for(var p=1;p<=P;p++) slots.push({d:d,p:p}); });
-    /* بنشيلهم كلهم ونعيد رصّهم بالترتيب مع مراعاة تعارض المعلم */
-    var pool = mine.slice().sort(function(a,b){
-      return (a.day-b.day) || (a.period-b.period);
-    });
-    DB.schedule = DB.schedule.filter(function(x){ return x.classId!==cid; });
-    /* بنوزّع الحصص على الأيام بالتساوي، وفي كل يوم نرصّها من الحصة الأولى */
-    var perDay = Math.ceil(pool.length / days.length);
-    var di = 0, cnt = 0;
-    pool.forEach(function(cell){
-      var done = false;
-      /* نجرّب اليوم الحالي وبعدين اللي بعده */
-      for(var k=0; k<days.length && !done; k++){
-        var d = days[(di + k) % days.length];
-        var used = DB.schedule.filter(function(z){
-          return z.classId===cid && Number(z.day)===d; }).length;
-        if(k===0 && used >= perDay) continue;        /* اليوم اتملى نصيبه */
-        var dup = DB.schedule.some(function(z){
-          return z.classId===cid && z.subjectId===cell.subjectId && Number(z.day)===d; });
-        if(dup) continue;
-        for(var p=1; p<=P; p++){
-          if(schedCell(cid, d, p)) continue;
-          if(cell.teacherId && tchBusyAt(cell.teacherId, d, p)) continue;
-          cell.day = d; cell.period = p;
-          DB.schedule.push(cell);
-          done = true;
-          cnt++;
-          if(cnt % perDay === 0) di = (di+1) % days.length;
+    /* سدّ الفجوات: أي خانة فاضية وسط اليوم نجيبلها حصة من آخر اليوم */
+    days.forEach(function(d){
+      for(var p=1; p<=P; p++){
+        if(schedCell(cid, d, p)) continue;
+        for(var q=P; q>p; q--){
+          var cell = schedCell(cid, d, q);
+          if(!cell) continue;
+          if(cell.teacherId && tchBusyAt(cell.teacherId, d, p, cid)) continue;
+          var prevC = (p>1) ? schedCell(cid, d, p-1) : null;
+          if(prevC && prevC.subjectId===cell.subjectId) continue;
+          cell.period = p;
           break;
-        }
-      }
-      /* آخر محاولة: أي خانة فاضية حتى لو المادة اتكررت في اليوم */
-      if(!done){
-        for(var a=0;a<days.length && !done;a++){
-          var d2 = days[a];
-          for(var q=1;q<=P;q++){
-            if(schedCell(cid, d2, q)) continue;
-            if(cell.teacherId && tchBusyAt(cell.teacherId, d2, q)) continue;
-            cell.day = d2; cell.period = q;
-            DB.schedule.push(cell);
-            done = true; break;
-          }
         }
       }
     });
@@ -5486,6 +5470,50 @@ function viewLessonAbsence(){
     'المعلم اللي عنده حصة في نفس الوقت مش بيظهر في القائمة أصلًا.</div>';
   return h;
 }
+/* إضافة حصة للمعلم من جدوله */
+function modalTchSlot(tid, day, per){
+  var t = teacherById(tid);
+  if(!t){ toast("المعلم مش موجود"); return; }
+  UI.tsKey = tid+"|"+day+"|"+per;
+  var sec = UI.schedSec || "reg";
+  var classes = DB.classes.filter(function(c){
+    return classSector(c)===sec && !schedCell(c.id, day, per);   /* الفصول الفاضية بس */
+  }).sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); });
+  var w = periodWindow(per);
+  var q = nisabOf(tid), n = tchLoad(tid);
+
+  openModal(mHead("إضافة حصة — "+t.name)+
+    '<div class="mb">'+
+    '<div class="note"><b>'+esc(DAYS[day])+' — الحصة '+per+'</b>'+
+      (w? ' · '+esc(w.from)+' – '+esc(w.to) : '')+
+      '<br>حِمله الحالي <b>'+n+'</b> من نصاب <b>'+q+'</b>'+
+      (n>=q? ' <span style="color:var(--danger)">— وصل نصابه</span>' : '')+'</div>'+
+    (classes.length
+      ? '<label class="f"><span>الفصل</span><select id="ts_c">'+
+        classes.map(function(c){
+          return '<option value="'+c.id+'">'+esc(c.name)+' — '+esc(levelName(c.level))+'</option>';
+        }).join("")+'</select></label>'+
+        '<label class="f"><span>المادة</span><select id="ts_s"></select></label>'+
+        '<div class="note">لو المادة عندها معلم تاني في الفصل ده، هيتغيّر لـ«'+esc(t.name)+'» في كل حصصها.</div>'
+      : '<div class="note warn">كل الفصول عندها حصص في الوقت ده.</div>')+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    (classes.length? '<button class="btn" data-act="tsSave">إضافة</button>':'')+'</div>');
+  /* تعبئة المواد حسب الفصل */
+  var sel = document.getElementById("ts_c");
+  function fill(){
+    var box = document.getElementById("ts_s");
+    if(!box || !sel) return;
+    var subs = DB.subjects.filter(function(su){ return su.classId===sel.value; })
+      .sort(function(a,b){ return sortAr(a.name,b.name); });
+    var nm = normAr(t.subject||"");
+    box.innerHTML = subs.map(function(su){
+      var fit = nm && normAr(su.name).indexOf(nm)>=0;
+      return '<option value="'+su.id+'">'+esc(su.name)+(fit? ' ★ تخصصه' : '')+'</option>';
+    }).join("") || '<option value="">— مفيش مواد —</option>';
+  }
+  if(sel){ sel.onchange = fill; fill(); }
+}
 function viewSchedAudit(){
   var sec = UI.schedSec || "reg";
   var a = schedAudit(sec);
@@ -5724,7 +5752,8 @@ function viewSchedGrid(){
       '<span style="flex:1"></span>'+
       '<button class="btn sm" data-act="genOne" data-id="'+c.id+'">⚡ توليد جدول الفصل ده</button>'+
       '<button class="btn ghost sm" data-act="genAll" data-s="'+sec+'">⚡ توليد كل الفصول</button>'+
-      '<button class="btn ghost sm" data-act="clearCls" data-id="'+c.id+'" style="color:var(--danger)">تفريغ</button>'+
+      '<button class="btn ghost sm" data-act="clearCls" data-id="'+c.id+'" style="color:var(--danger)">تفريغ الفصل</button>'+
+      '<button class="btn ghost sm" data-act="clearAll" data-s="'+sec+'" style="color:var(--danger)">تفريغ كل الفصول</button>'+
       '</div>'+
       '<div class="note noprint">اضغط على أي خانة عشان تحطّ فيها مادة ومعلم أو تفضّيها.</div>';
   }
@@ -5823,6 +5852,36 @@ function viewSchedTeachers(){
     });
     h += '</tbody></table></div></div></div>';
   }
+  /* تبويب اليوم / الأسبوع */
+  var tvTab = UI.tchSchTab || "week";
+  var dToday = new Date(today()).getDay();
+  h += '<div class="chips noprint">'+
+    '<button class="'+(tvTab==="day"?"on":"")+'" data-act="tchSchTab" data-t="day">النهاردة ('+esc(DAYS[dToday]||"")+')</button>'+
+    '<button class="'+(tvTab==="week"?"on":"")+'" data-act="tchSchTab" data-t="week">الأسبوع كله</button>'+
+    '</div>';
+
+  if(tvTab==="day"){
+    var mineD = DB.schedule.filter(function(x){ return x.teacherId===tid && Number(x.day)===dToday; })
+      .sort(function(a,b){ return a.period-b.period; });
+    h += printHd("جدول "+DAYS[dToday]+" — "+t.name);
+    h += '<div class="card"><div class="hd"><div style="flex:1"><h3>'+esc(DAYS[dToday])+' — '+
+      mineD.length+' حصة</h3></div></div><div class="bd flush">';
+    if(!mineD.length) h += '<div class="empty"><b>مفيش حصص النهاردة</b></div>';
+    for(var pd=1; pd<=P; pd++){
+      var cD = mineD.filter(function(x){ return Number(x.period)===pd; })[0];
+      var wD = periodWindow(pd);
+      var cls2 = cD ? classById(cD.classId) : null;
+      h += '<div class="list-item"'+(_can&&cD?' data-act="schEdit" data-c="'+cD.classId+'" data-d="'+dToday+'" data-p="'+pd+'" style="cursor:pointer"':'')+'>'+
+        '<span class="av"'+(cD?'':' style="background:var(--line)"')+'>'+pd+'</span>'+
+        '<span class="tx"><b>'+(cD? esc(subjName(cD.subjectId))+' — '+esc(cls2?cls2.name:"—") : 'فاضية')+'</b>'+
+        '<small>'+(wD? esc(wD.from)+' – '+esc(wD.to) : '')+'</small></span>'+
+        (_can&&cD?'<span class="chev">✎</span>':'')+'</div>';
+    }
+    return h + '</div></div>';
+  }
+
+  if(_can) h += '<div class="note noprint">اضغط على أي حصة عشان تعدّلها أو تنقلها لفصل تاني. '+
+    'والخانات الفاضية تقدر تضيف فيها حصة جديدة.</div>';
   h += printHd("الجدول الأسبوعي — "+t.name);
   h += '<div class="card"><div class="bd flush"><div class="tbl-wrap"><table class="tbl sched"><thead><tr><th>اليوم</th>';
   for(var p=1;p<=P;p++){
@@ -5831,15 +5890,20 @@ function viewSchedTeachers(){
   }
   h += '</tr></thead><tbody>';
   days.forEach(function(di){
-    h += '<tr><td style="font-weight:700;font-family:Cairo,sans-serif">'+esc(DAYS[di])+'</td>';
+    h += '<tr><td style="font-weight:700;font-family:Cairo,sans-serif">'+esc(DAYS[di])+
+      (di===dToday?' <span class="tag ok">النهاردة</span>':'')+'</td>';
     for(var p=1;p<=P;p++){
       var cell = DB.schedule.filter(function(x){
         return x.teacherId===tid && Number(x.day)===di && Number(x.period)===p; })[0];
       if(cell){
         var c = classById(cell.classId);
-        h += '<td class="has"><b>'+esc(subjName(cell.subjectId))+'</b>'+
+        var clk = _can ? ' data-act="schEdit" data-c="'+cell.classId+'" data-d="'+di+'" data-p="'+p+'" style="cursor:pointer"' : '';
+        h += '<td class="has"'+clk+'><b>'+esc(subjName(cell.subjectId))+'</b>'+
           '<small>'+esc(c?c.name:"—")+'</small></td>';
-      }else h += '<td class="free"></td>';
+      }else{
+        var clk2 = _can ? ' data-act="tchAddSlot" data-t="'+tid+'" data-d="'+di+'" data-p="'+p+'" style="cursor:pointer"' : '';
+        h += '<td class="free"'+clk2+'>'+(_can?'<small style="color:var(--muted)">+</small>':'')+'</td>';
+      }
     }
     h += '</tr>';
   });
@@ -9590,6 +9654,19 @@ var ACTS = {
     });
     saveNow(); render(); modalGenResult(res);
   },
+  clearAll: function(el){
+    var sec = el.dataset.s || "reg";
+    var classes = DB.classes.filter(function(c){ return classSector(c)===sec; });
+    var ids = {}; classes.forEach(function(c){ ids[c.id]=1; });
+    var n = DB.schedule.filter(function(x){ return ids[x.classId]; }).length;
+    if(!n){ toast("الجداول فاضية أصلًا"); return; }
+    if(!confirm("تفريغ جداول "+classes.length+" فصل في "+(sec==="reg"?"الانتظام":"الخدمات")+"؟\n"+
+      n+" حصة هتتمسح.\nمعاك «تراجع» بعد المسح.")) return;
+    markUndo("تفريغ كل الجداول");
+    logOp("تفريغ جداول "+(sec==="reg"?"الانتظام":"الخدمات"));
+    DB.schedule = DB.schedule.filter(function(x){ return !ids[x.classId]; });
+    saveNow(); render(); toastUndo("اتفرّغت "+n+" حصة");
+  },
   clearCls: function(el){
     var cid = el.dataset.id, c = classById(cid);
     if(!c) return;
@@ -9597,6 +9674,33 @@ var ACTS = {
     markUndo("تفريغ جدول");
     DB.schedule = DB.schedule.filter(function(x){ return x.classId!==cid; });
     saveNow(); render(); toastUndo("اتفرّغ الجدول");
+  },
+  tchSchTab: function(el){ UI.tchSchTab = el.dataset.t; render(); },
+  tchAddSlot: function(el){ modalTchSlot(el.dataset.t, num(el.dataset.d,0), num(el.dataset.p,1)); },
+  tsSave: function(){
+    var k = String(UI.tsKey||"").split("|");
+    if(k.length<3) return;
+    var tid = k[0], d = num(k[1],0), p = num(k[2],1);
+    var cid = val("ts_c"), sid = val("ts_s");
+    if(!cid || !sid){ toast("اختار الفصل والمادة"); return; }
+    if(schedCell(cid, d, p)){ toast("الفصل ده عنده حصة في الوقت ده"); return; }
+    if(tchBusyAt(tid, d, p)){ toast("المعلم مشغول في الوقت ده"); return; }
+    markUndo("إضافة حصة للمعلم");
+    logOp("إضافة حصة لـ«"+teacherName(tid)+"» — "+DAYS[d]+" حصة "+p);
+    /* المعلم موحّد للمادة في الفصل */
+    var old = DB.assign.filter(function(a){ return a.classId===cid && a.subjectId===sid; });
+    if(old.length){
+      old.forEach(function(a){ a.teacherId = tid; });
+      var seen = false;
+      DB.assign = DB.assign.filter(function(a){
+        if(a.classId===cid && a.subjectId===sid){ if(seen) return false; seen = true; }
+        return true;
+      });
+      DB.schedule.forEach(function(x){ if(x.classId===cid && x.subjectId===sid) x.teacherId = tid; });
+    }else DB.assign.push({ id:uid("a"), classId:cid, subjectId:sid, teacherId:tid });
+    DB.schedule.push({ id:uid("h"), classId:cid, day:d, period:p, subjectId:sid, teacherId:tid });
+    UI.tsKey = null;
+    saveNow(); closeModal(); render(); toastUndo("اتضافت الحصة");
   },
   schedSec:   function(el){ UI.schedSec = el.dataset.v; UI.sector = el.dataset.v;
                             UI.filters.schedCls = ""; UI.sub = {st:"grid"}; render(); },
