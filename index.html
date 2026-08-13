@@ -362,6 +362,75 @@ table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
   table.tbl th{background:#eee!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .print-hd{display:block!important;text-align:center;margin-bottom:12px;border-bottom:2px solid #000;padding-bottom:8px}
   .paper-doc+.paper-doc{break-before:page;page-break-before:always}
+
+  /* ============================================================
+     الجداول في الطباعة: تدخل الصفحة كاملة من غير ما تتقص
+     min-width:max-content اللي بيمنع الكبس على الشاشة لازم يتلغي
+     في الطباعة، عشان الجدول يتظبط على عرض الورقة.
+     ============================================================ */
+  .tbl-wrap{overflow:visible!important;max-width:none!important}
+  table.tbl{min-width:0!important;width:100%!important;table-layout:fixed}
+  table.tbl th,table.tbl td{
+    white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;
+    padding:4px 3px!important;font-size:10px!important
+  }
+  table.tbl th{font-size:9.5px!important}
+  .sched td{min-width:0!important;height:auto!important;padding:4px 2px!important}
+  .sched td b{font-size:9.5px!important}
+  .sched td small{font-size:8.5px!important}
+  .card>.hd{padding:6px 8px}
+  .card>.bd{padding:6px 8px}
+  .card>.bd.flush{padding:0}
+
+  /* ورقة طباعة مستقلة لكل جدول */
+  .print-sheet{break-inside:avoid;page-break-inside:avoid}
+  .print-sheet.pg{break-after:page;page-break-after:always}
+  .print-sheet:last-child{break-after:auto;page-break-after:auto}
+
+  /* ============================================================
+     وضع طباعة الجداول: بنخفي الشاشة كلها ونطبع الورق بس
+     ============================================================ */
+  body.printing>*{display:none!important}
+  body.printing>#printArea{display:block!important}
+  #printArea{width:100%}
+  .sched-sheet{width:100%;margin:0 0 6mm}
+  .print-sheet.half .sched-sheet{margin-bottom:8mm}
+  .sheet-hd{text-align:center;border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:6px;line-height:1.5}
+  .sheet-ft{display:flex;justify-content:space-between;font-size:9.5px;margin-top:6px;color:#333}
+  .sched-sheet table.tbl{width:100%!important;table-layout:fixed;border-collapse:collapse}
+  .sched-sheet table.tbl th,.sched-sheet table.tbl td{
+    border:1px solid #999;text-align:center;vertical-align:middle;
+    padding:4px 2px!important;overflow-wrap:anywhere
+  }
+  .sched-sheet table.tbl th{background:#eee!important;font-size:9.5px!important}
+  .sched-sheet .sched td{background:#fff!important;border-radius:0!important;height:auto!important}
+  .sched-sheet .sched td.has{background:#f4f6f3!important}
+  .sched-sheet .sched td b{display:block;font-size:9.5px;font-weight:700}
+  .sched-sheet .sched td small{display:block;font-size:8px;color:#444}
+  /* جدولين في الصفحة: مضغوط عشان الاتنين يدخلوا في ورقة واحدة */
+  .print-sheet.half .sched-sheet{margin-bottom:4mm}
+  .print-sheet.half .sched-sheet table.tbl th,
+  .print-sheet.half .sched-sheet table.tbl td{padding:2px 1px!important;line-height:1.25}
+  .print-sheet.half .sched-sheet .sched td b{font-size:8px;line-height:1.2}
+  .print-sheet.half .sched-sheet .sched td small{font-size:7px;line-height:1.15}
+  .print-sheet.half .sched-sheet table.tbl th{font-size:8px!important}
+  .print-sheet.half .sheet-hd{padding-bottom:2px;margin-bottom:3px;line-height:1.3}
+  .print-sheet.half .sheet-hd>div:nth-child(1){font-size:8px!important}
+  .print-sheet.half .sheet-hd>div:nth-child(2){font-size:11px!important}
+  .print-sheet.half .sheet-hd>div:nth-child(3){font-size:10px!important}
+  .print-sheet.half .sheet-hd>div:nth-child(4){font-size:8.5px!important}
+  .print-sheet.half .sheet-ft{font-size:8px;margin-top:3px}
+}
+/* اتجاه الورقة بيتحدد وقت الطباعة من نافذة الخيارات */
+@page{margin:12mm}
+body.pr-land{}
+@media print{
+  body.pr-port{}
+}
+#printArea{display:none}
+.print-hd{display:none}
+.print-only{display:none}
+@media print{ .print-only{display:block!important} }
   .pinmsg{font-size:11.5px;font-weight:600;margin-top:4px;min-height:15px}
 .syncpill{
   font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;
@@ -5877,7 +5946,7 @@ function viewSchedGrid(){
   var P = periodsCount(), days = schoolDayIdx();
 
   var h = pageHd("جداول الفصول", c ? c.name+" · "+levelName(c.level) : "",
-    ''+exportBtns()+'');
+    '<button class="btn" data-act="printSched" data-id="'+(c?c.id:"")+'">⎙ طباعة الجداول</button>'+exportBtns());
   h += '<div class="chips noprint">'+classes.map(function(x){
     var n = DB.schedule.filter(function(y){ return y.classId===x.id; }).length;
     return '<button class="'+(x.id===cid?"on":"")+'" data-act="schPick" data-id="'+x.id+'">'+
@@ -5921,6 +5990,154 @@ function viewSchedGrid(){
   });
   return h + '</tbody></table></div></div></div>';
 }
+/* ============================================================
+   طباعة الجداول
+   الترويسة فوق والجدول تحتها كامل، مع اختيار اتجاه الورقة
+   (طولي/عرضي) وعدد الجداول في الصفحة (١ أو ٢).
+   ============================================================ */
+/* جدول فصل واحد كـ HTML جاهز للطباعة — نفس بناء الشاشة من غير أزرار */
+function schedTableHTML(cid, opt){
+  opt = opt || {};
+  var c = classById(cid); if(!c) return "";
+  var P = periodsCount(), days = schoolDayIdx();
+  var h = '<table class="tbl sched"><thead><tr><th>اليوم</th>';
+  for(var p=1;p<=P;p++){
+    var w = periodWindow(p);
+    h += '<th style="text-align:center">'+p+
+      (w&&!opt.tight?'<br><small style="font-weight:400">'+esc(w.from)+'</small>':'')+'</th>';
+  }
+  h += '</tr></thead><tbody>';
+  days.forEach(function(di){
+    h += '<tr><td style="font-weight:700;font-family:Cairo,sans-serif">'+esc(DAYS[di])+'</td>';
+    for(var p2=1;p2<=P;p2++){
+      var cell = schedCell(cid, di, p2);
+      if(cell){
+        h += '<td class="has"><b>'+esc(subjName(cell.subjectId))+'</b>'+
+          '<small>'+esc(cell.teacherId? teacherName(cell.teacherId) : "بدون معلم")+'</small></td>';
+      }else{
+        h += '<td class="free"></td>';
+      }
+    }
+    h += '</tr>';
+  });
+  return h + '</tbody></table>';
+}
+/* ورقة جدول واحدة: ترويسة + الجدول تحتها */
+function schedSheetHTML(cid, opt){
+  var c = classById(cid); if(!c) return "";
+  var m = DB.meta;
+  return '<div class="sched-sheet">'+
+    '<div class="sheet-hd">'+
+      '<div style="font-size:10px">'+esc(m.moderia||"")+' — '+esc(m.edara||"")+'</div>'+
+      '<div style="font-size:14px;font-weight:700;font-family:Cairo,sans-serif">'+esc(m.school||"")+'</div>'+
+      '<div style="font-size:12px;font-weight:600">جدول فصل '+esc(c.name)+' — '+esc(levelName(c.level))+
+        ' — '+esc(trackName(c.system,c.track))+'</div>'+
+      '<div style="font-size:10.5px">العام الدراسي '+esc(m.year||"")+
+        ' — الفصل الدراسي '+(m.term===1?"الأول":"الثاني")+'</div>'+
+    '</div>'+
+    schedTableHTML(cid, opt)+
+    '<div class="sheet-ft">'+
+      '<span>مسؤول الجدول: ................</span>'+
+      '<span>وكيل شئون الطلاب: ................</span>'+
+      '<span>مدير المدرسة: ................</span>'+
+    '</div></div>';
+}
+/* نافذة خيارات الطباعة */
+function modalPrintSched(cid){
+  var sec = UI.schedSec || "reg";
+  var classes = DB.classes.filter(function(c){ return classSector(c)===sec; })
+    .sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); });
+  var withSched = classes.filter(function(c){
+    return DB.schedule.some(function(x){ return x.classId===c.id; });
+  });
+  var c = classById(cid);
+  openModal(mHead("طباعة الجداول")+
+    '<div class="mb">'+
+    '<div class="note">الترويسة بتتطبع فوق وتحتها الجدول كامل. اختار اتجاه الورقة وعدد الجداول في الصفحة.</div>'+
+    '<label class="f"><span>إيه اللي هيتطبع؟</span><select id="ps_scope">'+
+      (c?'<option value="one">الفصل الحالي بس — '+esc(c.name)+'</option>':'')+
+      '<option value="all"'+(c?'':' selected')+'>كل الفصول اللي ليها جدول ('+withSched.length+' فصل)</option>'+
+      '<option value="level">فصول صف معيّن</option>'+
+    '</select></label>'+
+    '<label class="f" id="ps_lvlWrap" style="display:none"><span>الصف</span><select id="ps_lvl">'+
+      LEVELS.map(function(l){
+        var n = withSched.filter(function(x){ return Number(x.level)===l.id; }).length;
+        return '<option value="'+l.id+'">'+esc(l.name)+' — '+n+' فصل</option>';
+      }).join("")+
+    '</select></label>'+
+    '<label class="f"><span>اتجاه الورقة</span><select id="ps_or">'+
+      '<option value="landscape">عرضي (أفقي) — مناسب للجداول العريضة</option>'+
+      '<option value="portrait">طولي (رأسي)</option>'+
+    '</select></label>'+
+    '<label class="f"><span>عدد الجداول في الصفحة</span><select id="ps_per">'+
+      '<option value="1">جدول واحد في كل صفحة</option>'+
+      '<option value="2">جدولين في كل صفحة</option>'+
+    '</select></label>'+
+    '<div class="note warn">مهم: في نافذة الطباعة اللي هتفتح، سيب <b>الهوامش</b> على الافتراضي '+
+      'وفعّل <b>«طباعة الخلفيات»</b> لو عايز خلفية رؤوس الجدول تظهر.</div>'+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="psGo">طباعة</button></div>');
+  MODAL.dataset.cid = cid || "";
+  var sc = document.getElementById("ps_scope");
+  if(sc) sc.onchange = function(){
+    var w = document.getElementById("ps_lvlWrap");
+    if(w) w.style.display = sc.value==="level" ? "block" : "none";
+  };
+}
+/* التنفيذ: بنبني حاوية طباعة مؤقتة، نطبع، وبعدين نشيلها */
+function runPrintSched(){
+  var sec = UI.schedSec || "reg";
+  var scope = val("ps_scope"), orient = val("ps_or"), per = num(val("ps_per"),1);
+  var cid = MODAL.dataset.cid;
+  var list = [];
+  if(scope==="one" && cid){
+    list = [cid];
+  }else{
+    var pool = DB.classes.filter(function(c){
+      return classSector(c)===sec && DB.schedule.some(function(x){ return x.classId===c.id; });
+    });
+    if(scope==="level"){
+      var L = num(val("ps_lvl"),1);
+      pool = pool.filter(function(c){ return Number(c.level)===L; });
+    }
+    list = pool.sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); })
+               .map(function(c){ return c.id; });
+  }
+  if(!list.length){ toast("مفيش جداول للطباعة"); return; }
+
+  closeModal();
+  /* ورق الطباعة: كل جدول ورقة، والفاصل بين الصفحات حسب العدد المختار */
+  var body = list.map(function(id, i){
+    var brk = ((i+1) % per === 0) && (i < list.length-1);
+    return '<div class="print-sheet'+(brk?" pg":"")+
+           (per===2?" half":"")+'">'+schedSheetHTML(id, {tight:per===2})+'</div>';
+  }).join("");
+
+  var box = document.getElementById("printArea");
+  if(box) box.parentNode.removeChild(box);
+  box = document.createElement("div");
+  box.id = "printArea";
+  box.innerHTML = body;
+  document.body.appendChild(box);
+
+  /* اتجاه الورقة — @page مش بيقبل متغيّرات، فبنحقنه وقت الطباعة */
+  var st = document.getElementById("printOrient");
+  if(st) st.parentNode.removeChild(st);
+  st = document.createElement("style");
+  st.id = "printOrient";
+  st.textContent = "@media print{@page{size:A4 "+orient+";margin:10mm}}";
+  document.head.appendChild(st);
+
+  document.body.classList.add("printing");
+  window.print();
+  setTimeout(function(){
+    document.body.classList.remove("printing");
+    var b2 = document.getElementById("printArea"); if(b2) b2.parentNode.removeChild(b2);
+    var s2 = document.getElementById("printOrient"); if(s2) s2.parentNode.removeChild(s2);
+  }, 700);
+}
+
 /* ---------- جدول المعلم ---------- */
 function viewSchedTeachers(){
   var g = gate("teachers");
@@ -11000,6 +11217,8 @@ var ACTS = {
 
   openClass: function(el){ UI.tab="classes"; UI.sub={cls:el.dataset.id}; render(); },
   autoFill:  function(){ modalAutoFill(); },
+  printSched: function(el){ modalPrintSched(el.dataset.id||""); },
+  psGo: runPrintSched,
   afPreview: autoFillPreview,
   afApply:   autoFillApply,
   addClass: function(){ modalClass(null); },
