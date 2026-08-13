@@ -3794,16 +3794,28 @@ function tblColumns(id, defs){
 /* بيقرا الاختيارات من النافذة قبل ما تتعاد رسمتها */
 function tcKeep(id){
   var c = tblCfg(id);
+  var scope = (id==="teachers") ? "teacher" : "student";
   Array.prototype.slice.call(document.querySelectorAll(".tcShow")).forEach(function(b){
     if(b.disabled) return;
     if(b.checked) delete c.hide[b.dataset.k];
     else c.hide[b.dataset.k] = 1;
   });
   Array.prototype.slice.call(document.querySelectorAll(".tcName")).forEach(function(inp){
-    var def = (UI.tcDefs||[]).filter(function(d){ return d.k===inp.dataset.k; })[0];
+    var k = inp.dataset.k;
     var v = String(inp.value||"").trim();
-    if(!v || (def && v===def.label)) delete c.label[inp.dataset.k];
-    else c.label[inp.dataset.k] = v;
+    if(!v) return;
+    /* العمود الإضافي: بنغيّر اسمه الحقيقي — فالاسم الجديد بيبقى الأساس
+       في كل مكان: الترحيل، التصدير، الورقيات، المرادفات. */
+    if(k.indexOf("xf:")===0){
+      var f = xfList(scope).filter(function(x){ return x.id===k.slice(3); })[0];
+      if(f && f.label !== v) f.label = v;
+      delete c.label[k];
+      return;
+    }
+    /* العمود الأساسي: بيتخزن كاسم معروض */
+    var def = (UI.tcDefs||[]).filter(function(d){ return d.k===k; })[0];
+    if(def && v===def.label) delete c.label[k];
+    else c.label[k] = v;
   });
 }
 /* ============================================================
@@ -4013,6 +4025,13 @@ function modalTableCfg(id, defs, title){
     return out;
   })();
   var shown = ordered.filter(function(d){ return !colHidden(id,d); }).length;
+  var _scope = (id==="teachers") ? "teacher" : "student";
+  var _pool  = (id==="teachers") ? DB.teachers : allSectorStudents();
+  function _used(k){
+    var n = 0;
+    _pool.forEach(function(o){ if(colValOf(o, k.indexOf("xf:")===0?k:"base:"+k, _scope, 0, true)) n++; });
+    return n;
+  }
   openModal(mHead("إعدادات جدول "+(title||""))+
     '<div class="mb">'+
     '<div class="note">اختار الأعمدة اللي تظهر، وغيّر عنوان أي عمود للي يناسبك، ورتّبهم زي ما تحب. '+
@@ -4021,6 +4040,7 @@ function modalTableCfg(id, defs, title){
     '<div style="max-height:46vh;overflow:auto">'+
     ordered.map(function(d,i){
       var hid = colHidden(id,d);
+      var nUsed = d.core ? 0 : _used(d.k);
       return '<div class="list-item" style="gap:6px">'+
         '<label style="display:flex;align-items:center;cursor:'+(d.core?"not-allowed":"pointer")+'">'+
           '<input type="checkbox" class="tcShow" data-k="'+esc(d.k)+'"'+(hid?"":" checked")+
@@ -4028,9 +4048,14 @@ function modalTableCfg(id, defs, title){
         '<span class="tx" style="flex:1">'+
           '<input type="text" class="tcName" data-k="'+esc(d.k)+'" value="'+esc(colName(id,d))+'" '+
           'style="width:100%;padding:5px 7px;border:1px solid var(--line-2);border-radius:7px;font:inherit;font-size:13px">'+
-          '<small style="color:var(--muted)">الأصل: '+esc(d.label)+(d.core?" · أساسي":"")+'</small></span>'+
+          (d.core? '<small style="color:var(--muted)">أساسي — مبيتحذفش</small>' :
+            (nUsed? '<small style="color:var(--muted)">'+nUsed+' قيمة مسجّلة</small>' : ''))+
+          '</span>'+
         '<button class="btn ghost sm" data-act="tcUp" data-t="'+esc(id)+'" data-k="'+esc(d.k)+'"'+(i===0?" disabled":"")+'>▲</button>'+
         '<button class="btn ghost sm" data-act="tcDown" data-t="'+esc(id)+'" data-k="'+esc(d.k)+'"'+(i===ordered.length-1?" disabled":"")+'>▼</button>'+
+        (d.core? '' :
+          '<button class="btn ghost sm" data-act="tcDel" data-t="'+esc(id)+'" data-k="'+esc(d.k)+'" '+
+          'style="color:var(--danger)">حذف</button>')+
         '</div>';
     }).join("")+'</div>'+
     '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer">'+
@@ -8582,6 +8607,33 @@ var ACTS = {
     tcKeep(el.dataset.t);
     save(); modalTableCfg(el.dataset.t, defs, UI.tcTitle);
   },
+  tcDel: function(el){
+    var id = el.dataset.t, k = el.dataset.k;
+    var scope = (id==="teachers") ? "teacher" : "student";
+    tcKeep(id);
+    if(k.indexOf("xf:")===0){
+      var fid = k.slice(3);
+      var lst = xfList(scope);
+      var f = lst.filter(function(x){ return x.id===fid; })[0];
+      if(!f){ toast("العمود مش موجود"); return; }
+      var arr = (scope==="teacher") ? DB.teachers : DB.students;
+      var n = arr.filter(function(o){
+        var v = xfGet(o, fid); return v!==undefined && v!==null && String(v).trim()!==""; }).length;
+      if(!confirm("حذف عمود «"+f.label+"» نهائيًا؟\n"+
+        (n? n+" قيمة مسجّلة هتتمسح معاه." : "مفيش قيم مسجّلة فيه.")+"\nمعاك «تراجع» بعد الحذف.")) return;
+      markUndo("حذف عمود");
+      arr.forEach(function(o){ if(o.extra) delete o.extra[fid]; });
+      lst.splice(lst.indexOf(f), 1);
+      saveNow(); render(); modalTableCfg(id, UI.tcDefs, UI.tcTitle);
+      toastUndo("اتحذف العمود"+(n? " و"+n+" قيمة" : ""));
+      return;
+    }
+    /* العمود الأساسي: بيتخفي مش بيتحذف */
+    var c = tblCfg(id);
+    c.hide[k] = 1;
+    saveNow(); render(); modalTableCfg(id, UI.tcDefs, UI.tcTitle);
+    toast("العمود الأساسي اتخفى — بياناته محفوظة");
+  },
   tcSave: function(el){
     tcKeep(el.dataset.t);
     var c = tblCfg(el.dataset.t);
@@ -9200,45 +9252,25 @@ var ACTS = {
     saveNow(); render(); toastUndo("اتمسحت التسجيلات");
   },
   wipeForms: function(){
-    formsInit();
+    formsInit(); wishesInit();
     var n = DB.forms.length;
-    if(!n){ toast("مفيش استمارات إضافية"); return; }
     var subs = DB.forms.reduce(function(a,f){ return a + formSubsOf(f.id).length; }, 0);
-    if(!confirm("مسح كل الاستمارات الإضافية ("+n+" استمارة"+(subs?" و"+subs+" تسجيل":"")+")؟\n"+
-      "استمارة تحديد المسار وتسجيلاتها مش هتتأثر.\nوالطلاب اللي اترحّلوا بالفعل مش هيتأثروا.")) return;
-    markUndo("مسح الاستمارات الإضافية");
-    DB.forms.forEach(function(f){ delete DB.formSubs[f.id]; });
+    var wn = (DB.wishes||[]).length;
+    if(!n && !wn){ toast("مفيش استمارات ولا تسجيلات"); return; }
+    if(!confirm("مسح كل الاستمارات وتسجيلاتها نهائيًا؟\n\n"+
+      "• "+n+" استمارة و"+subs+" تسجيل\n"+
+      (wn? "• "+wn+" تسجيل من استمارة المسار القديمة\n" : "")+
+      "\nبيانات الطلاب اللي اترحّلت مش هتتأثر — دي بتتمسح من الاستمارات بس.\n"+
+      "معاك «تراجع» بعد المسح.")) return;
+    markUndo("مسح كل الاستمارات");
     DB.forms = [];
+    DB.formSubs = {};
+    DB.wishes = [];
+    DB.trackExtra = [];
+    DB.lastMig = {};
     UI.sub = null;
-    saveNow(); render(); toastUndo("اتمسحت "+n+" استمارة");
-  },
-  addGrade3Form: function(){
-    formsInit();
-    var exists = DB.forms.filter(function(f){ return normAr(f.title)===normAr("تحديد الشعبة"); })[0];
-    if(exists){ toast("استمارة «تحديد الشعبة» موجودة بالفعل"); UI.sub={form:exists.id}; render(); return; }
-    markUndo("إضافة استمارة تحديد الشعبة");
-    var f = {
-      id: uid("form"),
-      title: "تحديد الشعبة",
-      desc: "لطلاب الصف الثالث الثانوي — اختَر شعبتك واكتب بياناتك",
-      level: 3,
-      strictNat: false,             /* أي رقم قومي حتى لو مش مسجّل */
-      status: "open",
-      createdAt: today(),
-      fields: [
-        { id:uid("fd"), label:"الشعبة", type:"select", required:true,
-          options:["علمي","أدبي"] },
-        { id:uid("fd"), label:"شعبة العلمي (علوم / رياضيات)", type:"select", required:false,
-          options:["علوم","رياضيات"] },
-        { id:uid("fd"), label:"العنوان بالتفصيل", type:"text", required:true },
-        { id:uid("fd"), label:"رقم موبايل ولي الأمر", type:"tel", required:true }
-      ]
-    };
-    DB.forms.push(f);
-    saveNow();
-    UI.sub = { form: f.id };
-    render();
-    toastUndo("اتعملت استمارة «تحديد الشعبة» للصف الثالث");
+    saveNow(); render();
+    toastUndo("اتمسح كل حاجة: "+n+" استمارة · "+(subs+wn)+" تسجيل");
   },
   formStrictBtn: function(el){
     var f = formById(el.dataset.id);
@@ -14987,11 +15019,7 @@ function formsResetOnce(){
 }
 function formsCatalog(){
   formsInit();
-  var out = [{
-    id:"track", title:"استمارة تحديد المسار", desc:"الطالب يختار مساره ومادة تخصصه",
-    level:num(DB.trackLevel,2), open: DB.trackOpen!==false,
-    strictNat: DB.trackStrict!==false, edus: formAudience({id:"track"}), builtin:true, fields:0
-  }];
+  var out = [];        /* استمارة المسار اتشالت — الاستمارات كلها بقت من DB.forms */
   (DB.forms||[]).forEach(function(f){
     if(!f || !f.id) return;                       /* سجل تالف — بنتخطاه بدل ما يلخبط */
     out.push({
@@ -15032,8 +15060,9 @@ function viewFormsIndex(){
     h += '<div class="card noprint"><div class="bd" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">'+
       '<span class="tag info">'+forms.length+' استمارة إجمالًا</span>'+
       '<span style="flex:1"></span>'+
-      '<button class="btn ghost sm" data-act="addGrade3Form">+ استمارة تحديد الشعبة (الصف الثالث)</button>'+
-      ((DB.forms||[]).length? '<button class="btn ghost sm" data-act="wipeForms" style="color:var(--danger)">🧹 مسح كل الاستمارات الإضافية</button>':'')+
+
+      (((DB.forms||[]).length || (DB.wishes||[]).length)
+        ? '<button class="btn ghost sm" data-act="wipeForms" style="color:var(--danger)">🧹 مسح كل الاستمارات والتسجيلات</button>':'')+
       '</div></div>';
   }
 
