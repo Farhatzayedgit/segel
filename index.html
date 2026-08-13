@@ -16950,7 +16950,7 @@ function saveCustomForm(fid){
   var raw = natEl ? natEl.value : "";
   var nat = keyNorm(keyBy, raw);
   var err = nameCheck(name); if(err){ toast(err); return; }
-  err = keyFormatCheck(keyBy, raw); if(err){ toast(err); return; }
+  err = keyFormatCheck(keyBy, raw, formTargetLevel(f)); if(err){ toast(err); return; }
   var values = {}, missing = null;
   (f.fields||[]).forEach(function(fd){
     var e = document.getElementById("cff_"+fd.id);
@@ -17738,40 +17738,88 @@ function formSubsOf(id){
    بيربط بيه الإجابات بملف الطالب، وبيفضل ثابت ما بيتغيّرش،
    وباقي البيانات كلها بتتحدّث من الاستمارة.
    ============================================================ */
-var KEY_COLS = [
-  { col:"natId", label:"الرقم القومي", hint:"١٤ رقم — المفتاح الرسمي",
-    ph:"30012345600123", mode:"numeric", max:14 },
-  { col:"code",  label:"كود الطالب",   hint:"كود المدرسة — للطلاب اللي لسه مالهمش رقم قومي",
-    ph:"مثال: 1001", mode:"text", max:20 },
-  { col:"seat",  label:"رقم الجلوس",   hint:"من كشوف الوزارة", levels:[3],
-    ph:"مثال: 12345", mode:"numeric", max:12 }
-];
+/* ============================================================
+   مفتاح الاستمارة — أي عمود من أعمدة الصف
+   الوكيل بيختار العمود اللي الطالب هيتعرّف بيه (رقم قومي، كود،
+   رقم جلوس، اسم، هاتف…). لازم الطالب يكتبه مطابق للمسجّل عندنا،
+   وإلا الاستمارة بترفضه. وهو اللي الترحيل بيربط بيه، وبيفضل ثابت
+   ما بيتغيّرش، وباقي البيانات كلها بتتحدّث من الاستمارة.
+   ============================================================ */
+/* العمود ← الحقل في ملف الطالب */
+var KEY_FIELD = {
+  natId:"natId", code:"code", seat:"seat", name:"name",
+  phone:"phone", guard:"guardian", birth:"birth", gov:"gov",
+  prev:"prevClass", subj:"bacSubject"
+};
+/* الأعمدة اللي تنفع تكون مفتاح — نصّية ومميِّزة (مش زي النوع أو الغياب) */
+var KEY_ALLOWED = ["natId","code","seat","name","phone","guard","birth","gov","prev"];
+var KEY_META = {
+  natId:{ hint:"١٤ رقم — المفتاح الرسمي", ph:"30012345600123", mode:"numeric", max:14 },
+  code: { hint:"كود المدرسة للطالب",       ph:"مثال: 1001",     mode:"text",    max:20 },
+  seat: { hint:"من كشوف الوزارة",          ph:"مثال: 12345",    mode:"numeric", max:12 },
+  name: { hint:"الاسم رباعي زي المسجّل",   ph:"الاسم رباعي",    mode:"text",    max:80 },
+  phone:{ hint:"رقم الهاتف المسجّل",       ph:"01000000000",    mode:"numeric", max:15 },
+  guard:{ hint:"اسم ولي الأمر المسجّل",    ph:"اسم ولي الأمر",  mode:"text",    max:80 },
+  birth:{ hint:"تاريخ الميلاد المسجّل",    ph:"2010-05-17",     mode:"text",    max:12 },
+  gov:  { hint:"محافظة الميلاد",           ph:"المنوفية",       mode:"text",    max:40 },
+  prev: { hint:"الفصل السابق",             ph:"مثال: 1/3",      mode:"text",    max:20 }
+};
+/* قيمة العمود من ملف الطالب — خام للمطابقة مش للعرض */
+function stuFieldVal(col, s){
+  if(!s) return "";
+  var f = KEY_FIELD[col];
+  return f ? String(s[f]==null ? "" : s[f]) : "";
+}
+/* أعمدة الصف اللي تنفع مفتاح، ومعاها إحصائية تساعد على الاختيار */
 function keyColsFor(level){
   var L = num(level,0);
-  return KEY_COLS.filter(function(k){ return !(k.levels && L && k.levels.indexOf(L)<0); });
+  var allow = (L && LEVEL_COLS[L]) ? LEVEL_COLS[L] : null;
+  var defs = [];
+  try{ defs = stuColDefs(); }catch(e){ defs = []; }
+  var byKey = {};
+  defs.forEach(function(d){ byKey[d.k] = d.label; });
+  var pool = DB.students.filter(function(x){
+    return x.status!=="left" && (!L || studentLevelOf(x)===L); });
+
+  return KEY_ALLOWED.filter(function(k){
+    if(allow && allow.indexOf(k) < 0 && k!=="name") return false;
+    return true;
+  }).map(function(k){
+    var vals = pool.map(function(x){ return keyNorm(k, stuFieldVal(k, x)); }).filter(Boolean);
+    var uniq = {}, dup = 0;
+    vals.forEach(function(v){ if(uniq[v]) dup++; else uniq[v] = 1; });
+    var m = KEY_META[k] || { hint:"", ph:"", mode:"text", max:60 };
+    return { col:k, label:(byKey[k] || k), hint:m.hint, ph:m.ph, mode:m.mode, max:m.max,
+             filled:vals.length, total:pool.length, dup:dup };
+  });
 }
 function keyColDef(col, level){
   var list = keyColsFor(level);
   for(var i=0;i<list.length;i++) if(list[i].col===col) return list[i];
-  return KEY_COLS[0];
+  var m = KEY_META[col] || KEY_META.natId;
+  return { col:col||"natId", label:(col==="code"?"كود الطالب":"الرقم القومي"),
+           hint:m.hint, ph:m.ph, mode:m.mode, max:m.max, filled:0, total:0, dup:0 };
 }
-/* مفتاح الاستمارة — الافتراضي الرقم القومي (زي القديم) */
+/* مفتاح الاستمارة — الافتراضي الرقم القومي (توافق مع القديم) */
 function formKeyBy(f){
   var k = f && f.keyBy;
-  return (k==="code" || k==="seat" || k==="natId") ? k : "natId";
+  return (k && KEY_ALLOWED.indexOf(k) >= 0) ? k : "natId";
 }
 function formKeyLabel(f){ return keyColDef(formKeyBy(f), formTargetLevel(f)).label; }
-/* تطبيع قيمة المفتاح حسب نوعه */
+/* تطبيع قيمة المفتاح حسب نوعه — عشان المقارنة تبقى عادلة */
 function keyNorm(keyBy, v){
-  if(keyBy==="code") return normCode(v);
-  return toEnDigits(String(v==null?"":v)).replace(/\D/g,"");
+  var t = String(v==null ? "" : v).trim();
+  if(!t) return "";
+  if(keyBy==="code") return normCode(t);
+  if(keyBy==="natId" || keyBy==="seat" || keyBy==="phone")
+    return toEnDigits(t).replace(/\D/g,"");
+  if(keyBy==="birth") return toEnDigits(t).replace(/[^0-9]/g,"");
+  /* نص (اسم، ولي أمر، محافظة، فصل سابق): توحيد الهمزات والمسافات */
+  return normAr(t).replace(/\s+/g," ").trim();
 }
 /* قيمة المفتاح من ملف الطالب */
 function studentKeyVal(keyBy, s){
-  if(!s) return "";
-  if(keyBy==="code") return normCode(s.code);
-  if(keyBy==="seat") return keyNorm("seat", s.seat);
-  return keyNorm("natId", s.natId);
+  return keyNorm(keyBy, stuFieldVal(keyBy, s));
 }
 /* الطالب صاحب المفتاح ده */
 function studentByKey(keyBy, v){
@@ -17783,14 +17831,15 @@ function studentByKey(keyBy, v){
   }
   return null;
 }
-/* التحقق من شكل المفتاح قبل ما ندوّر عليه */
-function keyFormatCheck(keyBy, v){
+function keyFormatCheck(keyBy, v, level){
   var k = keyNorm(keyBy, v);
-  var d = keyColDef(keyBy, 0);
+  var d = keyColDef(keyBy, level||0);
   if(!k) return "اكتب "+d.label;
   if(keyBy==="natId") return natIdCheck(v);
-  if(keyBy==="seat" && k.length<2) return "رقم الجلوس مش مظبوط";
-  if(keyBy==="code" && k.length<2) return "كود الطالب مش مظبوط";
+  if(keyBy==="phone" && k.length<9)  return "رقم الهاتف مش مكتمل";
+  if(keyBy==="name"  && k.length<5)  return "اكتب الاسم رباعي زي المسجّل";
+  if(keyBy==="birth" && k.length<6)  return "تاريخ الميلاد مش مظبوط";
+  if(k.length < 2) return d.label+" مش مظبوط";
   return null;
 }
 /* ============================================================
@@ -17801,11 +17850,11 @@ function keyFormatCheck(keyBy, v){
 function keyGateCheck(f, v){
   var keyBy = formKeyBy(f);
   var d = keyColDef(keyBy, formTargetLevel(f));
-  var fmt = keyFormatCheck(keyBy, v);
+  var fmt = keyFormatCheck(keyBy, v, formTargetLevel(f));
   if(fmt) return fmt;
   if(!formStrict(f)) return "";                 /* استمارة مفتوحة للكل */
   var st = studentByKey(keyBy, v);
-  if(!st) return d.label+" ده مش مسجّل في المدرسة. راجع البيانات وحاول تاني، أو كلّم شئون الطلاب.";
+  if(!st) return "«"+d.label+"» ده مش مسجّل في المدرسة. راجع اللي كتبته وحاول تاني، أو كلّم شئون الطلاب.";
   var L = formTargetLevel(f);
   if(L && studentLevelOf(st) !== L){
     return "الاستمارة دي لطلاب "+levelName(L)+" بس، وإنت مسجّل في "+
@@ -19380,9 +19429,10 @@ function keepDraftTop(d){
     var ds0 = val("fb_desc"); if(ds0!==undefined) d.desc = ds0;
   }
   var lv = val("fb_lvl"); if(lv!=="") d.level = num(lv,0);
-  var st = val("fb_strict"); if(st!=="") d.strictNat = (st!=="0");
+  var _op = document.getElementById("fb_open");
+  if(_op) d.strictNat = !_op.checked;
   var kb0 = val("fb_key");
-  if(kb0==="code"||kb0==="seat"||kb0==="natId") d.keyBy = kb0;
+  if(kb0 && KEY_ALLOWED.indexOf(kb0)>=0) d.keyBy = kb0;
   /* لو الصف اتغيّر والمفتاح مابقاش متاح فيه، نرجّع الرقم القومي */
   if(d.keyBy && !keyColsFor(num(d.level,0)).some(function(k){ return k.col===d.keyBy; }))
     d.keyBy = "natId";
@@ -19486,13 +19536,33 @@ function renderFormBuilder(){
       }).join("")+'</div>'+
       '<small style="color:var(--muted);font-size:11.5px">علّم على اللي عايزهم — واحد أو اتنين أو الكل. '+
       'الاستمارة هتتربط ببيانات النوعيات دي بس، وأي طالب من نوعية تانية هيترفض.</small></label>'+
-    '<label class="f"><span>مين يقدر يملا الاستمارة؟</span><select id="fb_strict">'+
-      '<option value="1"'+(d.strictNat!==false?" selected":"")+'>الطلاب المسجّلين في الصف ده فقط</option>'+
-      '<option value="0"'+(d.strictNat===false?" selected":"")+'>أي رقم قومي — حتى لو مش مسجّل</option>'+
+    '<label class="f"><span>الطالب يتعرّف بأنهي بيان؟</span>'+
+      '<select id="fb_key">'+
+        (function(){
+          var ks = keyColsFor(num(d.level,0));
+          if(!ks.length) return '<option value="natId">الرقم القومي</option>';
+          return ks.map(function(k){
+            var stat = k.total
+              ? ' — '+k.filled+' من '+k.total+' مسجّل'+(k.dup? ' ⚠ فيه '+k.dup+' مكرر' : ' ✓ كلها مميّزة')
+              : ' — '+k.hint;
+            return '<option value="'+k.col+'"'+(formKeyBy(d)===k.col?" selected":"")+'>'+
+              esc(k.label)+esc(stat)+'</option>';
+          }).join("");
+        })()+
       '</select>'+
-      '<small style="color:var(--muted);font-size:11.5px">«المسجّلين فقط» بترفض أي رقم قومي مش موجود في الصف — '+
-      'مناسبة للاستمارات الرسمية. و«أي رقم قومي» بتفتحها للكل — مناسبة لاستمارات التقديم والطلاب الجدد.</small></label>'+
-    '<div class="note">الاسم (زي شهادة الميلاد) والرقم القومي بيتطلبوا تلقائيًا في كل استمارة — مش محتاج تضيفهم.</div>'+
+      '<small style="color:var(--muted);font-size:11.5px">'+
+      'دي أعمدة '+(num(d.level,0)? esc(levelName(num(d.level,0))) : 'الصف')+
+      ' — اختار العمود اللي الطالب هيكتبه عشان البرنامج يعرفه. '+
+      '<b>لو كتبه غلط أو مش مسجّل عندنا، الاستمارة هترفضه فورًا</b> وتقوله إنه مش مسجّل في المدرسة. '+
+      'وهو اللي الترحيل بيربط بيه — بيفضل <b>ثابت ما يتغيّرش</b>، وباقي البيانات بتتحدّث من الاستمارة.<br>'+
+      'الأرقام جنب كل عمود بتقولك كام طالب عنده البيان ده وهل قيمه مكررة — <b>اختار عمود مسجّل للكل ومن غير تكرار</b>.'+
+      '</small></label>'+
+    '<label style="display:flex;align-items:flex-start;gap:9px;padding:6px 0;cursor:pointer">'+
+      '<input type="checkbox" id="fb_open"'+(d.strictNat===false?" checked":"")+' style="width:18px;height:18px;margin-top:2px">'+
+      '<span><b style="font-weight:600">اسمح بالتسجيل حتى لو البيان مش مسجّل عندنا</b>'+
+      '<br><small style="color:var(--muted)">للطلاب الجدد واستمارات التقديم. سيبها فاضية للاستمارات الرسمية.</small></span>'+
+    '</label>'+
+    '<div class="note">الاسم بيتطلب تلقائيًا في كل استمارة مع البيان اللي اخترته فوق — مش محتاج تضيفهم كحقول.</div>'+
     '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:10px 0 6px">الحقول الإضافية</div>'+
     (fieldsHTML||'<div class="note" style="margin-bottom:8px">مفيش حقول إضافية لسه. ضيف اللي عايز الطالب يملاه تحت.</div>')+
     '<div style="border-top:1px dashed var(--line);padding-top:10px;margin-top:6px">'+
@@ -19532,6 +19602,19 @@ function renderFormBuilder(){
   var lvSel = document.getElementById("fb_lvl");
   if(lvSel) lvSel.onchange = function(){
     if(UI.formDraft) UI.formDraft.level = num(lvSel.value,0);
+    /* أعمدة المفتاح بتتغيّر بتغيّر الصف — كل صف وأعمدته وإحصائياته */
+    var kbox = document.getElementById("fb_key");
+    if(kbox){
+      var cur = kbox.value;
+      var ks = keyColsFor(num(lvSel.value,0));
+      kbox.innerHTML = ks.length ? ks.map(function(k){
+        var stat = k.total
+          ? ' — '+k.filled+' من '+k.total+' مسجّل'+(k.dup? ' ⚠ فيه '+k.dup+' مكرر' : ' ✓ كلها مميّزة')
+          : ' — '+k.hint;
+        return '<option value="'+k.col+'"'+(cur===k.col?" selected":"")+'>'+
+          esc(k.label)+esc(stat)+'</option>';
+      }).join("") : '<option value="natId">الرقم القومي</option>';
+    }
     var box = document.getElementById("fb_stu");
     if(box) box.innerHTML = askableFor(num(lvSel.value,0)).map(function(a){
       return '<option value="'+a.col+'">'+esc(a.label)+
@@ -19822,7 +19905,8 @@ Object.assign(ACTS, {
     keepDraftTop(d);
     if(d.id==="track"){
       DB.trackLevel = num(val("fb_lvl"), num(DB.trackLevel,2)) || 2;
-      DB.trackStrict = (val("fb_strict")!=="0");
+      var _opT = document.getElementById("fb_open");
+      DB.trackStrict = _opT ? !_opT.checked : (DB.trackStrict!==false);
       DB.trackEdus = d.edus || EDU_IDS.slice();
       DB.trackExtra = d.fields.filter(function(x){ return !x.core; });
       saveNow(); closeModal(); render();
@@ -19833,7 +19917,8 @@ Object.assign(ACTS, {
     if(!title){ toast("اكتب عنوان الاستمارة"); return; }
     formsInit();
     var lvl = num(val("fb_lvl"),0);
-    var strict = val("fb_strict")!=="0";
+    var _op2 = document.getElementById("fb_open");
+    var strict = _op2 ? !_op2.checked : (d.strictNat!==false);
     var kb1 = val("fb_key");
     var keyBy = (kb1==="code"||kb1==="seat"||kb1==="natId") ? kb1 : (d.keyBy||"natId");
     if(!keyColsFor(lvl).some(function(k){ return k.col===keyBy; })) keyBy = "natId";
