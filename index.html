@@ -11007,8 +11007,6 @@ var ACTS = {
     if(!ids.length){ toast("مفيش طلاب"); return; }
     modalBulkStudents(ids);
   },
-  schTch:     function(el){ UI.sub = { st:"byteacher", tid: el.dataset.id }; render(); },
-  schTchBack: function(){ UI.sub = { st:"byteacher" }; render(); },
   /* ---------- تخصيص الجداول ---------- */
   tblCfg: function(el){
     var id = el.dataset.t;
@@ -11217,11 +11215,6 @@ var ACTS = {
   go_settings:  function(){ UI.tab="settings"; UI.sub=null; render(); },
   go_curriculum:function(){ UI.tab="curriculum"; UI.sub=null; render(); },
   setupToggle:  function(){ UI.setupOpen = !UI.setupOpen; render(); },
-  openTeachClass: function(el){
-    var a = DB.assign.filter(function(x){ return x.classId===el.dataset.c && x.subjectId===el.dataset.s; })[0];
-    if(a){ UI.tab="myclasses"; UI.sub={a:a.id}; render(); }
-    else toast("مفيش تكليف مسجّل للمادة دي");
-  },
   goLoadTab: function(){ UI.tab="schedule"; UI.sub={st:"load"}; render(); },
   clearLog: function(){
     if(!confirm("مسح سجل العمليات بالكامل؟")) return;
@@ -11328,15 +11321,10 @@ var ACTS = {
   editHourly: function(el){ modalHourly(el.dataset.id); },
   saveHourly: saveHourly,
   goShortage: function(){ UI.tab="schedule"; UI.sub={st:"short"}; render(); },
-  goTeachers: function(){ UI.tab="teachers"; UI.sub=null; render(); },
   clearTeachFilters: function(){ UI.filters.tq=""; UI.filters.tsub=""; render(); },
   findDups: function(){ modalDuplicates(); },
   doMergeDups: doMergeDups,
   goClasses:  function(){ UI.tab="classes";  UI.sub=null; render(); },
-  goStudents: function(){
-    UI.tab="students"; UI.sub=null; UI.stuCat="reg"; UI.sector="reg";
-    UI.stuLevel=0; UI.stuMiss=null; render();
-  },
   undoLast: function(){ undoLast(); },
   backupNow: function(){ snoozeBackupReminder(); backupFile(); render(); },
   snoozeBackup: function(){ snoozeBackupReminder(); render(); toast("هفكّرك بعد أسبوع"); },
@@ -11775,7 +11763,7 @@ var ACTS = {
   restore: restoreModal, restoreFile: restoreFile, doRestore: doRestore,
   wipe: wipe, doWipe: doWipe,
 
-  openTeachClass: function(el){ UI.sub={a:el.dataset.id, t:"att"}; render(); },
+  openTeachClass: function(el){ UI.tab="myclasses"; UI.sub={a:el.dataset.id, t:"att"}; render(); },
   tclsTab: function(el){ UI.sub.t = el.dataset.t; render(); },
   formClearSubs: function(el){
     var fid = el.dataset.id;
