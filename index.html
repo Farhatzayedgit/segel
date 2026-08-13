@@ -770,8 +770,10 @@ function migrateClassSystems(){
         if(DB.classes.some(function(x){
           return Number(x.level)===L && x.track===t.id && classSector(x)===sec;
         })) return;                       /* فيه فصل للمسار ده أصلًا */
-        DB.classes.push({ id:uid("c"), name:nm, level:L, system:sysOfLevel(L),
-                          track:t.id, sector:sec, room:"" });
+        var nc2 = { id:uid("c"), name:nm, level:L, system:sysOfLevel(L),
+                    track:t.id, sector:sec, room:"" };
+        DB.classes.push(nc2); idxBump();
+        ensureClassSubjects(nc2.id);
         moved++;
       });
     });
@@ -1829,14 +1831,15 @@ function globalSearch(q){
     if(s.status==="left") return;
     var hitName = normAr(s.name).indexOf(qn)>=0;
     var hitNat  = qd.length>=3 && String(s.natId||"").indexOf(qd)>=0;
-    if(!hitName && !hitNat) return;
+    var hitCode = s.code && normCode(s.code)===normCode(q);
+    if(!hitName && !hitNat && !hitCode) return;
     var c = classById(s.classId);
     push({ key:"s"+s.id, kind:"student", id:s.id, icon:"students", title:s.name,
       sub:(studentLevelOf(s)?levelName(studentLevelOf(s)):"")+
           (c?" · "+c.name:(isHomeStudent(s)?" · منازل":" · غير مسكّن"))+
           " · "+eduName(s.edu||"reg")+
-          (s.natId?" · "+s.natId:""),
-      why: hitNat ? "الرقم القومي" : "الاسم" });
+          (s.code?" · كود "+s.code:"")+(s.natId?" · "+s.natId:""),
+      why: hitCode ? "كود الطالب" : (hitNat ? "الرقم القومي" : "الاسم") });
   });
   /* معلمين */
   DB.teachers.forEach(function(t){
@@ -2508,7 +2511,8 @@ function stuMatch(s, f, skip){
   if(skip!=="status" && f.status && String(s.status||"active")!==String(f.status)) return false;
   if(skip!=="q" && f.q){
     var q = String(f.q).trim();
-    if(q && String(s.name).indexOf(q)<0 && String(s.natId||"").indexOf(q)<0) return false;
+    if(q && String(s.name).indexOf(q)<0 && String(s.natId||"").indexOf(q)<0 &&
+       normCode(s.code).indexOf(normCode(q))<0) return false;
   }
   return true;
 }
@@ -4452,11 +4456,11 @@ function levelSubjectsOf(L, tid){
 /* الأعمدة اللي تخص كل صف — من قرارات الوزارة */
 var LEVEL_COLS = {
   /* الأول: سنة تمهيدية مشتركة — مفيش شعبة ولا تخصص */
-  1: ["idx","name","natId","level","cls","edu","gender","birth","gov","guard","phone","joined","abs"],
+  1: ["idx","name","code","natId","level","cls","edu","gender","birth","gov","guard","phone","joined","abs"],
   /* الثاني: بكالوريا — المسار + مادة التخصص الاختيارية */
-  2: ["idx","name","natId","level","cls","edu","track","subj","gender","birth","gov","guard","phone","joined","abs"],
+  2: ["idx","name","code","natId","level","cls","edu","track","subj","gender","birth","gov","guard","phone","joined","abs"],
   /* الثالث: ثانوية عامة — الشعبة بس (مفيش مادة تخصص، دي بتاعة البكالوريا) */
-  3: ["idx","name","natId","level","cls","edu","track","seat","gender","birth","gov","guard","phone","joined","abs"]
+  3: ["idx","name","code","natId","level","cls","edu","track","seat","gender","birth","gov","guard","phone","joined","abs"]
 };
 /* ============================================================
    فرز الأعمدة — كل عمود ليه زرار بيرتّب حسب نوع بياناته:
@@ -4530,6 +4534,7 @@ function stuColDefs(){
   var defs = [
     { k:"idx",   label:"م",             core:true },
     { k:"name",  label:"الاسم",          core:true },
+    { k:"code",  label:"كود الطالب" },
     { k:"natId", label:"الرقم القومي" },
     { k:"level", label:"الصف" },
     { k:"cls",   label:"الفصل" },
@@ -4767,6 +4772,7 @@ function stuCellValue(d, s){
   switch(d.k){
     case "name":  return s.name||"";
     case "idx":   return "";
+    case "code":  return s.code||"";
     case "natId": return s.natId||"";
     case "cls":   return c ? c.name : (isHomeStudent(s)?"منازل":"");
     case "edu":   return eduName(s.edu||"reg");
@@ -4880,6 +4886,7 @@ function stuCell(d, s, n, can){
     case "idx":   return '<td class="rownum">'+n+'</td>';
     case "name":  return '<td'+(can?' data-act="openStudent" data-id="'+s.id+'" style="cursor:pointer"':'')+
                     '><b style="font-weight:600">'+esc(s.name)+'</b></td>';
+    case "code":  return '<td class="num" style="direction:ltr;text-align:right">'+esc(s.code||"—")+'</td>';
     case "natId": return '<td class="num" style="direction:ltr;text-align:right">'+esc(s.natId||"—")+'</td>';
     case "level": return '<td><small>'+esc(studentLevelOf(s)?levelName(studentLevelOf(s)):"—")+'</small></td>';
     case "cls":   return '<td'+cellEdit("cls",s.id)+'>'+(c? esc(c.name)
@@ -5242,8 +5249,13 @@ function genAllSchedules(sec, opts){
   opts = opts || {};
   var classes = DB.classes.filter(function(c){ return classSector(c)===(sec||"reg"); })
     .sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); });
-  var res = { classes:0, placed:0, want:0, failed:[], noCfg:[] };
+  var res = { classes:0, placed:0, want:0, failed:[], noCfg:[], autoSub:0 };
   if(!classes.length) return res;
+  /* أي فصل من غير مواد بياخد مواد خطته الأول — من غير كده مفيش حاجة تتولّد */
+  classes.forEach(function(c){
+    if(!DB.subjects.some(function(su){ return su.classId===c.id; }))
+      res.autoSub += ensureClassSubjects(c.id);
+  });
   var days = schoolDayIdx(), P = periodsCount();
 
   /* نمسح جداول القسم كله */
@@ -5947,12 +5959,43 @@ function viewSchedGrid(){
 
   var h = pageHd("جداول الفصول", c ? c.name+" · "+levelName(c.level) : "",
     '<button class="btn" data-act="printSched" data-id="'+(c?c.id:"")+'">⎙ طباعة الجداول</button>'+exportBtns());
-  h += '<div class="chips noprint">'+classes.map(function(x){
-    var n = DB.schedule.filter(function(y){ return y.classId===x.id; }).length;
-    return '<button class="'+(x.id===cid?"on":"")+'" data-act="schPick" data-id="'+x.id+'">'+
-      esc(x.name)+(n?' <small>'+n+'</small>':'')+'</button>';
-  }).join("")+'</div>';
-  if(!c) return h + '<div class="card"><div class="bd"><div class="empty"><b>اختار فصل</b></div></div></div>';
+  /* اختيار الصف الأول، وتحته فصول الصف ده بس — بدل شريط طويل بكل الفصول */
+  var lvlsWith = LEVELS.filter(function(l){
+    return classes.some(function(x){ return Number(x.level)===l.id; });
+  });
+  var curLvl = c ? Number(c.level) : (lvlsWith[0] ? lvlsWith[0].id : 0);
+  if(UI.filters.schedLvl && lvlsWith.some(function(l){ return l.id===num(UI.filters.schedLvl,0); }))
+    curLvl = num(UI.filters.schedLvl, curLvl);
+  var lvlClasses = classes.filter(function(x){ return Number(x.level)===curLvl; });
+  /* لو الفصل المختار مش في الصف المعروض، ننقل للأول في الصف ده */
+  if(!lvlClasses.some(function(x){ return x.id===cid; })){
+    cid = lvlClasses[0] ? lvlClasses[0].id : "";
+    c = classById(cid);
+  }
+
+  h += '<div class="card noprint"><div class="bd" style="padding:10px 12px">'+
+    '<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">'+
+      '<label style="font-size:12.5px;font-weight:700;font-family:Cairo,sans-serif;flex:0 0 auto">اختيار الصف</label>'+
+      '<select id="schedLvl" data-act="schLvl" style="flex:1 1 220px;min-width:0;padding:8px 10px;'+
+        'border:1px solid var(--line-2);border-radius:9px;font:inherit">'+
+        lvlsWith.map(function(l){
+          var n = classes.filter(function(x){ return Number(x.level)===l.id; }).length;
+          return '<option value="'+l.id+'"'+(l.id===curLvl?" selected":"")+'>'+
+            esc(l.name)+' — '+esc(levelSysName(l.id))+' · '+n+' فصل</option>';
+        }).join("")+
+      '</select>'+
+    '</div>';
+  if(lvlClasses.length){
+    h += '<div style="font-size:11.5px;color:var(--muted);margin:9px 0 5px">فصول '+esc(levelName(curLvl))+'</div>'+
+      '<div class="chips" style="padding-bottom:2px">'+lvlClasses.map(function(x){
+        var n = DB.schedule.filter(function(y){ return y.classId===x.id; }).length;
+        return '<button class="'+(x.id===cid?"on":"")+'" data-act="schPick" data-id="'+x.id+'" '+
+          'title="'+esc(trackName(x.system,x.track))+'">'+
+          esc(x.name)+(n?' <small>'+n+'</small>':' <small style="color:var(--danger)">٠</small>')+'</button>';
+      }).join("")+'</div>';
+  }
+  h += '</div></div>';
+  if(!c) return h + '<div class="card"><div class="bd"><div class="empty"><b>مفيش فصول في الصف ده</b></div></div></div>';
 
   if(can){
     var _wh = classWeekHours(c.id), _cap = weekCapacity();
@@ -9174,6 +9217,9 @@ function modalStudent(id, presetCls){
       '</select><small style="color:var(--muted);font-size:11.5px">بيفضل معروف حتى لو الطالب مش متسكّن على فصل.</small></label>'+
     '<label class="f"><span>الفصل</span><select id="s_cls"><option value="">— بدون تسكين —</option>'+clsOpts+'</select></label>'+
     '</div>'+
+    '<label class="f"><span>كود الطالب</span><input type="text" id="s_code" '+
+      'style="direction:ltr;text-align:center" value="'+esc(s?(s.code||""):"")+'" '+
+      'placeholder="كود المدرسة للطالب — بديل الرقم القومي لو لسه مالوش"></label>'+
     '<label class="f"><span>الرقم القومي (١٤ رقم)</span><input type="text" id="s_nat" inputmode="numeric" maxlength="14" '+
       'style="letter-spacing:.08em;direction:ltr;text-align:center" value="'+esc(s?(s.natId||""):"")+'" '+
       'placeholder="منه بيتحسب الميلاد والنوع والمحافظة"></label>'+
@@ -9292,6 +9338,17 @@ function saveStudent(){
   else s.classId = "";
   setStudentLevel(s, num(val("s_lvl"),0) || studentLevelOf(s) || 1);
   s.natId = nat0;
+  /* كود الطالب — مفتاح زي الرقم القومي، فمينفعش يتكرر */
+  var codeEl = document.getElementById("s_code");
+  if(codeEl){
+    var cd = normCode(codeEl.value);
+    if(cd){
+      var clash = DB.students.filter(function(x){
+        return x.id!==s.id && x.status!=="left" && normCode(x.code)===cd; })[0];
+      if(clash){ toast("كود الطالب ده متسجّل بالفعل لـ«"+clash.name+"»"); return; }
+    }
+    s.code = cd;
+  }
   var seatEl = document.getElementById("s_seat");
   if(seatEl) s.seat = toEnDigits(seatEl.value||"").replace(/[^0-9]/g,"");
   s.guardian = val("s_g").trim();
@@ -9382,8 +9439,11 @@ function saveClass(){
   studentsOf(c.id).forEach(function(s){
     if(!classFitsStudent(c, s).ok){ s.classId = ""; out++; }
   });
+  idxBump();
+  var addedSub = ensureClassSubjects(c.id);   /* مواد الفصل من خطته */
   save(); closeModal(); render();
-  toast(out ? "اتحفظ · "+out+" طالب خرجوا من الفصل لاختلاف "+trackWord(lvl) : "اتحفظ");
+  toast((out ? "اتحفظ · "+out+" طالب خرجوا لاختلاف "+trackWord(lvl) : "اتحفظ")+
+        (addedSub? " · اتضاف "+addedSub+" مادة" : ""));
 }
 function autoSubjects(cid){
   var c = classById(cid);
@@ -12134,9 +12194,10 @@ var IMPORT_SCHEMAS = {
   },
   students:{
     title:"استيراد الطلاب",
-    hint:"محتاج عمود الاسم، ويفضّل جدًا عمود الرقم القومي — هو اللي بيمنع تكرار الطالب. لو الملف فيه عمود «نوعية التعليم» (نظامي/خدمات/منازل) البرنامج هيوزّعهم على أقسامهم لوحده، والمنازل مش هيتسكّنوا على فصول.",
+    hint:"محتاج عمود الاسم، ومعاه <b>الرقم القومي</b> أو <b>كود الطالب</b> — أي واحد فيهم بيمنع التكرار ويربط الطالب بالقاعدة. لو الطلاب لسه مالهمش أرقام قومية (زي الصف الأول)، ارفعهم بكود الطالب وهو اللي هيبقى المفتاح. لو الملف فيه عمود «نوعية التعليم» (نظامي/خدمات/منازل) البرنامج هيوزّعهم على أقسامهم لوحده، والمنازل مش هيتسكّنوا على فصول.",
     fields:[
       {k:"name", label:"اسم الطالب", req:true, multi:true, al:["اسم الطالب","الاسم","اسم","الطالب","اسم رباعي","الاسم رباعي","student","name","اسم التلميذ"]},
+      {k:"code", label:"كود الطالب", al:["كود الطالب","الكود","كود","رقم الطالب","كود التلميذ","رقم الملف","code","student code","id"]},
       {k:"seat", label:"رقم الجلوس", al:["رقم الجلوس","جلوس","رقم جلوس","seat","الرقم"]},
       {k:"natId", label:"الرقم القومي", al:["الرقم القومي","قومي","رقم قومي","national","الرقم القومى"]},
       {k:"guardian", label:"ولي الأمر", al:["ولي الامر","ولي الأمر","اسم ولي الامر","الوصي","guardian","parent"]},
@@ -12721,11 +12782,15 @@ function impStudents(recs){
   var defCls = UI.imp.ctx.classId || "";
   var newCls = 0;
 
-  /* فهرس الرقم القومي — المفتاح الوحيد اللي بنمنع بيه التكرار */
-  var byNat = {};
-  DB.students.forEach(function(s){ if(s.natId) byNat[s.natId] = s; });
-  /* فهرس مؤقت للأرقام اللي جوه نفس الملف عشان الملف نفسه ميكررش */
-  var seenInFile = {};
+  /* المفاتيح: الرقم القومي أو كود الطالب — أي واحد فيهم بيربط الطالب بسجله.
+     الصف الأول لسه مالوش أرقام قومية، فالكود هو المفتاح الوحيد عنده. */
+  var byNat = {}, byCode = {};
+  DB.students.forEach(function(s){
+    if(s.natId) byNat[s.natId] = s;
+    if(s.code)  byCode[normCode(s.code)] = s;
+  });
+  /* فهرس مؤقت للمفاتيح اللي جوه نفس الملف عشان الملف نفسه ميكررش */
+  var seenInFile = {}, seenCode = {};
 
   recs.forEach(function(o, i){
     var name = cleanName(o.name||"");
@@ -12736,9 +12801,12 @@ function impStudents(recs){
       r.err.push("سطر "+(i+1)+": الرقم القومي مش ١٤ رقم ("+name+")");
       nat = "";
     }
+    var code = normCode(o.code);
     /* تكرار جوه نفس الملف */
     if(nat && seenInFile[nat]){ r.dup++; return; }
+    if(code && seenCode[code]){ r.dup++; return; }
     if(nat) seenInFile[nat] = 1;
+    if(code) seenCode[code] = 1;
 
     /* نوعية التعليم بتحدد القسم والتسكين */
     var edu = parseEdu(o.edu) || parseEdu(o.cls) || "";
@@ -12762,12 +12830,12 @@ function impStudents(recs){
       }
     }
 
-    /* البحث عن الطالب: بالرقم القومي أولًا وأخيرًا.
-       من غير رقم قومي بنرجع للاسم بس ننبّه إنه غير موثوق. */
-    var exist = nat ? byNat[nat] : null;
-    if(!nat){
+    /* البحث عن الطالب: الرقم القومي أولًا، وبعده كود الطالب.
+       الاسم آخر حاجة ومش موثوق — بنستخدمه بس لو مفيش مفتاح خالص. */
+    var exist = (nat ? byNat[nat] : null) || (code ? byCode[code] : null);
+    if(!exist && !nat && !code){
       DB.students.forEach(function(s){
-        if(exist || s.natId) return;   /* اللي عنده رقم قومي بنسيبه للمفتاح */
+        if(exist || s.natId || s.code) return;   /* اللي عنده مفتاح بنسيبه للمفتاح */
         if(normAr(s.name)===normAr(name)) exist = s;
       });
     }
@@ -12778,6 +12846,7 @@ function impStudents(recs){
 
     s.name = name;
     if(nat){ s.natId = nat; byNat[nat] = s; }
+    if(code){ s.code = code; byCode[code] = s; }
 
     /* التوزيع حسب النوعية */
     if(edu){
@@ -13073,6 +13142,12 @@ document.addEventListener("change", function(e){
   var el = e.target;
   if(el && el.dataset && el.dataset.act==="impMap" && UI.imp){
     UI.imp.map[Number(el.dataset.c)] = el.value;
+  }
+  /* اختيار الصف في شاشة الجداول — بيعرض فصول الصف ده بس */
+  if(el && el.dataset && el.dataset.act==="schLvl"){
+    UI.filters.schedLvl = el.value;
+    UI.filters.schedCls = "";        /* أول فصل في الصف الجديد */
+    render();
   }
 });
 
@@ -16540,6 +16615,31 @@ function formStrict(f){
   if(f.id==="track") return DB.trackStrict!==false;
   return f.strictNat!==false;             /* الافتراضي: ملزمة */
 }
+/* ============================================================
+   بوابة كود الطالب — للاستمارات اللي بتشتغل بالكود بدل الرقم القومي
+   (زي طلاب الصف الأول اللي لسه مالهمش أرقام قومية).
+   الكود لازم يكون متسجّل في القاعدة، وإلا الاستمارة بترفض.
+   ============================================================ */
+function codeGateCheck(f, code){
+  var c = normCode(code);
+  if(!c) return "اكتب كود الطالب";
+  var st = studentByCode(c);
+  if(!st) return "كود الطالب ده مش مسجّل في المدرسة. راجع شئون الطلاب.";
+  var L = formTargetLevel(f);
+  if(L && studentLevelOf(st) !== L){
+    return "الاستمارة دي لطلاب "+levelName(L)+" بس، وإنت مسجّل في "+
+      (studentLevelOf(st)? levelName(studentLevelOf(st)) : "صف غير محدد")+".";
+  }
+  var aud = formAudience(f);
+  if(aud.length!==EDU_IDS.length && aud.indexOf(st.edu||"reg") < 0){
+    return "الاستمارة دي لطلاب "+aud.map(function(x){ return eduName(x); }).join(" و")+
+      " بس، وإنت مسجّل "+eduName(st.edu||"reg")+".";
+  }
+  return "";
+}
+/* الاستمارة بتشتغل بكود الطالب ولا بالرقم القومي؟ */
+function formUsesCode(f){ return !!(f && f.keyBy==="code"); }
+
 function levelGateCheck(f, nat){
   if(!formStrict(f)) return "";           /* مفتوحة لأي رقم قومي */
   var L = formTargetLevel(f);
@@ -17776,6 +17876,29 @@ function remapStudentRefs(fromId, toId){
    الهوية الموحّدة — الرقم القومي محور بيانات الطالب،
    وكود المعلم + رقمه القومي محور بيانات المعلم.
    ============================================================ */
+/* ============================================================
+   كود الطالب — مفتاح بديل للرقم القومي
+   الصف الأول لسه مالوش أرقام قومية، فالمدرسة بترفعهم بكود الطالب،
+   وهو اللي بيربط الطالب بسجله في كل استيراد أو استمارة بعد كده.
+   بنطبّعه (أرقام إنجليزي، من غير مسافات، حروف كابيتال) عشان
+   «a-101» و«A 101» و«أ-١٠١» ما يبقوش تلات طلاب.
+   ============================================================ */
+function normCode(v){
+  var t = toEnDigits(String(v==null?"":v)).trim();
+  /* كل الفواصل (مسافة، شرطة، نقطة، شرطة سفلية، سلاش) بتتشال خالص —
+     فـ«a-101» و«A 101» و«A101» يبقوا كود واحد */
+  t = t.replace(/[\s\u200f\u200e.\-_/\\]+/g,"");
+  return t.toUpperCase();
+}
+function studentByCode(code){
+  var c = normCode(code);
+  if(!c) return null;
+  for(var i=0;i<DB.students.length;i++){
+    if(DB.students[i].status==="left") continue;
+    if(normCode(DB.students[i].code)===c) return DB.students[i];
+  }
+  return null;
+}
 function normNat(x){ return toEnDigits(String(x||"")).replace(/[^0-9]/g,""); }
 /* ============================================================
    الرقم القومي = المحور. أي كتابة بتعدّي من هنا فمستحيل يتكرر.
@@ -18227,6 +18350,28 @@ function autoFillNeeds(level, sec, includePlaced){
   });
   return need;
 }
+/* ============================================================
+   مواد الفصل من الهيكل الدراسي
+   أي فصل بيتعمل — يدوي أو تلقائي — لازم ياخد مواد خطته فورًا،
+   وإلا مولّد الجداول مش هيلاقي حاجة يوزّعها والفصل يفضل فاضي.
+   ============================================================ */
+function ensureClassSubjects(cid){
+  var c = classById(cid); if(!c) return 0;
+  var plan = planFor(c.level, c.system, c.track);
+  if(!plan.length) return 0;
+  var added = 0;
+  plan.forEach(function(p){
+    var exists = DB.subjects.some(function(s){
+      return s.classId===cid && normAr(s.name)===normAr(p.name); });
+    if(exists) return;
+    DB.subjects.push({ id:uid("sb"), classId:cid, name:p.name, max:num(p.max,100),
+                       counted:!!p.counted, pass:num(p.pass,50), elective:!!p.elective,
+                       periods:num(p.periods,4), hours:num(p.periods,4), kind:p.kind||"core" });
+    added++;
+  });
+  if(added) idxBump();
+  return added;
+}
 function autoFillCreate(level, sec, needs){
   var L = Number(level), made = 0;
   needs.forEach(function(nd){
@@ -18235,8 +18380,10 @@ function autoFillCreate(level, sec, needs){
       var idx = 1, nm;
       do { nm = L+"/"+idx+(nd.track? " "+nd.track.name : ""); idx++; }
       while(DB.classes.some(function(x){ return normAr(x.name)===normAr(nm); }) && idx<80);
-      DB.classes.push({ id:uid("c"), name:nm, level:L, system:sysOfLevel(L),
-                        track:nd.track ? nd.track.id : "none", sector:sec, room:"" });
+      var nc = { id:uid("c"), name:nm, level:L, system:sysOfLevel(L),
+                 track:nd.track ? nd.track.id : "none", sector:sec, room:"" };
+      DB.classes.push(nc); idxBump();
+      ensureClassSubjects(nc.id);          /* الفصل يولد ومعاه مواده */
       made++;
     }
   });
