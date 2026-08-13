@@ -657,7 +657,7 @@ function blankDB(){
     users:[], teachers:[], classes:[], subjects:[], students:[],
     assign:[], schedule:[], attend:{}, marks:{}, behavior:[], notices:[],
     staff:[], leaves:[], staffAtt:{}, subs:{},
-    locations:[], dutyPlan:[], duty:{}, dutyWeek:{}, events:[], holidays:[],
+    locations:[], dutyPlan:[], duty:{}, dutyWeek:{}, subsPlan:{}, events:[], holidays:[],
     sectors:{}, wishes:[],
     forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[], trackExtra:[], trackEdus:[], tables:{}, lastMig:{}, sessions:[], attLog:{}, attDone:{}, schedCfg:{}
   };
@@ -5155,6 +5155,137 @@ function viewDutyToday(){
   });
   return h + '</tbody></table></div></div></div>';
 }
+/* ============================================================
+   غياب الحصص — المعلم الغايب ومين يغطّي حصصه
+   بيربط: غياب العاملين + الجدول + النصاب + المعلم المتاح
+   ============================================================ */
+function subsPlanInit(){
+  if(!DB.subsPlan || typeof DB.subsPlan!=="object") DB.subsPlan = {};
+  return DB.subsPlan;
+}
+function subPlanKey(date, cid, per){ return date+"|"+cid+"|"+per; }
+function subOf(date, cid, per){
+  subsPlanInit();
+  return DB.subsPlan[subPlanKey(date,cid,per)] || "";
+}
+function setSub(date, cid, per, tid){
+  subsPlanInit();
+  var k = subPlanKey(date,cid,per);
+  if(tid) DB.subsPlan[k] = String(tid);
+  else delete DB.subsPlan[k];
+}
+/* المعلمون الغايبون في تاريخ معيّن — من سجل غياب العاملين */
+function absentTeachers(date){
+  staffInit();
+  var rec = DB.staffAtt[date] || {};
+  var out = [];
+  DB.teachers.forEach(function(t){
+    if(t.status==="left") return;
+    var st = rec["T"+t.id];
+    if(st && st!=="P") out.push({ t:t, state:st });
+  });
+  return out;
+}
+/* حصص المعلم في يوم معيّن */
+function lessonsOfTeacherOn(tid, di){
+  return DB.schedule.filter(function(x){ return x.teacherId===tid && Number(x.day)===di; })
+    .sort(function(a,b){ return a.period-b.period; });
+}
+/* المعلمون المتاحون في حصة معيّنة — مرتّبين بالأنسب */
+function freeTeachersAt(di, per, subjId){
+  var busy = {};
+  DB.schedule.forEach(function(x){
+    if(Number(x.day)===di && Number(x.period)===per && x.teacherId) busy[x.teacherId] = 1;
+  });
+  var nm = subjId ? normAr(subjName(subjId)) : "";
+  return teachingStaff().filter(function(t){
+    return t.status!=="left" && !busy[t.id];
+  }).map(function(t){
+    var fit = nm && normAr(t.subject||"").indexOf(nm)>=0 ? 0 : 1;
+    return { t:t, fit:fit, load:tchLoad(t.id), q:nisabOf(t.id) };
+  }).sort(function(a,b){ return a.fit-b.fit || a.load-b.load; });
+}
+function viewLessonAbsence(){
+  subsPlanInit(); staffInit();
+  var date = UI.subDate || today();
+  var di = new Date(date).getDay();
+  var sec = UI.schedSec || "reg";
+  var can = roleIs("manager") || roleIs("deputy") || roleIs("admin");
+  var abs = absentTeachers(date);
+
+  var h = pageHd("غياب الحصص", "المعلم الغايب وتغطية حصصه — "+fmtDate(date), exportBtns());
+  h += '<div class="card noprint"><div class="bd" style="display:flex;gap:9px;flex-wrap:wrap;align-items:end">'+
+    '<label class="f" style="flex:1;min-width:150px;margin:0"><span>التاريخ</span>'+
+    '<input type="date" id="subDate" value="'+esc(date)+'"></label>'+
+    '<button class="btn ghost" data-act="subToday">النهاردة</button>'+
+    '</div></div>';
+
+  if(!isSchoolDayIdx(di)){
+    return h + '<div class="card"><div class="bd"><div class="empty"><b>'+esc(DAYS[di])+' مش يوم دراسي</b></div></div></div>';
+  }
+
+  /* الحصص اليتيمة: حصص المعلمين الغايبين */
+  var rows = [];
+  abs.forEach(function(a){
+    lessonsOfTeacherOn(a.t.id, di).forEach(function(x){
+      var c = classById(x.classId);
+      if(!c || classSector(c)!==sec) return;
+      rows.push({ abs:a, cell:x, cls:c });
+    });
+  });
+  var covered = rows.filter(function(r){ return !!subOf(date, r.cell.classId, r.cell.period); }).length;
+
+  h += '<div class="stats" style="margin-bottom:12px">'+
+    stat("معلمون غايبون", abs.length, fmtDate(date), abs.length?"acc-r":"acc-g")+
+    stat("حصص محتاجة تغطية", rows.length, "في "+(sec==="reg"?"الانتظام":"الخدمات"), rows.length?"acc-r":"acc-g")+
+    stat("اتغطّت", covered+" / "+rows.length, rows.length? Math.round(covered/rows.length*100)+"٪" : "—",
+      (rows.length&&covered===rows.length)?"acc-g":"")+
+    '</div>';
+
+  if(!abs.length){
+    h += '<div class="card"><div class="bd"><div class="empty"><div class="big">✓</div>'+
+      '<b>مفيش معلمين غايبين</b><p>غياب العاملين بيترصد من تبويب «حضور العاملين».</p></div></div></div>';
+    return h;
+  }
+  if(!rows.length){
+    h += '<div class="note ok">الغايبين مالهمش حصص النهاردة في '+(sec==="reg"?"الانتظام":"الخدمات")+'.</div>';
+  }
+
+  h += printHd("غياب الحصص وتغطيتها — "+fmtDate(date));
+  h += '<div class="card"><div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>المعلم الغايب</th><th>الحصة</th><th>الفصل</th><th>المادة</th><th>يغطّيها</th></tr></thead><tbody>';
+  rows.forEach(function(r){
+    var cur = subOf(date, r.cell.classId, r.cell.period);
+    var free = freeTeachersAt(di, r.cell.period, r.cell.subjectId);
+    var w = periodWindow(r.cell.period);
+    h += '<tr'+(cur?'':' style="background:#fdf6ee"')+'>'+
+      '<td><b>'+esc(r.abs.t.name)+'</b><small style="display:block;color:var(--muted)">'+
+        esc(STAFF_ATT[r.abs.state]||"غايب")+'</small></td>'+
+      '<td class="num">'+r.cell.period+(w?'<small style="display:block">'+esc(w.from)+'</small>':'')+'</td>'+
+      '<td>'+esc(r.cls.name)+'</td>'+
+      '<td><small>'+esc(subjName(r.cell.subjectId))+'</small></td>'+
+      '<td>'+(can
+        ? '<select class="subSel" data-c="'+r.cell.classId+'" data-p="'+r.cell.period+'" '+
+          'style="width:100%;min-width:190px;padding:6px;border:1px solid var(--line-2);border-radius:8px;font:inherit">'+
+          '<option value="">— مش متغطّية —</option>'+
+          free.map(function(f){
+            return '<option value="'+f.t.id+'"'+(cur===f.t.id?" selected":"")+'>'+
+              esc(f.t.name)+(f.fit===0? ' ★ نفس التخصص' : (f.t.subject? ' — '+esc(f.t.subject):''))+
+              ' ('+f.load+'/'+f.q+')</option>';
+          }).join("")+'</select>'
+        : (cur? '<b>'+esc(teacherName(cur))+'</b>' : '<span style="color:var(--danger)">مش متغطّية</span>'))+
+      '</td></tr>';
+  });
+  h += '</tbody></table></div></div>'+
+    (can && rows.length? '<div class="bd"><div style="display:flex;gap:7px;flex-wrap:wrap">'+
+      '<button class="btn" data-act="subSave">حفظ التغطية</button>'+
+      '<button class="btn ghost" data-act="subAuto">⚡ توزيع تلقائي</button>'+
+      '</div></div>' : '')+
+    '</div>';
+  if(can) h += '<div class="note">★ يعني نفس التخصص. الأرقام بين القوسين = حِمله الحالي من نصابه. '+
+    'المعلم اللي عنده حصة في نفس الوقت مش بيظهر في القائمة أصلًا.</div>';
+  return h;
+}
 function viewSchedAudit(){
   var sec = UI.schedSec || "reg";
   var a = schedAudit(sec);
@@ -5314,11 +5445,13 @@ function viewScheduleHub(){
     stBtn("tch","جداول المعلمين",t)+
     (can? stBtn("cfg","إعدادات الحصص",t) : "")+
     (can? stBtn("audit","فحص الجدول",t) : "")+
+    (can? stBtn("abs","غياب الحصص",t) : "")+
     (can? stBtn("up","رفع الجدول",t) : "")+
     '</div>';
   if(t==="tch") return h + viewSchedTeachers();
   if(t==="cfg" && can) return h + viewSchedSetup();
   if(t==="audit" && can) return h + viewSchedAudit();
+  if(t==="abs" && can) return h + viewLessonAbsence();
   if(t==="up" && can) return h + viewSchedImport();
   return h + viewSchedGrid();
 }
@@ -5724,6 +5857,34 @@ function viewMySchedule(){
   if(tab==="duty"){
     if(!_duty) h += '<div class="note">النهاردة مش يوم إشرافك.</div>';
     return h + viewDutyToday();
+  }
+  /* حصص احتياطي مكلّف بيها النهاردة */
+  var _subs = (function(){
+    subsPlanInit();
+    var out = [];
+    var d0 = today();
+    for(var k in DB.subsPlan){
+      if(DB.subsPlan[k] !== tid) continue;
+      var p = k.split("|");
+      if(p[0] !== d0) continue;
+      var cell = schedCell(p[1], di, num(p[2],0));
+      out.push({ cid:p[1], per:num(p[2],0), cell:cell });
+    }
+    return out.sort(function(a,b){ return a.per-b.per; });
+  })();
+  if(_subs.length){
+    h += '<div class="card" style="border-color:var(--warn);background:#fdf8f0;margin-bottom:12px">'+
+      '<div class="hd"><div style="flex:1"><span class="eyebrow">احتياطي</span>'+
+      '<h3>مكلّف بـ'+_subs.length+' حصة تغطية النهاردة</h3></div></div><div class="bd flush">'+
+      _subs.map(function(x){
+        var c = classById(x.cid);
+        var w = periodWindow(x.per);
+        return '<div class="list-item"><span class="av" style="background:var(--warn)">'+x.per+'</span>'+
+          '<span class="tx"><b>'+esc(c?c.name:"—")+
+          (x.cell? ' — '+esc(subjName(x.cell.subjectId)) : '')+'</b>'+
+          '<small>'+(w?esc(w.from)+' – '+esc(w.to):'')+
+          (x.cell&&x.cell.teacherId? ' · بدل '+esc(teacherName(x.cell.teacherId)) : '')+'</small></span></div>';
+      }).join("")+'</div></div>';
   }
   if(tab==="day"){
     var mine = DB.schedule.filter(function(x){ return x.teacherId===tid && Number(x.day)===di; })
@@ -8980,6 +9141,52 @@ var ACTS = {
     toastUndo("اتوحّد "+fixed+" حصة"+(n? " · واتشال "+n+" تكليف مكرر" : ""));
   },
   goDuty:   function(){ UI.tab="duty"; UI.sub=null; render(); },
+  /* ---------- غياب الحصص ---------- */
+  subToday: function(){ UI.subDate = today(); render(); },
+  subSave: function(){
+    subsPlanInit();
+    var date = UI.subDate || today();
+    markUndo("تغطية حصص");
+    var n = 0;
+    Array.prototype.slice.call(document.querySelectorAll(".subSel")).forEach(function(sel){
+      setSub(date, sel.dataset.c, num(sel.dataset.p,0), sel.value);
+      if(sel.value) n++;
+    });
+    saveNow(); render(); toastUndo("اتغطّت "+n+" حصة");
+  },
+  subAuto: function(){
+    subsPlanInit();
+    var date = UI.subDate || today();
+    var di = new Date(date).getDay();
+    var sec = UI.schedSec || "reg";
+    var abs = absentTeachers(date);
+    if(!abs.length){ toast("مفيش معلمين غايبين"); return; }
+    markUndo("توزيع تغطية تلقائي");
+    /* بنعدّ كام حصة أخد كل معلم عشان نوزّع بالعدل */
+    var extra = {};
+    var n = 0, miss = 0;
+    abs.forEach(function(a){
+      lessonsOfTeacherOn(a.t.id, di).forEach(function(x){
+        var c = classById(x.classId);
+        if(!c || classSector(c)!==sec) return;
+        if(subOf(date, x.classId, x.period)) return;      /* متغطّية بالفعل */
+        var free = freeTeachersAt(di, x.period, x.subjectId)
+          .filter(function(f){ return !abs.some(function(z){ return z.t.id===f.t.id; }); });
+        if(!free.length){ miss++; return; }
+        /* الأقل تغطية النهاردة، وبعدين الأقرب تخصصًا */
+        free.sort(function(p,q){
+          return (extra[p.t.id]||0)-(extra[q.t.id]||0) || p.fit-q.fit || p.load-q.load;
+        });
+        var pick = free[0].t.id;
+        setSub(date, x.classId, x.period, pick);
+        extra[pick] = (extra[pick]||0) + 1;
+        n++;
+      });
+    });
+    saveNow(); render();
+    toastUndo(n? ("اتوزّعت "+n+" حصة"+(miss? " · "+miss+" ما لقتش معلم متاح" : ""))
+                : "مفيش حصص محتاجة تغطية");
+  },
   dutySec:  function(el){ UI.dutySec = el.dataset.v; render(); },
   dutySave: function(el){
     var sec = el.dataset.s || "reg";
@@ -10376,6 +10583,7 @@ function hookInputs(root){
     if(id==="logq"){ UI.filters.logq = e.target.value; render(); }
     if(id==="lsDate"){ UI.sub = { date: e.target.value }; render(); }
     if(id==="supDate"){ UI.sub = UI.sub || {}; UI.sub.date = e.target.value; render(); }
+    if(id==="subDate"){ UI.subDate = e.target.value; render(); }
     if(id==="mg_from"){ UI.mgFrom = e.target.value; modalMergeCols(UI.mgScope); }
     if(id==="mg_to"){   UI.mgTo   = e.target.value; modalMergeCols(UI.mgScope); }
     if(id==="mg_rule"){ UI.mgRule = e.target.value; modalMergeCols(UI.mgScope); }
@@ -11791,7 +11999,7 @@ var BULK = ["meta","weights","bac","control","absRules","users","teachers","clas
   "holidays","sectors",
   /* اللي كان ناقص — علشان كده الاستمارات ماكانتش بتوصل للطلاب */
   "forms","papers","activities","curriculum","tracksCustom","trackLevel","trackOpen","trackStrict",
-  "calendar","exams","extraFields","dupOk","msgs","notices","trackExtra","trackEdus","tables","lastMig","schedCfg","dutyWeek"];
+  "calendar","exams","extraFields","dupOk","msgs","notices","trackExtra","trackEdus","tables","lastMig","schedCfg","dutyWeek","subsPlan"];
 /* المجموعات اللي بتتزامن عنصر عنصر (كل معلم بيكتب في خانته) */
 var GRAIN = ["attend","marks","staffAtt","subs","duty",
   "formSubs","lessons","attLog","attDone",
