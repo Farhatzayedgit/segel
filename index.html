@@ -795,7 +795,9 @@ function planFor(level, system, track){
   return curSubjects(curKey(level, system, track));
 }
 
-var DAYS = ["السبت","الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس"];
+/* الترتيب بيطابق dayOfWeek: ٠ السبت … ٥ الخميس … ٦ الجمعة.
+   الجمعة موجودة عشان الشاشات تعرف تسمّيها، وهي خارج أيام الدراسة دايمًا. */
+var DAYS = ["السبت","الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة"];
 var PERIODS = 8;   /* احتياطي — العدد الفعلي من إعدادات الفترة */
 var WEEKLY_COUNT = 12;              /* عدد التقييمات الأسبوعية للفصل */
 var ATT = {P:"حاضر", A:"غائب", E:"غياب بعذر", L:"متأخر"};
@@ -3597,7 +3599,12 @@ function viewInsight(){
 /* كارت مشرف اليوم — في لوحة اليوم */
 function dutyTodayCard(){
   dutyWeekInit();
-  var di = new Date(today()).getDay();
+  /* ============================================================
+     لازم dayOfWeek مش getDay الخام.
+     getDay بترجّع ٠ للأحد، وترقيم البرنامج ٠ للسبت — فرق يوم كامل.
+     ده اللي كان بيخلّي الجمعة تتقرا «الخميس» وتظهر مشرف في يوم إجازة.
+     ============================================================ */
+  var di = dayOfWeek(today());
   if(!isSchoolDayIdx(di)) return "";
   var tid = dutySupOf(di, UI.sector||"reg");
   var t = tid ? teacherById(tid) : null;
@@ -3615,7 +3622,7 @@ function insightNow(){
   var date = today();
   var cls = myClasses();
   var studs = myStudents();
-  var di = new Date(date).getDay();
+  var di = dayOfWeek(date);
   var ds = dayStatus(date);
 
   /* الحضور النهاردة */
@@ -4048,7 +4055,7 @@ function pageBar(pg, key){
 var LATE_MIN = 5;
 function supervisionGrid(date){
   date = date || today();
-  var di = new Date(date).getDay();
+  var di = dayOfWeek(date);
   var P = periodsCount();
   var classes = myClasses().sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); });
   var isToday = (date===today());
@@ -5507,11 +5514,19 @@ function dutyWeekInit(){
 /* مشرف اليوم — di رقم اليوم (0 الأحد) */
 function dutySupOf(di, sec){
   dutyWeekInit();
-  var v = DB.dutyWeek[(sec||"reg")+"|"+num(di,0)];
+  /* ============================================================
+     الإشراف بيبقى في أيام الدراسة بس.
+     dayOfWeek بترجّع ٦ للجمعة — ورقم ٦ مالوش اسم في DAYS، فكان
+     أي مشرف متسجّل على المفتاح ده يظهر في يوم الإجازة بالغلط.
+     ============================================================ */
+  var d = num(di, -1);
+  if(!isSchoolDayIdx(d)) return "";
+  var v = DB.dutyWeek[(sec||"reg")+"|"+d];
   return (typeof v==="string") ? v : "";
 }
 function setDutySup(di, tid, sec){
   dutyWeekInit();
+  if(!isSchoolDayIdx(num(di,-1))) return false;   /* مفيش إشراف في يوم إجازة */
   var k = (sec||"reg")+"|"+num(di,0);
   if(tid) DB.dutyWeek[k] = String(tid);
   else delete DB.dutyWeek[k];
@@ -5522,14 +5537,14 @@ function dutyDaysOf(tid){
   var out = [];
   schoolDayIdx().forEach(function(d){
     ["reg","srv"].forEach(function(sc){
-      if(DB.dutyWeek[sc+"|"+d]===tid && out.indexOf(d)<0) out.push(d);
+      if(dutySupOf(d, sc)===tid && out.indexOf(d)<0) out.push(d);
     });
   });
   return out;
 }
 /* هل النهاردة يوم إشرافه؟ */
 function isDutyToday(tid){
-  var di = new Date(today()).getDay();
+  var di = dayOfWeek(today());
   return dutyDaysOf(tid).indexOf(di) >= 0;
 }
 /* ---------- شاشة الإشراف ---------- */
@@ -5566,7 +5581,7 @@ function viewDuty(){
     var q = tid ? nisabOf(tid) : 0;
     var dayLoad = tid ? DB.schedule.filter(function(x){
       return x.teacherId===tid && Number(x.day)===d; }).length : 0;
-    var isToday = (new Date(today()).getDay()===d);
+    var isToday = (dayOfWeek(today())===d);
     h += '<tr'+(isToday?' style="background:#f2faf7"':'')+'>'+
       '<td style="font-weight:700;font-family:Cairo,sans-serif">'+esc(DAYS[d])+
         (isToday?' <span class="tag ok">النهاردة</span>':'')+'</td>'+
@@ -5617,7 +5632,7 @@ function viewDuty(){
 }
 /* جدول اليوم لكل الفصول — للمشرف */
 function viewDutyToday(){
-  var di = new Date(today()).getDay();
+  var di = dayOfWeek(today());
   var sec = UI.sector || "reg";
   var classes = DB.classes.filter(function(c){ return classSector(c)===sec; })
     .sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); });
@@ -5697,7 +5712,7 @@ function freeTeachersAt(di, per, subjId){
 function viewLessonAbsence(){
   subsPlanInit(); staffInit();
   var date = UI.subDate || today();
-  var di = new Date(date).getDay();
+  var di = dayOfWeek(date);
   var sec = UI.schedSec || "reg";
   var can = canSchedule();
   var abs = absentTeachers(date);
@@ -6338,7 +6353,7 @@ function viewSchedTeachers(){
   }
   /* تبويب اليوم / الأسبوع */
   var tvTab = UI.tchSchTab || "week";
-  var dToday = new Date(today()).getDay();
+  var dToday = dayOfWeek(today());
   h += '<div class="chips noprint">'+
     '<button class="'+(tvTab==="day"?"on":"")+'" data-act="tchSchTab" data-t="day">النهاردة ('+esc(DAYS[dToday]||"")+')</button>'+
     '<button class="'+(tvTab==="week"?"on":"")+'" data-act="tchSchTab" data-t="week">الأسبوع كله</button>'+
@@ -6617,7 +6632,7 @@ function viewMySchedule(){
   if(!t) return '<div class="card"><div class="bd"><div class="empty"><b>الحساب مش مربوط بمعلم</b></div></div></div>';
   var tab = UI.mySchTab || "day";
   var P = periodsCount(), days = schoolDayIdx();
-  var di = new Date(today()).getDay();
+  var di = dayOfWeek(today());
 
   var h = pageHd("جدولي", t.subject||"",
     ''+exportBtns()+'');
@@ -9042,7 +9057,7 @@ function todayInfo(st){
       out.present = (v!=="A");
     }
     /* حصص النهاردة وموضوعاتها */
-    var di = new Date(date).getDay();
+    var di = dayOfWeek(date);
     lessonInit();
     DB.schedule.filter(function(x){ return x.classId===c.id && x.day===di; })
       .sort(function(a,b){ return a.period-b.period; })
@@ -10484,7 +10499,7 @@ var ACTS = {
   subAuto: function(){
     subsPlanInit();
     var date = UI.subDate || today();
-    var di = new Date(date).getDay();
+    var di = dayOfWeek(date);
     var sec = UI.schedSec || "reg";
     var abs = absentTeachers(date);
     if(!abs.length){ toast("مفيش معلمين غايبين"); return; }
@@ -15731,6 +15746,10 @@ function viewToday(){
       '<span class="tx"><b>'+esc(_gs.name)+'</b><small>'+esc(jobOfTeacher(_gs.id))+
       (_gs.subject?' · '+esc(_gs.subject):'')+' · مشرف '+esc(DAYS[dw]||"")+'</small></span>'+
       '<span class="tag ok">مكلّف</span></div>';
+  }else if(!isSchoolDayIdx(dw)){
+    /* يوم إجازة — مفيش إشراف أصلًا، مش نقص في البيانات */
+    h += '<div class="empty"><b>'+esc(DAYS[dw]||"اليوم")+' — عطلة أسبوعية</b>'+
+      '<p>مفيش إشراف في أيام الإجازة.</p></div>';
   }else{
     h += '<div class="empty"><b>مفيش مشرف عام لليوم ده</b>'+
       '<p>حدّد مشرف عام لكل يوم من جدول الإشراف الأسبوعي.</p>'+
@@ -16114,7 +16133,7 @@ function schoolDaysIn(from, to){
   var guard = 0;
   while(d <= end && guard++ < 500){
     var iso = d.toISOString().slice(0,10);
-    if(isSchoolDayIdx(d.getDay()) && !holidayOn(iso)) n++;
+    if(isSchoolDayIdx(dayOfWeek(iso)) && !holidayOn(iso)) n++;
     d.setDate(d.getDate()+1);
   }
   return n;
@@ -16162,7 +16181,7 @@ function viewExamPlan(){
       '<b>مفيش امتحانات مسجّلة</b><p>ضيفها واحد واحد، أو ارفع ملف إكسيل/PDF فيه الجدول.</p></div></td></tr>';
   }
   list.forEach(function(e,i){
-    var dw = e.date ? new Date(e.date).getDay() : -1;
+    var dw = e.date ? dayOfWeek(e.date) : -1;
     var out = (win[0]&&win[1]&&e.date) && (e.date<win[0] || e.date>win[1]);
     h += '<tr>'+
       '<td class="rownum">'+(i+1)+'</td>'+
@@ -17951,7 +17970,7 @@ function paperVars(sid, tid){
   var v = {
     "المدرسة": m.school||"", "الإدارة": m.edara||"", "المديرية": m.moderia||"",
     "العام_الدراسي": m.year||"", "الفصل_الدراسي": (m.term===1?"الأول":"الثاني"),
-    "التاريخ": fmtDate(today()), "اليوم": DAYS[new Date(today()).getDay()]||""
+    "التاريخ": fmtDate(today()), "اليوم": DAYS[dayOfWeek(today())]||""
   };
   var st = sid ? studentById(sid) : null;
   if(st){
