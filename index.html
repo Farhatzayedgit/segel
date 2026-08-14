@@ -3073,7 +3073,8 @@ var COL_ALIASES = {
     joined: ["تاريخ القيد","تاريخ الالتحاق","تاريخ التسجيل","القيد"],
     prev:   ["الفصل السابق","فصل سابق","الفصل الماضي","الصف السابق"],
     rel:    ["الديانة","الديانه","الدين"],
-    addr:   ["العنوان","محل الإقامة","محل الاقامه","السكن","العنوان بالتفصيل","عنوان السكن","محل السكن"]
+    addr:   ["العنوان","محل الإقامة","محل الاقامه","السكن","العنوان بالتفصيل","عنوان السكن","محل السكن"],
+    guardJob:["مهنة ولي الأمر","مهنه ولي الامر","وظيفة ولي الأمر","وظيفه ولي الامر","صناعة ولي الأمر","حرفة ولي الأمر"]
   },
   teacher: {
     name:    ["الاسم","اسم المعلم","الاسم رباعي","اسم المدرس"],
@@ -3129,10 +3130,17 @@ var FIELD_SYN = [
 ];
 function synMatch(a, b){
   if(!a || !b) return false;
+  /* ============================================================
+     المطابقة بالكلمة كاملة مش بالاحتواء.
+     الاحتواء كان بيربط أعمدة مالهاش علاقة: «ديانة ولي الأمر»
+     و«الفصل السابق في المدرسة القديمة» كانوا بيتطابقوا لأن كل واحد
+     فيهم بيحتوي كلمة من مجموعة مرادفات، فقيمة واحد كانت بتروح
+     في عمود التاني وتدهسها.
+     ============================================================ */
   for(var g=0; g<FIELD_SYN.length; g++){
     var grp = FIELD_SYN[g].map(fieldKey);
-    var ha = grp.some(function(x){ return a.indexOf(x)>=0 || x.indexOf(a)>=0; });
-    var hb = grp.some(function(x){ return b.indexOf(x)>=0 || x.indexOf(b)>=0; });
+    var ha = grp.some(function(x){ return a === x; });
+    var hb = grp.some(function(x){ return b === x; });
     if(ha && hb) return true;
   }
   return false;
@@ -3155,12 +3163,17 @@ function findSimilarField(label){
   ];
   for(var g=0; g<SYN.length; g++){
     var grp = SYN[g].map(fieldKey);
-    var hit = grp.some(function(x){ return kk.indexOf(x)>=0 || x.indexOf(kk)>=0; });
+    /* ============================================================
+       المطابقة لازم تكون على «الكلمة كاملة» مش جزء منها.
+       الاحتواء وحده كان بيغلط: «ديانة ولي الأمر» بيطابق مجموعة
+       «ولي أمر» فيتدمج مع أول عمود فيها، وقيمته تروح لعمود تاني خالص.
+       ============================================================ */
+    var hit = grp.some(function(x){ return kk === x; });
     if(!hit) continue;
     for(var j=0;j<lib.length;j++){
       var lk = fieldKey(lib[j].label);
       if(normAr(lib[j].label)===k) continue;
-      if(grp.some(function(x){ return lk.indexOf(x)>=0 || x.indexOf(lk)>=0; }))
+      if(grp.some(function(x){ return lk === x; }))
         return { f:lib[j], exact:false };
     }
   }
@@ -4521,11 +4534,11 @@ function levelSubjectsOf(L, tid){
 /* الأعمدة اللي تخص كل صف — من قرارات الوزارة */
 var LEVEL_COLS = {
   /* الأول: سنة تمهيدية مشتركة — مفيش شعبة ولا تخصص */
-  1: ["idx","name","code","natId","level","cls","edu","gender","birth","gov","guard","phone","joined","abs"],
+  1: ["idx","name","code","natId","level","cls","edu","gender","birth","gov","guard","guardJob","addr","phone","joined","abs"],
   /* الثاني: بكالوريا — المسار + مادة التخصص الاختيارية */
-  2: ["idx","name","code","natId","level","cls","edu","track","subj","gender","birth","gov","guard","phone","joined","abs"],
+  2: ["idx","name","code","natId","level","cls","edu","track","subj","gender","birth","gov","guard","guardJob","addr","phone","joined","abs"],
   /* الثالث: ثانوية عامة — الشعبة بس (مفيش مادة تخصص، دي بتاعة البكالوريا) */
-  3: ["idx","name","code","natId","level","cls","edu","track","seat","gender","birth","gov","guard","phone","joined","abs"]
+  3: ["idx","name","code","natId","level","cls","edu","track","seat","gender","birth","gov","guard","guardJob","addr","phone","joined","abs"]
 };
 /* ============================================================
    فرز الأعمدة — كل عمود ليه زرار بيرتّب حسب نوع بياناته:
@@ -4847,6 +4860,7 @@ function stuCellValue(d, s){
     case "seat":  return s.seat||"";
     case "phone": return s.phone||"";
     case "guard": return stuVal(s,"guardian");
+    case "guardJob": return s.guardJob||"";
     case "gender":return stuVal(s,"gender");
     case "birth": return stuVal(s,"birth");
     case "gov":   return stuVal(s,"birthGov");
@@ -4855,7 +4869,7 @@ function stuCellValue(d, s){
     case "joined":return s.joined||"";
     case "prev":  return s.prevClass||"";
     case "rel":   return s.religion||"";
-    case "addr":  return "";
+    case "addr":  return s.address||"";
     case "abs":   var st = attendStats(s.id, s.classId); return st.days? String(st.abs) : "";
     case "level": return studentLevelOf(s)? String(studentLevelOf(s)) : "";
   }
@@ -4965,6 +4979,8 @@ function stuCell(d, s, n, can){
     case "subj":  return '<td'+cellEdit("subj",s.id)+'><small>'+esc(s.bacSubject||"—")+'</small></td>';
     case "phone": return '<td class="num"'+cellEdit("phone",s.id)+' style="direction:ltr;text-align:right">'+esc(s.phone||"—")+'</td>';
     case "guard": return '<td'+cellEdit("guard",s.id)+'>'+drvCell(s,"guardian",stuVal(s,"guardian"))+'</td>';
+    case "guardJob": return '<td><small>'+esc(s.guardJob||"—")+'</small></td>';
+    case "addr":  return '<td><small>'+esc(s.address||"—")+'</small></td>';
     case "gender":return '<td'+cellEdit("gender",s.id)+'>'+drvCell(s,"gender",stuVal(s,"gender"))+'</td>';
     case "birth": var bv = stuVal(s,"birth");
                   return '<td class="num">'+drvCell(s,"birth", bv?fmtDate(bv):"", true)+'</td>';
@@ -7477,6 +7493,8 @@ function clsRosterCols(){
     { k:"rel",   label:"الديانة" },
     { k:"birth", label:"تاريخ الميلاد" },
     { k:"guard", label:"ولي الأمر" },
+    { k:"guardJob", label:"مهنة ولي الأمر", off:true },
+    { k:"addr",  label:"العنوان", off:true },
     { k:"phone", label:"هاتف ولي الأمر" },
     { k:"track", label:"المسار / الشعبة" },
     { k:"subj",  label:"مادة التخصص" },
@@ -11173,7 +11191,7 @@ var ACTS = {
   },
   clsColAdd: function(){
     /* بنستخدم نافذة «البيانات الإضافية» الجاهزة — نفس الأعمدة اللي بتظهر
-       في كشف الطلاب وصفحة الطالب، فما نعملش نظامين متوازيين */
+       في كشف الطلاب وصفحة الطالب، فما نعملش آليتين متوازيتين */
     closeModal();
     ACTS.xfManage({ dataset:{ s:"student" } });
   },
@@ -13320,7 +13338,11 @@ function impStudents(recs){
     if(impLvl) setStudentLevel(s, impLvl);
     else if(!studentLevelOf(s)) setStudentLevel(s, 1);
 
-    var trk = parseWishTrack(o.track);
+    /* المسار/الشعبة حسب نظام صف الطالب: البكالوريا مسارات،
+       والثانوية العامة شعب. parseWishTrack لوحدها بتعرف البكالوريا بس،
+       فكانت شعب الصف الثالث بتضيع والطلاب يفضلوا غير مسكّنين. */
+    var _lvT = studentLevelOf(s) || impLvl || 0;
+    var trk = trackIdFromText(o.track, _lvT) || parseWishTrack(o.track);
     if(trk) s.bacTrack = trk;
     /* ============================================================
        التسكين آخر حاجة — بعد ما الصف والمسار يتحطّوا على الطالب.
@@ -17553,14 +17575,14 @@ function regCellValue(col, s, i){
     case "nat":        return stuVal(s,"nationality");
     case "gender":     return stuVal(s,"gender");
     case "guard":      return stuVal(s,"guardian");
-    case "guardJob":   return s.guardJob||"";
+    case "guardJob":   return stuVal(s,"guardJob");
     case "addr":       return s.address||"";
     case "phone":      return s.phone||"";
     case "cls":        return stuVal(s,"cls");
     case "prev":       return s.prevClass||"";
     case "abs":        return String(num(s.abs,0));
     case "late":       return String(num(s.late,0));
-    case "absState":   return (absAlert(s)||{}).t || "منتظم";
+    case "absState":   return (absState(num(s.abs,0))||{}).t || "منتظم";
     case "leftAt":     return s.leftAt? fmtDate(s.leftAt) : "";
     case "leftReason": return s.leftReason||"";
   }
@@ -18138,14 +18160,19 @@ function savePaper(){
    الاسم (زي شهادة الميلاد) والرقم القومي ركنان أساسيان في كل استمارة.
    ============================================================ */
 var FIELD_TYPES = [
-  {id:"text",     name:"نص قصير"},
-  {id:"textarea", name:"نص طويل"},
-  {id:"number",   name:"رقم"},
-  {id:"date",     name:"تاريخ"},
-  {id:"tel",      name:"هاتف"},
-  {id:"select",   name:"اختيار من قائمة"},
-  {id:"student",  name:"بيان من ملف الطالب (الطالب يملاه)"},
-  {id:"cascade",  name:"اختيار متسلسل (اختيار ← اختيارات فرعية)"},
+  /* ============================================================
+     نوعين أساسيين والباقي تفاصيل:
+     • «بيان من ملف الطالب» → بتختار عمود موجود، والإجابة تروح له
+     • أي نوع تاني        → بيان جديد، بيتعمل له عمود باسم الحقل
+     ============================================================ */
+  {id:"student",  name:"بيان من ملف الطالب — تختار العمود"},
+  {id:"text",     name:"بيان جديد — نص قصير"},
+  {id:"textarea", name:"بيان جديد — نص طويل"},
+  {id:"number",   name:"بيان جديد — رقم"},
+  {id:"date",     name:"بيان جديد — تاريخ"},
+  {id:"tel",      name:"بيان جديد — هاتف"},
+  {id:"select",   name:"بيان جديد — اختيار من قائمة"},
+  {id:"cascade",  name:"بيان جديد — اختيار متسلسل (اختيار ← اختيارات فرعية)"},
   {id:"track",    name:"مسار البكالوريا + مادة التخصص (تلقائي)"}
 ];
 /* ============================================================
@@ -18174,6 +18201,8 @@ var STU_ASKABLE = [
   { col:"gender", label:"النوع",          type:"select", options:["ذكر","أنثى"] },
   { col:"birth",  label:"تاريخ الميلاد",  type:"date" },
   { col:"gov",    label:"محافظة الميلاد", type:"text" },
+  { col:"guardJob", label:"مهنة ولي الأمر", type:"text" },
+  { col:"addr",   label:"العنوان",         type:"text" },
   { col:"prev",   label:"الفصل السابق",   type:"text" },
   { col:"cls",    label:"الفصل",          type:"text" },
   { col:"edu",    label:"نوعية التعليم",  type:"select", options:["انتظام","خدمات","منازل"] },
@@ -18800,19 +18829,13 @@ function formRows(f){
         }
         return;
       }
-      var lb = normAr(fd.label||"");
-      /* الحقول اللي ليها مكان معروف في ملف الطالب */
-      if(!lvl && /^صف|الصف|مستوي|سنه دراسيه|مرحله/.test(lb)){ lvl = parseLevel(v)||0; if(lvl) return; }
-      if(!edu && /نوعيه التعليم|نوعية التعليم|نظام الدراسه|نظام الدراسة/.test(lb)){
-        edu = parseEdu(v); if(edu) return;
-      }
-      if(!phone && /هاتف|تليفون|موبايل/.test(lb)){ phone = toEnDigits(String(v)).replace(/[^\d+]/g,""); return; }
-      if(!guardian && /ولي الامر|ولي الأمر/.test(lb) && !/هاتف|تليفون|موبايل|رقم/.test(lb)){ guardian = cleanName(v); return; }
-      if(!trk && /^المسار$|^مسار$/.test(lb)){ trk = parseWishTrack(v); if(trk) return; }
-      if(!subj && /ماده التخصص|مادة التخصص/.test(lb)){ subj = String(v).trim(); return; }
-      if(!prev && /الفصل السابق|فصل سابق/.test(lb)){ prev = String(v).trim(); return; }
-      if(!rel && /الديانه|الديانة/.test(lb)){ rel = /مسيح|قبط/.test(normAr(String(v)))?"مسيحي":"مسلم"; return; }
-      /* أي حاجة تانية = بيان إضافي بعنوانه زي ما هو */
+      /* ============================================================
+         مفيش تخمين من عنوان الحقل.
+         العمود بيتحدد وقت عمل الاستمارة: إما اخترت «بيان من ملف الطالب»
+         وحدّدت العمود بنفسك، وإما «بيان جديد» فبيتعمل له عمود باسمه.
+         التخمين القديم كان بيغلط: «مهنة ولي الأمر» كان بيتطابق مع
+         «ولي الأمر» فيروح لعمود الاسم بدل ما يبقى عمود لوحده.
+         ============================================================ */
       extra[fd.label] = String(v);
     });
     /* البيانات المطلوبة من ملف الطالب بتغلب اللي اتخمّن من العناوين */
@@ -18920,6 +18943,8 @@ function setBaseCol(st, col, v, L){
     case "joined":st.joined = val0; return true;
     case "prev":  st.prevClass = val0; return true;
     case "rel":   st.religion = /مسيح|قبط/.test(normAr(val0))?"مسيحي":"مسلم"; return true;
+    case "addr":  st.address = val0; return true;
+    case "guardJob": st.guardJob = val0; return true;
   }
   return false;
 }
@@ -19264,9 +19289,16 @@ function migrateRowToStudent(r, opt){
   function applyBase(st){
     if(!r.base) return 0;
     var k = 0, L2 = lvl || studentLevelOf(st);
-    /* كل بيان الطالب سجّله بيروح لعموده — ماعدا عمود الربط والاسم */
-    ["natId","code","gender","birth","gov","seat","cls","joined","phone",
-     "guard","rel","prev","track","subj","edu"].forEach(function(col){
+    /* ============================================================
+       القايمة بتتبني من STU_ASKABLE نفسه — أي بيان جديد نضيفه
+       للاستمارات بيتغطّي هنا تلقائيًا. القايمة اليدوية كانت بتنسى
+       أعمدة فالبيان يتقرا ويضيع من غير ما حد ياخد باله.
+       ============================================================ */
+    var cols = STU_ASKABLE.map(function(a){ return a.col; });
+    ["natId","code","gov","seat","cls","joined","guard","rel","prev","subj"].forEach(function(c){
+      if(cols.indexOf(c)<0) cols.push(c);
+    });
+    cols.forEach(function(col){
       if(col===keyBy) return;                         /* عمود الربط ثابت */
       var v = r.base[col];
       if(v===undefined || v===null || String(v).trim()==="") return;
@@ -19279,26 +19311,33 @@ function migrateRowToStudent(r, opt){
   function applyExtra(st){
     if(!r.extra) return 0;
     var n = 0;
-    for(var label in r.extra){
+    Object.keys(r.extra).forEach(function(label){
       var v = r.extra[label];
-      if(v===undefined || v===null || String(v).trim()==="") continue;
+      if(v===undefined || v===null || String(v).trim()==="") return;
       var mapped = (UI.fieldMap && UI.fieldMap[normAr(label)]) || null;
-      if(mapped === "__skip") continue;
+      if(mapped === "__skip") return;
       /* لو المستخدم وجّهه لعمود أساسي */
       if(mapped && mapped.indexOf("base:")===0){
         if(setBaseCol(st, mapped.slice(5), v, lvl)) n++;
-        continue;
+        return;
       }
       /* أو لو اسمه أصلًا مرادف لعمود أساسي — يروح مكانه مش عمود جديد */
       if(!mapped){
         var base = baseColOf(label, "student");
-        if(base){ if(setBaseCol(st, base, v, lvl)) n++; continue; }
+        if(base){ if(setBaseCol(st, base, v, lvl)) n++; return; }
       }
-      var fd;
-      if(mapped) fd = xfList("student").filter(function(x){ return x.id===mapped; })[0];
+      /* ============================================================
+         مهم: fd لازم تكون محلية لكل بيان.
+         كانت معرّفة بـ var جوه لوب، فبتتشارك بين اللفّات — فأول بيان
+         بيعمل عمود، والبيانات اللي بعده بتتكتب في نفس العمود وتدهسه.
+         ده اللي كان بيخلي «ديانة ولي الأمر» تروح في عمود «الفصل السابق».
+         ============================================================ */
+      var fd = null;
+      if(mapped) fd = xfList("student").filter(function(x){ return x.id===mapped; })[0] || null;
       if(!fd) fd = ensureExtraField(label, lvl);
+      if(!fd) return;
       if(String(xfGet(st, fd.id)) !== String(v)){ xfSet(st, fd.id, v); n++; }
-    }
+    });
     return n;
   }
 
@@ -20242,6 +20281,10 @@ function renderFormBuilder(){
             ? 'البيانات المعروضة بتاعة '+esc(levelName(num(UI.formDraft.level,0)))+'.'
             : 'اختار صف الاستمارة الأول عشان تظهرلك بيانات الصف بالظبط.')+'</small></label>'+
       '</div>'+
+      '<div id="fb_newNote" class="note" style="display:none">'+
+        '<b>بيان جديد:</b> مش موجود في أعمدة الصف. أول ما ترحّل بيانات الطلاب، '+
+        'البرنامج هيعمل <b>عمود جديد باسم الحقل</b> ويحط فيه إجاباتهم — '+
+        'وهيظهر في كشف الطلاب وقائمة الفصل والورقيات.</div>'+
       '<div id="fb_trkNote" class="note" style="display:none">حقل جاهز: الطالب هيختار <b>مسار البكالوريا</b>، وبعدها <b>مادة التخصص</b> بتظهرله من مواد المسار اللي اختاره. القوائم بتتقرا من «الهيكل الدراسي» — لما تعدّل مواد التخصص هناك، الاستمارة بتتغيّر معاها لوحدها.</div>'+
       '<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="fb_req" style="width:18px;height:18px"><span>حقل إجباري</span></label>'+
       '<button class="btn ghost block" data-act="fbAddField">+ إضافة الحقل للاستمارة</button>'+
@@ -20277,10 +20320,14 @@ function renderFormBuilder(){
     var c = document.getElementById("fb_cscWrap");
     var t = document.getElementById("fb_trkNote");
     var u = document.getElementById("fb_stuWrap");
+    var nn = document.getElementById("fb_newNote");
     if(w) w.style.display = sel.value==="select"  ? "block" : "none";
     if(c) c.style.display = sel.value==="cascade" ? "block" : "none";
     if(t) t.style.display = sel.value==="track"   ? "block" : "none";
     if(u) u.style.display = sel.value==="student" ? "block" : "none";
+    /* أي نوع غير «من ملف الطالب» و«المسار» = بيان جديد بعمود جديد */
+    if(nn) nn.style.display =
+      (sel.value!=="student" && sel.value!=="track") ? "block" : "none";
   };
   /* وضع تعديل حقل متسلسل */
   var esel = document.getElementById("fe_t");
