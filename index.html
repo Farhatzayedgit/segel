@@ -17031,7 +17031,9 @@ function studentFormHTML(f){
        لو البيان ليه اختيارات فرعية (زي المسار) بتظهر تحته. */
     if(fd.type==="student" || fd.type==="stucascade"){
       var lv = num(fd.level,0) || formTargetLevel(f) || 0;
-      var ask = askableByCol(fd.col, lv);
+      var ask = askableByCol(fd.col, lv) ||
+                (function(){ for(var q=0;q<STU_ASKABLE.length;q++)
+                   if(STU_ASKABLE[q].col===fd.col) return STU_ASKABLE[q]; return null; })();
       var lbl = fd.label || (ask? ask.label : fd.col);
       var cur0 = vals[fd.id]!=null ? vals[fd.id] : "";
       var star0 = fd.required?' <span style="color:var(--danger)">*</span>':'';
@@ -18152,6 +18154,10 @@ var FIELD_TYPES = [
    الأعمدة بتختلف حسب الصف: الثاني مسارات، الثالث شعب، الأول مفيش.
    ============================================================ */
 var STU_ASKABLE = [
+  /* الرقم القومي وكود الطالب: بيتطلبوا عشان نملا الناقص عند الطلاب.
+     اللي عنده القيمة دي مسجّلة، ما بتتغيّرش — بتتملا للفاضي بس. */
+  { col:"natId",  label:"الرقم القومي",   type:"text" },
+  { col:"code",   label:"كود الطالب",     type:"text" },
   { col:"phone",  label:"هاتف ولي الأمر", type:"tel"  },
   { col:"guard",  label:"اسم ولي الأمر",  type:"text" },
   { col:"rel",    label:"الديانة",        type:"select", options:["مسلم","مسيحي"] },
@@ -18166,11 +18172,12 @@ var STU_ASKABLE = [
   { col:"joined", label:"تاريخ القيد",    type:"date" }
 ];
 /* البيانات المتاحة لصف معيّن */
-function askableFor(level){
+function askableFor(level, keyBy){
   var L = num(level,0);
   return STU_ASKABLE.filter(function(a){
     if(a.levels && L && a.levels.indexOf(L)<0) return false;
     if(a.col==="track" && L && !levelHasTracks(L)) return false;
+    if(keyBy && a.col===keyBy) return false;   /* مفتاح الاستمارة بيتطلب فوق أصلًا */
     return true;
   }).map(function(a){
     var o = Object.assign({}, a);
@@ -18811,10 +18818,20 @@ function formRows(f){
     }
     var kb2 = sub.keyBy || formKeyBy(f);
     var kv2 = sub.keyVal!=null ? sub.keyVal : sub.natId;
+    /* ============================================================
+       الرقم القومي وكود الطالب: لو الاستمارة طلبتهم كبيان، إجابة
+       الطالب هي المصدر. ولو واحد فيهم هو مفتاح الاستمارة، المفتاح
+       هو الأصل. كده استمارة الصف الأول (مفتاحها كود الطالب) بتجمع
+       الأرقام القومية الناقصة وترحّلها لعمودها.
+       ============================================================ */
+    var natOut  = kb2==="natId" ? kv2
+                : (base.natId ? toEnDigits(String(base.natId)).replace(/\D/g,"") : (sub.natId||""));
+    var codeOut = kb2==="code"  ? kv2
+                : (base.code ? normCode(base.code) : (sub.code||""));
     return { key:kv2, name:sub.name,
-             natId: kb2==="natId" ? kv2 : (sub.natId||""),
-             code:  kb2==="code"  ? kv2 : (sub.code||""),
-             seat:  kb2==="seat"  ? kv2 : "",
+             natId: natOut,
+             code:  codeOut,
+             seat:  kb2==="seat" ? kv2 : (base.seat||""),
              keyBy:kb2, keyVal:kv2,
              level: defL || lvl || 0, phone:phone, edu:edu, guardian:guardian,
              bacTrack:trk, bacSubject:subj, prevClass:prev, religion:rel,
@@ -19229,6 +19246,7 @@ function migrateRowToStudent(r, opt){
   function applyBase(st){
     if(!r.base) return 0;
     var k = 0, L2 = lvl || studentLevelOf(st);
+    /* natId و code بيتعالجوا في put بحمايتهم الخاصة — مش من هنا */
     ["gender","birth","gov","seat","cls","joined"].forEach(function(col){
       var v = r.base[col];
       if(v===undefined || v===null || String(v).trim()==="") return;
@@ -19271,12 +19289,36 @@ function migrateRowToStudent(r, opt){
   if(exists){
     var ch = 0;
     function put(k, v){
-      if(k==="natId") return;                           /* الرقم القومي المسجّل هو الأساس — ما يتعدّلش أبدًا */
-      if(k===keyBy) return;                             /* ولا مفتاح الاستمارة — هو اللي عرّفنا الطالب */
+      /* ============================================================
+         المفتاح والرقم القومي محميين — بس الحماية معناها «ما يتغيّرش»
+         مش «ما يتملاش». لو الخانة فاضية أصلًا، الاستمارة تملاها عادي؛
+         ده بالظبط اللي بيخلّي استمارة الصف الأول (المفتاح كود الطالب)
+         تجمع الأرقام القومية الناقصة.
+         ============================================================ */
+      if(k===keyBy && String(exists[k]||"").trim()) return;   /* المفتاح المتسجّل ما يتغيّرش */
+      if(k==="natId"){
+        var cur = String(exists.natId||"").trim();
+        if(cur) return;                                       /* عنده رقم قومي — ما يتغيّرش */
+        var nn = toEnDigits(String(v||"")).replace(/\D/g,"");
+        if(nn.length!==14 || !parseNationalId(nn)) return;     /* ما نسجّلش رقم غلط */
+        /* ولا نسمح بتكرار رقم قومي على طالبين */
+        if(DB.students.some(function(x){ return x.id!==exists.id && x.natId===nn; })) return;
+        exists.natId = nn; ch++;
+        return;
+      }
       if(v===undefined || v===null || v==="") return;   /* الفاضي مبيمسحش المليان */
       if(String(exists[k]||"") === String(v)) return;
       exists[k] = v; ch++;
     }
+    put("natId", r.natId);                              /* يملا الناقص بس */
+    /* كود الطالب: نفس القاعدة — يتملا لو ناقص، وما يتغيّرش لو موجود */
+    (function(){
+      var cd = normCode(r.code);
+      if(!cd) return;
+      if(String(exists.code||"").trim()) return;
+      if(DB.students.some(function(x){ return x.id!==exists.id && normCode(x.code)===cd; })) return;
+      exists.code = cd; ch++;
+    })();
     /* الرقم القومي والاسم الأساسي مبيتغيّروش */
     if(lvl && studentLevelOf(exists)!==lvl){ setStudentLevel(exists, lvl); ch++; }
     put("bacTrack",   r.bacTrack);
@@ -20167,7 +20209,7 @@ function renderFormBuilder(){
       '<div id="fb_stuWrap" style="display:none">'+
         '<label class="f"><span>أنهي بيان من ملف الطالب؟</span>'+
           '<select id="fb_stu">'+
-            askableFor(num((UI.formDraft||{}).level,0)).map(function(a){
+            askableFor(num((UI.formDraft||{}).level,0), formKeyBy(UI.formDraft||{})).map(function(a){
               return '<option value="'+a.col+'">'+esc(a.label)+
                 (a.type==="cascade"?' (ومعاه الاختيارات الفرعية)':'')+'</option>';
             }).join("")+
@@ -20201,7 +20243,8 @@ function renderFormBuilder(){
       }).join("") : '<option value="natId">الرقم القومي</option>';
     }
     var box = document.getElementById("fb_stu");
-    if(box) box.innerHTML = askableFor(num(lvSel.value,0)).map(function(a){
+    if(box) box.innerHTML = askableFor(num(lvSel.value,0),
+      document.getElementById("fb_key") ? document.getElementById("fb_key").value : "").map(function(a){
       return '<option value="'+a.col+'">'+esc(a.label)+
         (a.type==="cascade"?' (ومعاه الاختيارات الفرعية)':'')+'</option>';
     }).join("");
