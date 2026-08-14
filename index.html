@@ -19797,17 +19797,40 @@ function autoFillPreview(){
     h += '<div class="note bad"><b>مش هيتسكّنوا:</b><br>'+
       Object.keys(why).map(function(k){ return esc(k)+" — <b>"+why[k]+"</b> طالب"; }).join("<br>")+'</div>';
   }
+  /* مفيش تغيير خالص — نقولها صريح بدل ما المستخدم يستنى */
+  var newCls = needs.reduce(function(a,x){ return a+x.add; }, 0);
+  if(!p.moves.length && !newCls){
+    /* عدد طلاب الصف كله — عشان نفرّق بين «متوزعين بالفعل» و«مفيش طلاب أصلًا» */
+    var poolAll = autoFillPool(o.lvl, curSector()).length;
+    h += '<div class="note">'+
+      (poolAll
+        ? '<b>الطلاب متوزعين بالفعل</b> — مفيش حاجة تتغيّر بالإعدادات دي. '+
+          'لو عايز تعيد التوزيع من الأول، غيّر «نطاق التوزيع» لـ«إعادة توزيع الكل».'
+        : '<b>مفيش طلاب في الصف ده.</b> استورد الطلاب الأول أو غيّر الصف.')+'</div>';
+  }
   var pv = document.getElementById("af_prev");
   if(pv) pv.innerHTML = h;
+
+  /* ============================================================
+     بعد المعاينة الزرار بيبقى «حفظ التوزيع» — المعاينة ظاهرة قدامك
+     أصلًا فمفيش داعي تعيدها. ولو مفيش تغيير، الزرار بيتقفل.
+     ============================================================ */
   var mf = MODAL.querySelector(".mf");
-  if(mf && p.moves.length){
+  if(mf){
+    var can = p.moves.length || newCls;
     mf.innerHTML = '<button class="btn ghost" data-act="close">إلغاء</button>'+
-      '<button class="btn" data-act="afApply">تنفيذ التوزيع ('+p.moves.length+')</button>';
+      '<button class="btn ghost sm" data-act="afPreview">↻ تحديث المعاينة</button>'+
+      (can
+        ? '<button class="btn" data-act="afApply" style="margin-right:6px">✔ حفظ التوزيع'+
+          (p.moves.length? ' ('+p.moves.length+' طالب)' : ' ('+newCls+' فصل)')+'</button>'
+        : '<button class="btn" disabled style="margin-right:6px;opacity:.5;cursor:default">مفيش تغيير</button>');
   }
 }
 function autoFillApply(){
   var st = UI.afPlan;
-  if(!st || !st.plan || !st.plan.moves.length){ toast("اعمل معاينة الأول"); return; }
+  if(!st || !st.plan){ toast("اعمل معاينة الأول"); return; }
+  var needCls = (st.needs||[]).reduce(function(a,x){ return a+x.add; }, 0);
+  if(!st.plan.moves.length && !needCls){ toast("مفيش تغيير يتحفظ"); return; }
   markUndo("ملء الفصول تلقائيًا");
   /* الفصول الناقصة بتتعمل الأول، وبعدين بنعيد حساب الخطة عليها */
   var made = 0;
@@ -19822,7 +19845,8 @@ function autoFillApply(){
   logOp("ملء الفصول تلقائيًا", levelName(st.opt.lvl)+" · "+n+" طالب"+(made?" · "+made+" فصل جديد":""));
   UI.afPlan = null;
   closeModal(); render();
-  toastUndo("اتسكّن "+n+" طالب"+(made?" · اتعمل "+made+" فصل":""));
+  toastUndo(n ? ("اتسكّن "+n+" طالب"+(made?" · اتعمل "+made+" فصل":""))
+              : ("اتعمل "+made+" فصل"));
 }
 
 /* نافذة الترحيل من أي استمارة */
