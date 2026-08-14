@@ -1369,6 +1369,7 @@ function attendIndex(){
   if(IDX.att && IDX.att_n===n) return IDX.att;
   var m = {};
   for(var k in DB.attend){
+    /* المفتاح: «الفصل|التاريخ» — شوف attKey */
     var cut = k.indexOf("|");
     if(cut<0) continue;
     var cid = k.slice(0,cut), rec = DB.attend[k];
@@ -2066,7 +2067,7 @@ function render(){
     case "classes":    h = UI.sub&&UI.sub.cls ? viewClass(UI.sub.cls) : viewClasses(); break;
     case "teachers":   h = UI.sub&&UI.sub.teacher ? viewTeacher(UI.sub.teacher) : viewTeachers(); break;
     case "assign":     h = viewAssign(); break;
-    case "absence":    h = viewAbsence(); break;
+    case "absence":    h = (UI.sub && UI.sub.absDoc) ? viewAbsDoc(UI.sub.absDoc) : viewAbsence(); break;
     case "reports":    h = viewReports(); break;
     case "rollover":   h = viewRollover(); break;
     case "settings":   h = viewSettings(); break;
@@ -8208,41 +8209,188 @@ function teacherFitsSubject(t, subName){
 /* ---------- جدول الفصل ---------- */
 
 /* ---------- الغياب والإنذارات ---------- */
-function viewAbsence(){
-  var rows = [];
-  myStudents().forEach(function(s){
-    var st = attendStats(s.id, s.classId);
-    if(st.days===0 && st.abs===0) { rows.push({s:s, st:st, a:absState(0)}); return; }
-    rows.push({s:s, st:st, a:absState(st.abs)});
+/* ============================================================
+   متابعة الغياب — تقسيم هرمي: صف ← نوعية تعليم ← فصل
+   مع بحث وفرز، ومطبوعات رسمية مربوطة ببيانات الطلاب وترويسة المدرسة.
+   ============================================================ */
+function absScope(){
+  UI.abs = UI.abs || {};
+  var o = UI.abs;
+  return { lvl:num(o.lvl,0), edu:o.edu||"", cls:o.cls||"",
+           q:o.q||"", only:!!o.only, sort:o.sort||"abs",
+           from:o.from||"", to:o.to||"" };
+}
+/* طلاب النطاق المختار */
+function absPool(sc){
+  return DB.students.filter(function(s){
+    if(s.status==="left") return false;
+    if(sc.lvl && studentLevelOf(s)!==sc.lvl) return false;
+    if(sc.edu && (s.edu||"") !== sc.edu) return false;
+    if(sc.cls && s.classId !== sc.cls) return false;
+    if(sc.q){
+      var q = normAr(sc.q), d = toEnDigits(sc.q).replace(/\D/g,"");
+      var hit = normAr(s.name).indexOf(q)>=0 ||
+                (d.length>=3 && String(s.natId||"").indexOf(d)>=0) ||
+                (s.code && normCode(s.code).indexOf(normCode(sc.q))>=0);
+      if(!hit) return false;
+    }
+    return true;
   });
-  rows.sort(function(x,y){ return y.st.abs - x.st.abs || sortAr(x.s.name,y.s.name); });
-  var only = UI.filters.absOnly;
-  var shown = only ? rows.filter(function(r){ return r.a.lvl>0; }) : rows;
+}
+/* صفوف الكشف مع إحصائيات الغياب */
+function absRows(sc){
+  var rows = absPool(sc).map(function(s){
+    var st = (sc.from || sc.to) ? attendStatsRange(s.id, s.classId, sc.from, sc.to)
+                                : attendStats(s.id, s.classId);
+    return { s:s, st:st, a:absState(st.abs) };
+  });
+  if(sc.only) rows = rows.filter(function(r){ return r.a.lvl>0; });
+  var by = sc.sort;
+  rows.sort(function(x,y){
+    if(by==="name") return sortAr(x.s.name, y.s.name);
+    if(by==="rate") return x.st.rate - y.st.rate || sortAr(x.s.name,y.s.name);
+    if(by==="cls")  return sortAr(className(x.s.classId), className(y.s.classId)) ||
+                           sortAr(x.s.name,y.s.name);
+    return y.st.abs - x.st.abs || sortAr(x.s.name, y.s.name);
+  });
+  return rows;
+}
+/* إحصائيات غياب في مدى تاريخي — للكشوف الشهرية */
+function attendStatsRange(sid, cid, from, to){
+  var days=0, abs=0, exc=0, late=0;
+  for(var k in DB.attend){
+    /* المفتاح: «الفصل|التاريخ» — نفس صيغة attKey */
+    var cut = k.indexOf("|");
+    if(cut<0) continue;
+    var c = k.slice(0,cut), d = k.slice(cut+1);
+    if(cid && c!==cid) continue;
+    if(from && d < from) continue;
+    if(to && d > to) continue;
+    var v = DB.attend[k][sid];
+    if(v===undefined) continue;
+    days++;
+    if(v==="A") abs++;
+    else if(v==="E") exc++;
+    else if(v==="L") late++;
+  }
+  return { days:days, abs:abs, exc:exc, late:late,
+           rate: days? Math.round((days-abs)/days*1000)/10 : 100 };
+}
+/* اسم النطاق المختار — للترويسة والمطبوعات */
+function absScopeName(sc){
+  var p = [];
+  p.push(sc.lvl ? levelName(sc.lvl) : "كل الصفوف");
+  if(sc.edu) p.push(eduName(sc.edu));
+  if(sc.cls) p.push("فصل "+className(sc.cls));
+  if(sc.from || sc.to) p.push("من "+(sc.from?fmtDate(sc.from):"البداية")+" إلى "+(sc.to?fmtDate(sc.to):"النهاية"));
+  return p.join(" — ");
+}
 
-  var c1 = rows.filter(function(r){ return r.a.lvl===1; }).length;
-  var c2 = rows.filter(function(r){ return r.a.lvl===2; }).length;
-  var c3 = rows.filter(function(r){ return r.a.lvl===3; }).length;
-
+function viewAbsence(){
   var gAb = gate("classes","students");
   if(gAb) return pageHd("متابعة الغياب والإنذارات","")+gAb;
-  var h = pageHd("متابعة الغياب والإنذارات", "حدود الإنذار: "+DB.absRules.warn1+" / "+DB.absRules.warn2+" / "+DB.absRules.danger+" يوم — قابلة للتعديل من الإعدادات");
+  UI.abs = UI.abs || {};
+  var sc = absScope();
+  var rows = absRows(sc);
+  var all = absRows(Object.assign({}, sc, {only:false, q:""}));
+  var c1 = all.filter(function(r){ return r.a.lvl===1; }).length;
+  var c2 = all.filter(function(r){ return r.a.lvl===2; }).length;
+  var c3 = all.filter(function(r){ return r.a.lvl===3; }).length;
+
+  var h = pageHd("متابعة الغياب والإنذارات",
+    "حدود الإنذار: "+DB.absRules.warn1+" / "+DB.absRules.warn2+" / "+DB.absRules.danger+
+    " يوم — قابلة للتعديل من الإعدادات",
+    '<button class="btn" data-act="absPrints">⎙ مطبوعات الغياب</button>'+exportBtns(true));
+
   h += '<div class="stats" style="margin-bottom:12px">'+
     stat("إنذار أول", c1, "طالب", c1?"acc-g":"")+
     stat("إنذار ثانٍ", c2, "طالب", c2?"acc-b":"")+
     stat("خطر الحرمان", c3, "طالب", c3?"acc-b":"")+
-    stat("نسبة حضور المدرسة", schoolAttendRate()+"%", "من بداية العام","acc")+
+    stat("نسبة الحضور", (all.length? Math.round(all.reduce(function(a,r){ return a+r.st.rate; },0)/all.length*10)/10 : 100)+"%",
+         esc(sc.lvl||sc.edu||sc.cls ? "في النطاق المختار" : "من بداية العام"), "acc")+
   '</div>';
-  h += '<div class="chips noprint">'+
-    '<button class="'+(only?"":"on")+'" data-act="absAll">كل الطلاب</button>'+
-    '<button class="'+(only?"on":"")+'" data-act="absWarn">اللي عليهم إنذارات فقط</button></div>';
-  h += printHd("كشف متابعة الغياب والإنذارات");
-  h += '<div class="card"><div class="hd"><h3>'+shown.length+' طالب</h3>'+
+
+  /* ============================================================
+     التقسيم الهرمي: صف ← نوعية ← فصل
+     ============================================================ */
+  h += '<div class="card noprint" style="margin-bottom:12px"><div class="bd" style="padding:11px 12px">';
+  /* ١ الصف */
+  var base = DB.students.filter(function(s){ return s.status!=="left"; });
+  h += '<div style="font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:6px;'+
+       'font-family:Cairo,sans-serif">١ · الصف الدراسي</div><div class="chips" style="padding-bottom:4px">'+
+    '<button class="'+(!sc.lvl?"on":"")+'" data-act="absLvl" data-v="0">كل الصفوف <small>'+base.length+'</small></button>'+
+    LEVELS.map(function(l){
+      var n = base.filter(function(s){ return studentLevelOf(s)===l.id; }).length;
+      return '<button class="'+(sc.lvl===l.id?"on":"")+'" data-act="absLvl" data-v="'+l.id+'">'+
+        esc(l.name)+' <small>'+n+'</small></button>';
+    }).join("")+'</div>';
+  /* ٢ نوعية التعليم */
+  var lvPool = base.filter(function(s){ return !sc.lvl || studentLevelOf(s)===sc.lvl; });
+  h += '<div style="height:1px;background:var(--line-2);margin:9px 0"></div>'+
+    '<div style="font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:6px;'+
+    'font-family:Cairo,sans-serif">٢ · نوعية التعليم</div><div class="chips" style="padding-bottom:4px">'+
+    '<button class="'+(!sc.edu?"on":"")+'" data-act="absEdu" data-v="">الكل <small>'+lvPool.length+'</small></button>'+
+    EDU_IDS.map(function(e){
+      var n = lvPool.filter(function(s){ return (s.edu||"")===e; }).length;
+      return '<button class="'+(sc.edu===e?"on":"")+'" data-act="absEdu" data-v="'+e+'">'+
+        esc(eduName(e))+' <small>'+n+'</small></button>';
+    }).join("")+'</div>';
+  /* ٣ الفصل */
+  var eduPool = lvPool.filter(function(s){ return !sc.edu || (s.edu||"")===sc.edu; });
+  var clsList = DB.classes.filter(function(c){
+    return (!sc.lvl || Number(c.level)===sc.lvl) &&
+           eduPool.some(function(s){ return s.classId===c.id; });
+  }).sort(function(a,b){ return a.level-b.level || sortAr(a.name,b.name); });
+  h += '<div style="height:1px;background:var(--line-2);margin:9px 0"></div>'+
+    '<div style="font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:6px;'+
+    'font-family:Cairo,sans-serif">٣ · الفصل</div><div class="chips" style="padding-bottom:2px">'+
+    '<button class="'+(!sc.cls?"on":"")+'" data-act="absCls" data-v="">كل الفصول <small>'+eduPool.length+'</small></button>'+
+    clsList.map(function(c){
+      var n = eduPool.filter(function(s){ return s.classId===c.id; }).length;
+      return '<button class="'+(sc.cls===c.id?"on":"")+'" data-act="absCls" data-v="'+c.id+'">'+
+        esc(c.name)+' <small>'+n+'</small></button>';
+    }).join("")+
+    (eduPool.some(function(s){ return !classById(s.classId); })
+      ? '<button class="'+(sc.cls==="__none"?"on":"")+'" data-act="absCls" data-v="__none" '+
+        'style="border-color:var(--warn);color:var(--warn)">غير مسكّنين <small>'+
+        eduPool.filter(function(s){ return !classById(s.classId); }).length+'</small></button>' : '')+
+    '</div>';
+  /* سطر البحث والفرز والمدى */
+  h += '<div style="height:1px;background:var(--line-2);margin:9px 0"></div>'+
+    '<div class="grid3">'+
+      '<label class="f"><span>بحث</span><input type="text" id="abs_q" data-act="absSet" data-k="q" '+
+        'value="'+esc(sc.q)+'" placeholder="اسم · رقم قومي · كود"></label>'+
+      '<label class="f"><span>من تاريخ</span><input type="date" id="abs_from" data-act="absSet" data-k="from" value="'+esc(sc.from)+'"></label>'+
+      '<label class="f"><span>إلى تاريخ</span><input type="date" id="abs_to" data-act="absSet" data-k="to" value="'+esc(sc.to)+'"></label>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px">'+
+      '<label class="f" style="flex:1 1 200px;margin:0"><span>الفرز</span>'+
+      '<select id="abs_sort" data-act="absSet" data-k="sort">'+
+        [["abs","الأكتر غيابًا"],["name","الاسم أبجديًا"],["cls","الفصل"],["rate","الأقل حضورًا"]]
+          .map(function(o){ return '<option value="'+o[0]+'"'+(sc.sort===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+
+      '</select></label>'+
+      '<button class="btn '+(sc.only?"":"ghost")+' sm" data-act="absOnly" style="margin-top:14px">'+
+        (sc.only?"✔ ":"")+'اللي عليهم إنذارات فقط</button>'+
+      ((sc.lvl||sc.edu||sc.cls||sc.q||sc.only||sc.from||sc.to)
+        ? '<button class="btn ghost sm" data-act="absClear" style="margin-top:14px;color:var(--danger)">✕ مسح الفلاتر</button>' : '')+
+    '</div>'+
+    '<div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line-2);font-size:12.5px">'+
+      '<b>معروض:</b> '+esc(absScopeName(sc))+' — <b>'+rows.length+'</b> طالب</div>'+
+    '</div></div>';
+
+  h += printHd("كشف متابعة الغياب والإنذارات — "+absScopeName(sc));
+  h += '<div class="card"><div class="hd"><h3>'+rows.length+' طالب</h3>'+
     exportBtns(true)+'</div><div class="bd flush"><div class="tbl-wrap">'+
-    '<table class="tbl"><thead><tr><th>م</th><th>الاسم</th><th>الفصل</th><th>أيام مرصودة</th><th>غياب</th><th>بعذر</th><th>تأخير</th><th>نسبة الحضور</th><th>الحالة</th></tr></thead><tbody>';
-  if(!shown.length) h += '<tr><td colspan="9"><div class="empty"><b>'+(only?"مفيش طالب عليه إنذار":"مفيش بيانات غياب")+'</b><p>'+(only?"الحمد لله، كل الطلاب تحت حد الإنذار.":"المعلمون بيسجّلوا الغياب من شاشة فصولهم.")+'</p></div></td></tr>';
-  shown.forEach(function(r,i){
+    '<table class="tbl"><thead><tr><th>م</th><th>الاسم</th><th>الفصل</th><th>النوعية</th>'+
+    '<th>أيام مرصودة</th><th>غياب</th><th>بعذر</th><th>تأخير</th><th>نسبة الحضور</th><th>الحالة</th>'+
+    '</tr></thead><tbody>';
+  if(!rows.length) h += '<tr><td colspan="10"><div class="empty"><b>'+
+    (sc.only?"مفيش طالب عليه إنذار":"مفيش بيانات في النطاق ده")+'</b><p>'+
+    (sc.only?"الحمد لله، كل الطلاب تحت حد الإنذار.":"جرّب توسّع النطاق أو امسح الفلاتر.")+'</p></div></td></tr>';
+  rows.forEach(function(r,i){
     h += '<tr data-act="openStudent" data-id="'+r.s.id+'" style="cursor:pointer"><td class="rownum">'+(i+1)+'</td>'+
-      '<td><b style="font-weight:600">'+esc(r.s.name)+'</b></td><td>'+esc(className(r.s.classId))+'</td>'+
+      '<td><b style="font-weight:600">'+esc(r.s.name)+'</b></td><td>'+esc(className(r.s.classId)||"—")+'</td>'+
+      '<td><small>'+esc(eduName(r.s.edu||"reg"))+'</small></td>'+
       '<td class="num">'+r.st.days+'</td><td class="num"><b>'+r.st.abs+'</b></td><td class="num">'+r.st.exc+'</td>'+
       '<td class="num">'+r.st.late+'</td><td class="num">'+r.st.rate+'%</td>'+
       '<td><span class="tag '+r.a.c+'">'+r.a.t+'</span></td></tr>';
@@ -8250,6 +8398,173 @@ function viewAbsence(){
   h += '</tbody></table></div></div></div>';
   return h;
 }
+/* ============================================================
+   مطبوعات الغياب
+   كشوف رسمية مبنية من بيانات الطلاب بترويسة المدرسة —
+   يومي · أسبوعي · شهري · إنذارات · حرمان · إحصاء.
+   بتتطبع أو تتصدّر إكسيل بالنطاق اللي انت مختاره (صف/نوعية/فصل).
+   ============================================================ */
+var ABS_DOCS = [
+  { id:"daily",  title:"كشف الغياب اليومي",
+    desc:"أسماء الغائبين في يوم واحد — للمتابعة اليومية وإبلاغ أولياء الأمور.",
+    kind:"day" },
+  { id:"period", title:"كشف الغياب في مدة",
+    desc:"غياب كل طالب خلال مدة تختارها — أسبوعي أو شهري أو أي مدى.",
+    kind:"range" },
+  { id:"monthly",title:"الإحصاء الشهري للغياب",
+    desc:"أعداد وأيام الغياب مجمّعة بالفصل — بيتبعت لشئون الطلبة بالإدارة.",
+    kind:"stats" },
+  { id:"warn",   title:"كشف الإنذارات",
+    desc:"الطلاب اللي وصلوا حد الإنذار الأول أو الثاني — ومنه بتتكتب الإنذارات.",
+    kind:"warn" },
+  { id:"deny",   title:"كشف خطر الحرمان",
+    desc:"الطلاب اللي غيابهم عدّى الحد المسموح — للعرض على مدير المدرسة.",
+    kind:"deny" },
+  { id:"rate",   title:"كشف نسب الحضور",
+    desc:"نسبة حضور كل طالب مرتّبة من الأقل — لمتابعة المنتظمين.",
+    kind:"rate" }
+];
+function absDocById(id){
+  for(var i=0;i<ABS_DOCS.length;i++) if(ABS_DOCS[i].id===id) return ABS_DOCS[i];
+  return null;
+}
+function modalAbsPrints(){
+  var sc = absScope();
+  openModal(mHead("مطبوعات الغياب")+
+    '<div class="mb">'+
+    '<div class="note">كل مطبوعة بتتبني من <b>النطاق المختار دلوقتي</b>: '+
+      esc(absScopeName(sc))+'. غيّر النطاق من الشاشة ورا وارجع.</div>'+
+    ABS_DOCS.map(function(d){
+      return '<div class="list-item" data-act="absDoc" data-d="'+d.id+'" style="cursor:pointer">'+
+        '<span class="av" style="background:var(--seal)">▤</span>'+
+        '<span class="tx"><b>'+esc(d.title)+'</b><small>'+esc(d.desc)+'</small></span>'+
+        '<span class="chev">‹</span></div>';
+    }).join("")+
+    '</div>'+
+    '<div class="mf"><button class="btn ghost" data-act="close">إغلاق</button></div>');
+}
+/* شاشة مطبوعة غياب واحدة */
+function viewAbsDoc(id){
+  var doc = absDocById(id);
+  if(!doc){ UI.sub=null; return viewAbsence(); }
+  var sc = absScope();
+  var h = '<button class="btn ghost sm noprint" data-act="absDocBack" style="margin-bottom:10px">→ متابعة الغياب</button>';
+  h += pageHd(doc.title, doc.desc, exportBtns(true));
+
+  /* اليومي محتاج تاريخ */
+  if(doc.kind==="day"){
+    var d = UI.abs.day || today();
+    h += '<div class="card noprint"><div class="bd" style="padding:11px 12px">'+
+      '<label class="f" style="margin:0"><span>تاريخ اليوم</span>'+
+      '<input type="date" id="abs_day" data-act="absSet" data-k="day" value="'+esc(d)+'"></label>'+
+      '</div></div>';
+    var list = absPool(sc).map(function(s){
+      var v = null;
+      var rec = DB.attend[attKey(s.classId, d)];
+      if(rec && rec[s.id]!==undefined) v = rec[s.id];
+      return { s:s, v:v };
+    }).filter(function(x){ return x.v==="A" || x.v==="E" || x.v==="L"; });
+    list.sort(function(a,b){ return sortAr(className(a.s.classId),className(b.s.classId)) ||
+                                    sortAr(a.s.name,b.s.name); });
+    h += printHd(doc.title+" — "+fmtDate(d)+" — "+absScopeName(sc)+" (العدد "+list.length+")");
+    h += '<div class="card"><div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+      '<th>م</th><th>اسم الطالب</th><th>الفصل</th><th>النوعية</th><th>الحالة</th>'+
+      '<th>هاتف ولي الأمر</th><th>ملاحظات</th></tr></thead><tbody>';
+    if(!list.length) h += '<tr><td colspan="7"><div class="empty"><b>مفيش غياب في اليوم ده</b></div></td></tr>';
+    list.forEach(function(x,i){
+      h += '<tr><td class="rownum">'+(i+1)+'</td><td><b style="font-weight:600">'+esc(x.s.name)+'</b></td>'+
+        '<td>'+esc(className(x.s.classId)||"—")+'</td><td><small>'+esc(eduName(x.s.edu||"reg"))+'</small></td>'+
+        '<td><span class="tag '+(x.v==="A"?"bad":x.v==="E"?"info":"warn")+'">'+esc(ATT[x.v]||"")+'</span></td>'+
+        '<td class="num">'+esc(stuVal(x.s,"phone")||"—")+'</td><td></td></tr>';
+    });
+    h += '</tbody></table></div></div></div>';
+    return h + absSignRow();
+  }
+
+  /* الإحصاء الشهري — أعداد مجمّعة بالفصل */
+  if(doc.kind==="stats"){
+    h += absRangeBar(sc);
+    var byCls = {};
+    absRows(sc).forEach(function(r){
+      var key = r.s.classId || "__none";
+      var o = byCls[key] || (byCls[key] = { n:0, abs:0, exc:0, late:0, days:0, warn:0, deny:0 });
+      o.n++; o.abs += r.st.abs; o.exc += r.st.exc; o.late += r.st.late; o.days += r.st.days;
+      if(r.a.lvl===1 || r.a.lvl===2) o.warn++;
+      if(r.a.lvl===3) o.deny++;
+    });
+    h += printHd(doc.title+" — "+absScopeName(sc));
+    h += '<div class="card"><div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+      '<th>الفصل</th><th>العدد</th><th>أيام مرصودة</th><th>أيام غياب</th><th>بعذر</th>'+
+      '<th>تأخير</th><th>عليهم إنذار</th><th>خطر حرمان</th><th>نسبة الحضور</th>'+
+      '</tr></thead><tbody>';
+    var T = { n:0, abs:0, exc:0, late:0, days:0, warn:0, deny:0 };
+    Object.keys(byCls).sort(function(a,b){
+      return sortAr(className(a)||"غير مسكّنين", className(b)||"غير مسكّنين"); }).forEach(function(k){
+      var o = byCls[k];
+      T.n+=o.n; T.abs+=o.abs; T.exc+=o.exc; T.late+=o.late; T.days+=o.days; T.warn+=o.warn; T.deny+=o.deny;
+      var rate = o.days? Math.round((o.days-o.abs)/o.days*1000)/10 : 100;
+      h += '<tr><td><b style="font-weight:600">'+esc(className(k)||"غير مسكّنين")+'</b></td>'+
+        '<td class="num">'+o.n+'</td><td class="num">'+o.days+'</td><td class="num"><b>'+o.abs+'</b></td>'+
+        '<td class="num">'+o.exc+'</td><td class="num">'+o.late+'</td>'+
+        '<td class="num">'+o.warn+'</td><td class="num">'+o.deny+'</td>'+
+        '<td class="num">'+rate+'%</td></tr>';
+    });
+    if(T.n) h += '<tr style="background:var(--line-2);font-weight:700"><td>الإجمالي</td>'+
+      '<td class="num">'+T.n+'</td><td class="num">'+T.days+'</td><td class="num">'+T.abs+'</td>'+
+      '<td class="num">'+T.exc+'</td><td class="num">'+T.late+'</td><td class="num">'+T.warn+'</td>'+
+      '<td class="num">'+T.deny+'</td><td class="num">'+
+      (T.days? Math.round((T.days-T.abs)/T.days*1000)/10 : 100)+'%</td></tr>';
+    else h += '<tr><td colspan="9"><div class="empty"><b>مفيش بيانات</b></div></td></tr>';
+    h += '</tbody></table></div></div></div>';
+    return h + absSignRow();
+  }
+
+  /* الباقي: كشوف أسماء بفلتر مختلف */
+  var rows = absRows(sc);
+  if(doc.kind==="warn") rows = rows.filter(function(r){ return r.a.lvl===1 || r.a.lvl===2; });
+  if(doc.kind==="deny") rows = rows.filter(function(r){ return r.a.lvl===3; });
+  if(doc.kind==="rate") rows = rows.slice().sort(function(a,b){ return a.st.rate - b.st.rate; });
+
+  h += absRangeBar(sc);
+  h += printHd(doc.title+" — "+absScopeName(sc)+" (العدد "+rows.length+")");
+  h += '<div class="card"><div class="bd flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    '<th>م</th><th>اسم الطالب</th><th>الفصل</th><th>النوعية</th><th>أيام مرصودة</th>'+
+    '<th>غياب</th><th>بعذر</th><th>تأخير</th><th>نسبة الحضور</th><th>الحالة</th>'+
+    (doc.kind==="warn"||doc.kind==="deny" ? '<th>هاتف ولي الأمر</th><th>توقيع الاستلام</th>' : '')+
+    '</tr></thead><tbody>';
+  if(!rows.length) h += '<tr><td colspan="12"><div class="empty"><b>مفيش طلاب في الكشف ده</b></div></td></tr>';
+  rows.forEach(function(r,i){
+    h += '<tr><td class="rownum">'+(i+1)+'</td><td><b style="font-weight:600">'+esc(r.s.name)+'</b></td>'+
+      '<td>'+esc(className(r.s.classId)||"—")+'</td><td><small>'+esc(eduName(r.s.edu||"reg"))+'</small></td>'+
+      '<td class="num">'+r.st.days+'</td><td class="num"><b>'+r.st.abs+'</b></td>'+
+      '<td class="num">'+r.st.exc+'</td><td class="num">'+r.st.late+'</td>'+
+      '<td class="num">'+r.st.rate+'%</td>'+
+      '<td><span class="tag '+r.a.c+'">'+r.a.t+'</span></td>'+
+      (doc.kind==="warn"||doc.kind==="deny"
+        ? '<td class="num">'+esc(stuVal(r.s,"phone")||"—")+'</td><td></td>' : '')+
+      '</tr>';
+  });
+  h += '</tbody></table></div></div></div>';
+  return h + absSignRow();
+}
+/* شريط المدى التاريخي داخل المطبوعة */
+function absRangeBar(sc){
+  return '<div class="card noprint"><div class="bd" style="padding:11px 12px"><div class="grid2">'+
+    '<label class="f" style="margin:0"><span>من تاريخ</span>'+
+    '<input type="date" data-act="absSet" data-k="from" value="'+esc(sc.from)+'"></label>'+
+    '<label class="f" style="margin:0"><span>إلى تاريخ</span>'+
+    '<input type="date" data-act="absSet" data-k="to" value="'+esc(sc.to)+'"></label>'+
+    '</div><div style="font-size:11.5px;color:var(--muted);margin-top:6px">'+
+    'سيبهم فاضيين = من بداية العام لحد النهاردة.</div></div></div>';
+}
+function absSignRow(){
+  return '<div class="card"><div class="bd" style="display:flex;justify-content:space-between;'+
+    'flex-wrap:wrap;gap:12px;font-size:12.5px">'+
+    '<span>الأخصائي الاجتماعي: ................</span>'+
+    '<span>وكيل شئون الطلاب: ................</span>'+
+    '<span>مدير المدرسة: ................</span></div></div>';
+}
+
 function schoolAttendRate(){
   var tot=0, pres=0;
   for(var k in DB.attend){ var r=DB.attend[k]; for(var s in r){ tot++; if(r[s]!=="A") pres++; } }
@@ -11834,8 +12149,22 @@ var ACTS = {
   },
 
 
-  absAll: function(){ UI.filters.absOnly=false; render(); },
-  absWarn: function(){ UI.filters.absOnly=true; render(); },
+  /* ---------- متابعة الغياب: التقسيم والفلاتر ---------- */
+  absLvl: function(el){ UI.abs=UI.abs||{}; UI.abs.lvl=num(el.dataset.v,0);
+                        UI.abs.edu=""; UI.abs.cls=""; render(); },
+  absEdu: function(el){ UI.abs=UI.abs||{}; UI.abs.edu=el.dataset.v||"";
+                        UI.abs.cls=""; render(); },
+  absCls: function(el){ UI.abs=UI.abs||{}; UI.abs.cls=el.dataset.v||""; render(); },
+  absOnly:function(){ UI.abs=UI.abs||{}; UI.abs.only=!UI.abs.only; render(); },
+  absClear:function(){ UI.abs={}; render(); },
+  absAll:  function(){ UI.abs=UI.abs||{}; UI.abs.only=false; render(); },
+  absWarn: function(){ UI.abs=UI.abs||{}; UI.abs.only=true; render(); },
+  absPrints: function(){ modalAbsPrints(); },
+  absDoc: function(el){
+    UI.abs=UI.abs||{}; UI.abs.doc=el.dataset.d; UI.sub={absDoc:el.dataset.d};
+    closeModal(); render();
+  },
+  absDocBack: function(){ UI.sub=null; render(); },
 
   repClass: function(){ askClass(repClass, "كشف درجات فصل"); },
   repAtt: function(){ askClass(repAtt, "كشف غياب فصل"); },
@@ -13654,11 +13983,34 @@ render = function(){
   if(v) v.insertAdjacentHTML("beforeend", creditHTML());
 };
 
+/* البحث في الغياب: بيتحدّث وانت بتكتب من غير ما يضيّع مكان المؤشر */
+document.addEventListener("input", function(e){
+  var el = e.target;
+  if(!el || !el.dataset || el.dataset.act!=="absSet" || el.dataset.k!=="q") return;
+  UI.abs = UI.abs || {};
+  UI.abs.q = el.value;
+  clearTimeout(window.__absQT);
+  window.__absQT = setTimeout(function(){
+    var pos = null;
+    try{ pos = el.selectionStart; }catch(e2){}
+    render();
+    var again = document.getElementById("abs_q");
+    if(again){ again.focus();
+      try{ again.setSelectionRange(pos==null?again.value.length:pos,
+                                   pos==null?again.value.length:pos); }catch(e3){} }
+  }, 220);
+});
 /* ربط قوائم تعيين الأعمدة */
 document.addEventListener("change", function(e){
   var el = e.target;
   if(el && el.dataset && el.dataset.act==="impMap" && UI.imp){
     UI.imp.map[Number(el.dataset.c)] = el.value;
+  }
+  /* فرز الغياب ومداه التاريخي (البحث بالكتابة تحت) */
+  if(el && el.dataset && el.dataset.act==="absSet" && el.dataset.k!=="q"){
+    UI.abs = UI.abs || {};
+    UI.abs[el.dataset.k] = el.value;
+    render();
   }
   /* اختيارات نطاق السجل الإداري */
   if(el && el.dataset && el.dataset.act==="regOpt"){
