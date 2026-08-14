@@ -12505,17 +12505,25 @@ function guardianFromName(name){
   return p.slice(1).join(" ");
 }
 /* تعبئة البيانات المشتقّة تلقائيًا في سجل الطالب */
-/* كل بيان ممكن يتعرف من الرقم القومي أو الاسم بيتسجّل تلقائيًا هنا */
-function enrichStudent(s){
+/* ============================================================
+   بتملا الناقص بس — ما بتدهسش اللي اتسجّل صراحةً.
+   لو المدرسة سجّلت محافظة أو نوع مخالف للرقم القومي (وده بيحصل:
+   الرقم القومي بيقول محافظة الاستخراج مش محافظة الميلاد الفعلية)،
+   اللي اتسجّل بيفضل هو الأصل.
+   ============================================================ */
+function enrichStudent(s, force){
   if(!s) return s;
   var info = parseNationalId(s.natId);
   if(info){
-    s.birth = info.birth;
-    s.birthYear = info.birthYear;
-    s.gender = info.gender;
-    s.birthGov = info.govName;
-    s.govCode = info.govCode;
-    s.age = ageFrom(info.birth);
+    function fill(k, v){
+      if(force || !String(s[k]||"").trim()) s[k] = v;
+    }
+    fill("birth",    info.birth);
+    fill("gender",   info.gender);
+    fill("birthGov", info.govName);
+    s.birthYear = info.birthYear;          /* محسوبة دايمًا — مش بيان يتكتب */
+    s.govCode   = info.govCode;
+    s.age       = ageFrom(info.birth);
   }
   if(!s.guardian){ var g = guardianFromName(s.name); if(g) s.guardian = g; }
   if(!s.family){ var fam = familyFromName(s.name); if(fam) s.family = fam; }
@@ -17602,10 +17610,12 @@ function stuDerived(s){
   if(info){
     d.birth  = info.birth;
     d.gender = info.gender;
-    d.gov    = info.govName;
-    d.birthGov = info.govName;          /* الكشف الأساسي بيسمّيه birthGov */
+    d.birthGov = info.govName;
     d.birthYear = info.birthYear;
   }
+  /* محافظة الميلاد متخزّنة في birthGov — و«gov» اسم تاني ليها.
+     فلازم المتسجّل يغلب المشتق مهما كان الاسم المستخدم. */
+  d.gov = String(s.birthGov||"").trim() || (info ? info.govName : "");
   var birth = s.birth || d.birth || "";
   if(birth){
     d.age1oct = ageAt1Oct(birth);
@@ -18885,7 +18895,15 @@ function setBaseCol(st, col, v, L){
   if(!val0) return true;
   switch(col){
     case "name":  return true;                       /* الاسم مبيتغيّرش من الاستمارة */
-    case "natId": return true;                       /* ولا الرقم القومي */
+    case "natId": var nn0 = toEnDigits(val0).replace(/\D/g,"");
+                  /* بيتحدّث عادي، بس لازم يكون صحيح ومش متسجّل لطالب تاني */
+                  if(nn0.length!==14 || !parseNationalId(nn0)) return true;
+                  if(DB.students.some(function(x){ return x!==st && x.natId===nn0; })) return true;
+                  st.natId = nn0; return true;
+    case "code":  var cd0 = normCode(val0);
+                  if(!cd0) return true;
+                  if(DB.students.some(function(x){ return x!==st && normCode(x.code)===cd0; })) return true;
+                  st.code = cd0; return true;
     case "level": var lv = parseLevel(val0); if(lv) setStudentLevel(st, lv); return true;
     case "cls":   var c = findClassByName(val0, studentSector(st)) || findClassByName(val0);
                   if(c) assignStudentToClass(st, c.id); return true;
@@ -19246,8 +19264,10 @@ function migrateRowToStudent(r, opt){
   function applyBase(st){
     if(!r.base) return 0;
     var k = 0, L2 = lvl || studentLevelOf(st);
-    /* natId و code بيتعالجوا في put بحمايتهم الخاصة — مش من هنا */
-    ["gender","birth","gov","seat","cls","joined"].forEach(function(col){
+    /* كل بيان الطالب سجّله بيروح لعموده — ماعدا عمود الربط والاسم */
+    ["natId","code","gender","birth","gov","seat","cls","joined","phone",
+     "guard","rel","prev","track","subj","edu"].forEach(function(col){
+      if(col===keyBy) return;                         /* عمود الربط ثابت */
       var v = r.base[col];
       if(v===undefined || v===null || String(v).trim()==="") return;
       if(setBaseCol(st, col, v, L2)) k++;
@@ -19288,38 +19308,40 @@ function migrateRowToStudent(r, opt){
   /* ---------- الرقم القومي موجود: تحديث بس، من غير تكرار ---------- */
   if(exists){
     var ch = 0;
+    /* ============================================================
+       قاعدة الترحيل
+       عمود الربط (مفتاح الاستمارة) + اسم الطالب = ثابتين، ما يتغيّروش.
+       أي بيان تاني الطالب سجّله في الاستمارة بيروح لعموده في القاعدة
+       ويحدّث القديم. الفاضي بس هو اللي مبيمسحش المليان — لأن الطالب
+       ساب الخانة فاضية يعني «مالوش رأي»، مش يعني «امسح اللي عندك».
+       ============================================================ */
     function put(k, v){
-      /* ============================================================
-         المفتاح والرقم القومي محميين — بس الحماية معناها «ما يتغيّرش»
-         مش «ما يتملاش». لو الخانة فاضية أصلًا، الاستمارة تملاها عادي؛
-         ده بالظبط اللي بيخلّي استمارة الصف الأول (المفتاح كود الطالب)
-         تجمع الأرقام القومية الناقصة.
-         ============================================================ */
-      if(k===keyBy && String(exists[k]||"").trim()) return;   /* المفتاح المتسجّل ما يتغيّرش */
+      if(k===keyBy) return;                             /* عمود الربط ثابت */
+      if(k==="name") return;                            /* واسم الطالب ثابت */
+      if(v===undefined || v===null || String(v).trim()==="") return;
       if(k==="natId"){
-        var cur = String(exists.natId||"").trim();
-        if(cur) return;                                       /* عنده رقم قومي — ما يتغيّرش */
-        var nn = toEnDigits(String(v||"")).replace(/\D/g,"");
-        if(nn.length!==14 || !parseNationalId(nn)) return;     /* ما نسجّلش رقم غلط */
-        /* ولا نسمح بتكرار رقم قومي على طالبين */
+        var nn = toEnDigits(String(v)).replace(/\D/g,"");
+        /* رقم غلط أو متسجّل لطالب تاني مبيتقبلش — حماية للبيانات */
+        if(nn.length!==14 || !parseNationalId(nn)) return;
         if(DB.students.some(function(x){ return x.id!==exists.id && x.natId===nn; })) return;
+        if(String(exists.natId||"") === nn) return;
         exists.natId = nn; ch++;
         return;
       }
-      if(v===undefined || v===null || v==="") return;   /* الفاضي مبيمسحش المليان */
+      if(k==="code"){
+        var cd = normCode(v);
+        if(!cd) return;
+        if(DB.students.some(function(x){ return x.id!==exists.id && normCode(x.code)===cd; })) return;
+        if(normCode(exists.code) === cd) return;
+        exists.code = cd; ch++;
+        return;
+      }
       if(String(exists[k]||"") === String(v)) return;
       exists[k] = v; ch++;
     }
-    put("natId", r.natId);                              /* يملا الناقص بس */
-    /* كود الطالب: نفس القاعدة — يتملا لو ناقص، وما يتغيّرش لو موجود */
-    (function(){
-      var cd = normCode(r.code);
-      if(!cd) return;
-      if(String(exists.code||"").trim()) return;
-      if(DB.students.some(function(x){ return x.id!==exists.id && normCode(x.code)===cd; })) return;
-      exists.code = cd; ch++;
-    })();
-    /* الرقم القومي والاسم الأساسي مبيتغيّروش */
+    put("natId",      r.natId);
+    put("code",       r.code);
+    put("seat",       r.seat);
     if(lvl && studentLevelOf(exists)!==lvl){ setStudentLevel(exists, lvl); ch++; }
     put("bacTrack",   r.bacTrack);
     put("bacSubject", r.bacSubject);
