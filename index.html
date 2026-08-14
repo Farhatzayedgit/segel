@@ -19542,18 +19542,70 @@ function autoFillPlan(level, sec, order, includePlaced){
       }
       if(!moved) break;
     }
-    /* التوزيع الفعلي: كل فصل بياخد شريحة متتابعة من القائمة المرتّبة */
-    var idx = 0;
+    /* ============================================================
+       التوزيع الفعلي — كل فصل نصّه بنين ونصّه بنات
+       بنقسّم المجموعة لقايمتين (بنين / بنات) كل واحدة مرتّبة زي
+       ما المستخدم اختار (أبجدي أو عشوائي)، وبعدين كل فصل بياخد
+       نصيبه من الاتنين بالتساوي وبالتتابع.
+       مثال: فصل ٤٠ → أول ٢٠ ولد + أول ٢٠ بنت.
+       لو نوع واحد خلص، الباقي بيتكمّل من التاني عشان مفيش مكان يضيع.
+       النوع بيتقرا بالاشتقاق، فحتى اللي مالوش نوع مسجّل بيتعرف
+       من رقمه القومي.
+       ============================================================ */
+    var boys = [], girls = [], unknown = [];
+    g.list.forEach(function(s2){
+      var gn = String(stuVal(s2, "gender") || "").trim();
+      if(/ذكر|بنين|ولد|male/i.test(gn)) boys.push(s2);
+      else if(/أنث|انث|بنت|فتاة|female/i.test(gn)) girls.push(s2);
+      else unknown.push(s2);
+    });
+    /* اللي نوعه مش معروف بيتوزّع على الأقل عددًا عشان يفضل متوازن */
+    unknown.forEach(function(s2, i3){ (boys.length<=girls.length ? boys : girls).push(s2); });
+
+    var bi = 0, gi = 0;
+    /* ============================================================
+       نصيب كل فصل من كل نوع = بالنسبة، مش نص ونص جامد.
+       لو المدرسة نفسها مش متوازنة (٧٠ ولد و٣٠ بنت مثلًا)، القسمة
+       الجامدة كانت بتخلي آخر فصل ولاد بس. بالنسبة كل فصل بياخد
+       نصيبه العادل من الاتنين: ٢٣و·١٠ب في كل فصل بدل ٣٣و·٠ب.
+       ولو النوعين متساويين، النتيجة نص ونص زي ما هو مطلوب.
+       ============================================================ */
+    var totalB = boys.length, totalG = girls.length, totalAll = totalB + totalG;
+    var plannedAll = take.reduce(function(a,b){ return a+b; }, 0) || 1;
+    var accB = 0;                                   /* البنين المخطط لهم لحد الفصل ده */
+    var doneSeats = 0;
+    function nextOf(pref){
+      if(pref==="b"){
+        if(bi < boys.length) return boys[bi++];
+        if(gi < girls.length) return girls[gi++];
+      }else{
+        if(gi < girls.length) return girls[gi++];
+        if(bi < boys.length) return boys[bi++];
+      }
+      return null;
+    }
     cls.forEach(function(c, i){
-      for(var t2=0; t2<take[i] && idx<g.list.length; t2++){
-        var s2 = g.list[idx++];
+      var want = take[i];
+      /* نصيب الفصل من البنين بالتناسب — بتقريب تراكمي عشان مفيش كسور تضيع */
+      doneSeats += want;
+      var targetB = totalAll ? Math.round(totalB * doneSeats / plannedAll) : 0;
+      var nb = Math.max(0, Math.min(want, targetB - accB));
+      var ng = want - nb;
+      accB += nb;
+      var seq = [];
+      for(var q=0;q<nb;q++) seq.push("b");
+      for(var q2=0;q2<ng;q2++) seq.push("g");
+      seq.forEach(function(pref){
+        var s2 = nextOf(pref);
+        if(!s2) return;
         count[c.id] = (count[c.id]||0) + 1;
         if(s2.classId !== c.id) moves.push({ s:s2, to:c });
-      }
+      });
     });
     /* اللي مالقاش مكان خالص */
-    while(idx < g.list.length){
-      skipped.push({ s:g.list[idx++],
+    while(bi < boys.length || gi < girls.length){
+      var rest = (bi < boys.length) ? boys[bi++] : girls[gi++];
+      skipped.push({ s:rest,
         why:"فصول "+(levelHasTracks(L)?trackWord(L):"الصف")+" كلها وصلت السعة ("+classCap()+")" });
     }
   });
@@ -19645,7 +19697,8 @@ function modalAutoFill(){
   openModal(mHead("ملء الفصول تلقائيًا")+
     '<div class="mb">'+
     '<div class="note">بيوزّع الطلاب على فصول صفهم. <b>المسار/الشعبة مش بتتخالف أبدًا</b> — '+
-      'الطالب بيروح لفصل مساره بس. ولو الصف مالوش فصول خالص، البرنامج بينشئها.</div>'+
+      'الطالب بيروح لفصل مساره بس. وكل فصل بيتوازن <b>بنين وبنات بالنص</b>. '+
+      'ولو الصف مالوش فصول خالص، البرنامج بينشئها.</div>'+
     '<label class="f"><span>الصف</span><select id="af_lvl">'+
       lvls.map(function(l){
         var nCls = DB.classes.filter(function(c){ return Number(c.level)===l.id && classSector(c)===curSector(); }).length;
@@ -19660,6 +19713,11 @@ function modalAutoFill(){
     '<label class="f"><span>طريقة التوزيع</span><select id="af_ord">'+
       '<option value="abc">ترتيب أبجدي — الأسماء بالترتيب على الفصول</option>'+
       '<option value="rand">ترتيب عشوائي — توزيع بالقرعة</option>'+
+      '</select>'+
+      '<small style="color:var(--muted);font-size:11.5px">في الحالتين كل فصل بيطلع '+
+      '<b>نصّه بنين ونصّه بنات</b> — فصل ٤٠ = أول ٢٠ ولد وأول ٢٠ بنت في الترتيب. '+
+      'والنوع بيتعرف من الرقم القومي حتى لو مش مسجّل.</small>'+
+      '<select style="display:none">'+
     '</select></label>'+
     '<label class="f"><span>نطاق التوزيع</span><select id="af_scope">'+
       '<option value="new">غير المسكّنين بس (الآمن)</option>'+
