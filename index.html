@@ -16926,15 +16926,27 @@ function wishDoneHTML(w){
     '<div style="font-size:12px;color:var(--muted);margin-top:4px">'+
       (UI.wishUpd? "كنت مسجّل قبل كده — البيانات الجديدة حلّت محل القديمة" : "احتفظ بالبيانات دي")+'</div>'+
     '</div>'+
-    '<div style="background:#fbfcfa;border:1px solid var(--line);border-radius:11px;padding:12px;margin-top:13px;font-size:13.5px;line-height:2">'+
-    '<div><b>الاسم:</b> '+esc(w.name)+'</div>'+
-    '<div><b>الرقم القومي:</b> <span style="direction:ltr;display:inline-block">'+esc(w.natId)+'</span></div>'+
-    '<div><b>الفصل السابق:</b> '+esc(w.prevClass)+'</div>'+
-    '<div><b>نوعية التعليم:</b> '+esc(eduName(wishEdu(w)))+'</div>'+
-    '<div><b>المسار:</b> '+esc(wishTrackName(w.track))+'</div>'+
-    '<div><b>مادة التخصص:</b> '+esc(w.subject)+'</div>'+
-    '<div style="color:var(--muted);font-size:12px"><b>وقت التسجيل:</b> '+esc(fmtDate(w.date))+' '+esc(w.time||"")+'</div>'+
+    /* نفس شكل شاشة باقي الاستمارات — كل بيان في سطر واضح */
+    '<div style="background:#fbfcfa;border:1px solid var(--line);border-radius:11px;'+
+      'padding:12px 13px;margin-top:13px;font-size:13.5px">'+
+    [["الاسم", w.name, false],
+     ["الرقم القومي", w.natId, true],
+     ["الفصل السابق", w.prevClass, false],
+     ["نوعية التعليم", eduName(wishEdu(w)), false],
+     ["المسار", wishTrackName(w.track), false],
+     ["مادة التخصص", w.subject, false],
+     ["وقت التسجيل", fmtDate(w.date)+" "+(w.time||""), false]
+    ].filter(function(r){ return String(r[1]||"").trim(); })
+     .map(function(r, i, arr){
+       return '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0'+
+         (i===arr.length-1?'':';border-bottom:1px solid var(--line-2)')+'">'+
+         '<span style="color:var(--muted);flex:0 0 auto">'+esc(r[0])+'</span>'+
+         '<span style="font-weight:600;text-align:left'+(r[2]?';direction:ltr':'')+
+         ';overflow-wrap:anywhere">'+esc(r[1])+'</span></div>';
+     }).join("")+
     '</div>'+
+    '<div style="font-size:11.5px;color:var(--muted);text-align:center;margin-top:9px">'+
+      'راجع بياناتك — لو فيه حاجة غلط، املا الاستمارة تاني بنفس الرقم القومي وهتتصحّح.</div>'+
     '<button class="btn block" data-lact="wnew" style="margin-top:12px">تسجيل طالب آخر</button>'+
     '<button class="btn ghost block" data-lact="stuBack" style="margin-top:8px">باقي الاستمارات</button>';
 }
@@ -17109,15 +17121,62 @@ function studentFormHTML(f){
   return h;
 }
 function formDoneHTML(o){
+  /* ============================================================
+     شاشة التأكيد بتعرض كل بيان الطالب ملاه — عشان يراجعه بنفسه
+     قبل ما يمشي، ويعرف لو كتب حاجة غلط. الاسم والمفتاح فوق،
+     وتحتيهم باقي الحقول بترتيبها في الاستمارة.
+     ============================================================ */
+  var rows = '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;'+
+      'border-bottom:1px solid var(--line-2)">'+
+      '<span style="color:var(--muted);flex:0 0 auto">الاسم</span>'+
+      '<span style="font-weight:600;text-align:left">'+esc(o.name)+'</span></div>'+
+    '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;'+
+      'border-bottom:1px solid var(--line-2)">'+
+      '<span style="color:var(--muted);flex:0 0 auto">'+esc(o.keyLabel||"الرقم القومي")+'</span>'+
+      '<span style="font-weight:600;direction:ltr;text-align:left">'+esc(o.natId)+'</span></div>';
+
+  (o.answers || []).forEach(function(a, i){
+    var last = (i === (o.answers.length-1));
+    rows += '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0'+
+      (last?'':';border-bottom:1px solid var(--line-2)')+'">'+
+      '<span style="color:var(--muted);flex:0 0 auto">'+esc(a.label)+'</span>'+
+      '<span style="font-weight:600;text-align:left;overflow-wrap:anywhere">'+esc(a.value)+'</span></div>';
+  });
+
   return '<div style="text-align:center">'+
     '<div style="width:52px;height:52px;margin:0 auto 11px;border-radius:14px;display:grid;place-items:center;background:#e2f0e9;color:#146a4e;font-size:26px">✓</div>'+
-    '<div style="font-family:Cairo,sans-serif;font-weight:700;font-size:17px">اتسجّلت بياناتك</div>'+
+    '<div style="font-family:Cairo,sans-serif;font-weight:700;font-size:17px">'+
+      (o.updated ? "اتحدّثت بياناتك" : "اتسجّلت بياناتك")+'</div>'+
     '<div style="font-size:12px;color:var(--muted);margin-top:4px">'+esc(o.formTitle)+'</div></div>'+
-    '<div style="background:#fbfcfa;border:1px solid var(--line);border-radius:11px;padding:12px;margin-top:13px;font-size:13.5px;line-height:2">'+
-    '<div><b>الاسم:</b> '+esc(o.name)+'</div>'+
-    '<div><b>الرقم القومي:</b> <span style="direction:ltr;display:inline-block">'+esc(o.natId)+'</span></div></div>'+
+    '<div style="background:#fbfcfa;border:1px solid var(--line);border-radius:11px;'+
+      'padding:12px 13px;margin-top:13px;font-size:13.5px">'+rows+'</div>'+
+    '<div style="font-size:11.5px;color:var(--muted);text-align:center;margin-top:9px">'+
+      'راجع بياناتك — لو فيه حاجة غلط، املا الاستمارة تاني بنفس '+
+      esc(o.keyLabel||"الرقم القومي")+' وهتتصحّح.</div>'+
     '<button class="btn block" data-lact="stuBack" style="margin-top:12px">ملء استمارة تانية</button>'+
     '<button class="btn ghost block" data-lact="wback" style="margin-top:8px">رجوع للصفحة الرئيسية</button>';
+}
+/* بيانات الطالب اللي ملاها — بعناوينها زي ما ظهرتله في الاستمارة */
+function formAnswersList(f, values){
+  var out = [];
+  (f.fields || []).forEach(function(fd){
+    var v = values[fd.id];
+    if(v===undefined || v===null || String(v).trim()==="") return;
+    var lbl = fd.label;
+    if(fd.type==="student" || fd.type==="stucascade"){
+      var ask = askableByCol(fd.col, num(fd.level,0) || formTargetLevel(f));
+      if(ask && ask.label) lbl = ask.label;
+    }
+    if(fd.type==="date") v = fmtDate(v);
+    out.push({ label:lbl, value:String(v) });
+    /* الاختيار الفرعي بيتعرض كسطر لوحده تحت الرئيسي */
+    if(isCascadeField(fd)){
+      var sv = values[cascadeSubKey(fd)];
+      if(sv!==undefined && sv!==null && String(sv).trim()!=="")
+        out.push({ label:cascadeSubLabel(fd), value:String(sv) });
+    }
+  });
+  return out;
 }
 /* ============================================================
    بوابة الصف: الطالب لازم يكون مسجّل في صف الاستمارة
@@ -17253,7 +17312,9 @@ function saveCustomForm(fid){
     rec.date = today(); rec.time = hhmm; rec.at = Date.now();
     delete rec.migAt; delete rec.migrated;   /* اتغيّرت بياناته — يرجع مستجد عشان يتحدّث */
     saveNow();
-    UI.formDone = { formTitle:f.title, name:name, natId:nat, keyLabel:keyColDef(keyBy,0).label, updated:true };
+    UI.formDone = { formTitle:f.title, name:name, natId:nat,
+                    keyLabel:keyColDef(keyBy,0).label, updated:true,
+                    answers: formAnswersList(f, values) };
     UI.stu = false; UI.stuForm = null; UI.stuVals = null;
     renderLogin();
     return;
@@ -17264,7 +17325,9 @@ function saveCustomForm(fid){
     time:hhmm, at: Date.now()
   });
   saveNow();
-  UI.formDone = { formTitle:f.title, name:name, natId:nat, keyLabel:keyColDef(keyBy,0).label };
+  UI.formDone = { formTitle:f.title, name:name, natId:nat,
+                  keyLabel:keyColDef(keyBy,0).label,
+                  answers: formAnswersList(f, values) };
   UI.stu = false; UI.stuForm = null; UI.stuVals = null;
   renderLogin();
 }
