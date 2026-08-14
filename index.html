@@ -20254,9 +20254,33 @@ function renderFormBuilder(){
     '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:10px 0 6px">الحقول الإضافية</div>'+
     (fieldsHTML||'<div class="note" style="margin-bottom:8px">مفيش حقول إضافية لسه. ضيف اللي عايز الطالب يملاه تحت.</div>')+
     '<div style="border-top:1px dashed var(--line);padding-top:10px;margin-top:6px">'+
-      '<div class="grid2">'+
-      '<label class="f"><span>اسم الحقل</span><input type="text" id="fb_fl" placeholder="مثال: محل الإقامة"></label>'+
-      '<label class="f"><span>النوع</span><select id="fb_ft">'+FIELD_TYPES.map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join("")+'</select></label>'+
+      /* ============================================================
+         قائمة واحدة فيها كل أعمدة الصف تحت بعضها + «بيان جديد».
+         تختار عمود موجود → الإجابة تروح له. تختار «بيان جديد» →
+         يفتحلك مربع تكتب فيه اسم البيان ويتعمل له عمود.
+         ============================================================ */
+      '<label class="f"><span>اسم الحقل</span><select id="fb_col">'+
+        '<optgroup label="أعمدة '+
+          (num((UI.formDraft||{}).level,0)? esc(levelName(num(UI.formDraft.level,0))) : 'الصف')+'">'+
+          askableFor(num((UI.formDraft||{}).level,0), formKeyBy(UI.formDraft||{})).map(function(a){
+            return '<option value="col:'+a.col+'">'+esc(a.label)+
+              (a.type==="cascade"?' (ومعاه الاختيارات الفرعية)':'')+'</option>';
+          }).join("")+
+        '</optgroup>'+
+        '<optgroup label="مش موجود في الأعمدة">'+
+          '<option value="__new">＋ بيان جديد — اكتبه بنفسك</option>'+
+        '</optgroup>'+
+      '</select></label>'+
+      '<div id="fb_newWrap" style="display:none">'+
+        '<div class="grid2">'+
+        '<label class="f"><span>اسم البيان الجديد</span>'+
+          '<input type="text" id="fb_fl" placeholder="مثال: رقم التأمين الصحي"></label>'+
+        '<label class="f"><span>النوع</span><select id="fb_ft">'+
+          FIELD_TYPES.filter(function(t){ return t.id!=="student" && t.id!=="track"; })
+            .map(function(t){
+              return '<option value="'+t.id+'">'+esc(t.name.replace("بيان جديد — ",""))+'</option>'; }).join("")+
+          '</select></label>'+
+        '</div>'+
       '</div>'+
       '<label class="f" id="fb_optWrap" style="display:none"><span>الخيارات (افصل بينها بفاصلة)</span><input type="text" id="fb_opt" placeholder="خيار ١، خيار ٢، خيار ٣"></label>'+
       '<div id="fb_cscWrap" style="display:none">'+
@@ -20267,20 +20291,9 @@ function renderFormBuilder(){
             'placeholder="الطب وعلوم الحياة : الأحياء، الكيمياء&#10;الهندسة وعلوم الحاسب : الرياضيات، الفيزياء"></textarea>'+
           '<small style="color:var(--muted);font-size:11.5px">اكتب الاختيار الرئيسي، وبعده نقطتين، وبعدها الاختيارات الفرعية مفصولة بفاصلة. الطالب هيختار الرئيسي فالفرعية بتظهرله لوحدها.</small></label>'+
       '</div>'+
-      '<div id="fb_stuWrap" style="display:none">'+
-        '<label class="f"><span>أنهي بيان من ملف الطالب؟</span>'+
-          '<select id="fb_stu">'+
-            askableFor(num((UI.formDraft||{}).level,0), formKeyBy(UI.formDraft||{})).map(function(a){
-              return '<option value="'+a.col+'">'+esc(a.label)+
-                (a.type==="cascade"?' (ومعاه الاختيارات الفرعية)':'')+'</option>';
-            }).join("")+
-          '</select>'+
-          '<small style="color:var(--muted);font-size:11.5px">هيظهر للطالب <b>فاضي</b> يملاه، '+
-          'وإجابته هترجع لعموده في ملف الطالب وقت الترحيل — من غير ما يتعمل عمود جديد. '+
-          (num((UI.formDraft||{}).level,0)
-            ? 'البيانات المعروضة بتاعة '+esc(levelName(num(UI.formDraft.level,0)))+'.'
-            : 'اختار صف الاستمارة الأول عشان تظهرلك بيانات الصف بالظبط.')+'</small></label>'+
-      '</div>'+
+      '<div class="note" id="fb_colNote">اختار عمود من أعمدة الصف فوق — '+
+        'هيظهر للطالب <b>فاضي</b> يملاه، وإجابته هترجع لعموده في ملف الطالب '+
+        'من غير ما يتعمل عمود جديد.</div>'+
       '<div id="fb_newNote" class="note" style="display:none">'+
         '<b>بيان جديد:</b> مش موجود في أعمدة الصف. أول ما ترحّل بيانات الطلاب، '+
         'البرنامج هيعمل <b>عمود جديد باسم الحقل</b> ويحط فيه إجاباتهم — '+
@@ -20307,28 +20320,60 @@ function renderFormBuilder(){
           esc(k.label)+esc(stat)+'</option>';
       }).join("") : '<option value="natId">الرقم القومي</option>';
     }
-    var box = document.getElementById("fb_stu");
-    if(box) box.innerHTML = askableFor(num(lvSel.value,0),
-      document.getElementById("fb_key") ? document.getElementById("fb_key").value : "").map(function(a){
-      return '<option value="'+a.col+'">'+esc(a.label)+
-        (a.type==="cascade"?' (ومعاه الاختيارات الفرعية)':'')+'</option>';
-    }).join("");
+    /* قائمة أعمدة الصف في «اسم الحقل» بتتغيّر مع الصف */
+    var cbox = document.getElementById("fb_col");
+    if(cbox){
+      var curc = cbox.value;
+      var kb = document.getElementById("fb_key");
+      cbox.innerHTML =
+        '<optgroup label="أعمدة '+esc(levelName(num(lvSel.value,0))||"الصف")+'">'+
+          askableFor(num(lvSel.value,0), kb?kb.value:"").map(function(a){
+            return '<option value="col:'+a.col+'">'+esc(a.label)+
+              (a.type==="cascade"?' (ومعاه الاختيارات الفرعية)':'')+'</option>';
+          }).join("")+
+        '</optgroup>'+
+        '<optgroup label="مش موجود في الأعمدة">'+
+          '<option value="__new">＋ بيان جديد — اكتبه بنفسك</option>'+
+        '</optgroup>';
+      cbox.value = curc;
+      if(!cbox.value) cbox.selectedIndex = 0;
+      fbSyncCol();
+    }
   };
-  var sel = document.getElementById("fb_ft");
-  if(sel) sel.onchange = function(){
+  /* اختيار «اسم الحقل»: عمود موجود ولا بيان جديد */
+  function fbSyncCol(){
+    var cs = document.getElementById("fb_col");
+    if(!cs) return;
+    var isNew = (cs.value === "__new");
+    var nw = document.getElementById("fb_newWrap");
+    var nn = document.getElementById("fb_newNote");
+    var tn = document.getElementById("fb_trkNote");
+    var cn = document.getElementById("fb_colNote");
+    if(nw) nw.style.display = isNew ? "block" : "none";
+    if(nn) nn.style.display = isNew ? "block" : "none";
+    if(cn) cn.style.display = isNew ? "none" : "block";
+    /* عمود «المسار» ليه شرح خاص */
+    var col = isNew ? "" : String(cs.value||"").replace(/^col:/,"");
+    if(tn) tn.style.display = (col==="track") ? "block" : "none";
+    if(isNew) fbSyncType(); else {
+      ["fb_optWrap","fb_cscWrap"].forEach(function(id){
+        var e = document.getElementById(id); if(e) e.style.display = "none";
+      });
+    }
+  }
+  function fbSyncType(){
+    var t = document.getElementById("fb_ft");
+    if(!t) return;
     var w = document.getElementById("fb_optWrap");
     var c = document.getElementById("fb_cscWrap");
-    var t = document.getElementById("fb_trkNote");
-    var u = document.getElementById("fb_stuWrap");
-    var nn = document.getElementById("fb_newNote");
-    if(w) w.style.display = sel.value==="select"  ? "block" : "none";
-    if(c) c.style.display = sel.value==="cascade" ? "block" : "none";
-    if(t) t.style.display = sel.value==="track"   ? "block" : "none";
-    if(u) u.style.display = sel.value==="student" ? "block" : "none";
-    /* أي نوع غير «من ملف الطالب» و«المسار» = بيان جديد بعمود جديد */
-    if(nn) nn.style.display =
-      (sel.value!=="student" && sel.value!=="track") ? "block" : "none";
-  };
+    if(w) w.style.display = t.value==="select"  ? "block" : "none";
+    if(c) c.style.display = t.value==="cascade" ? "block" : "none";
+  }
+  var colSel = document.getElementById("fb_col");
+  if(colSel) colSel.onchange = fbSyncCol;
+  fbSyncCol();
+  var sel = document.getElementById("fb_ft");
+  if(sel) sel.onchange = fbSyncType;
   /* وضع تعديل حقل متسلسل */
   var esel = document.getElementById("fe_t");
   if(esel) esel.onchange = function(){
@@ -20470,26 +20515,16 @@ Object.assign(ACTS, {
     UI.fbEdit = null;
     var d = UI.formDraft; if(!d) return;
     d.title = val("fb_title"); d.desc = val("fb_desc");
-    var label = val("fb_fl").trim();
-    /* مكتبة الحقول: لو فيه بيان بنفس المعنى، نقترح نستخدمه بدل ما نعمل عمود جديد */
-    if(label){
-      var sim = findSimilarField(label);
-      if(sim && !sim.exact){
-        if(confirm("فيه بيان موجود بنفس المعنى: «"+sim.f.label+"»\n("+sim.f.where[0]+")\n\n"+
-          "تستخدمه؟ كده الترحيل هيحطّ الإجابات في نفس العمود بدل ما يعمل عمود جديد.\n\n"+
-          "«موافق» = استخدم الموجود · «إلغاء» = اعمل بيان جديد باسمك")){
-          label = sim.f.label;
-          var fl = document.getElementById("fb_fl"); if(fl) fl.value = label;
-        }
-      }
-    }
-    var type = val("fb_ft") || "text";
-    /* بيان من ملف الطالب: العنوان والنوع بيتحددوا من البيان نفسه،
-       والمسار/الشعبة بيبقى متسلسل تلقائيًا (مسار ← مادة تخصص) */
-    if(type==="student"){
+    /* ============================================================
+       «اسم الحقل» بقى قائمة واحدة: عمود من أعمدة الصف، أو «بيان جديد».
+       ============================================================ */
+    var pick = val("fb_col") || "__new";
+    if(pick !== "__new"){
       var lvF = num(d.level,0);
-      var col = val("fb_stu");
-      var ask = askableByCol(col, lvF);
+      var col = pick.replace(/^col:/,"");
+      var ask = askableByCol(col, lvF) ||
+                (function(){ for(var q=0;q<STU_ASKABLE.length;q++)
+                   if(STU_ASKABLE[q].col===col) return STU_ASKABLE[q]; return null; })();
       if(!ask){ toast("اختار البيان المطلوب"); return; }
       if(d.fields.some(function(x){ return (x.type==="student"||x.type==="stucascade") && x.col===col; })){
         toast("البيان ده مطلوب في الاستمارة بالفعل"); return;
@@ -20505,7 +20540,21 @@ Object.assign(ACTS, {
       renderFormBuilder();
       return;
     }
-    if(!label){ toast("اكتب اسم الحقل"); return; }
+    var label = val("fb_fl").trim();
+    /* مكتبة الحقول: لو فيه بيان بنفس المعنى، نقترح نستخدمه بدل ما نعمل عمود جديد */
+    if(label){
+      var sim = findSimilarField(label);
+      if(sim && !sim.exact){
+        if(confirm("فيه بيان موجود بنفس المعنى: «"+sim.f.label+"»\n("+sim.f.where[0]+")\n\n"+
+          "تستخدمه؟ كده الترحيل هيحطّ الإجابات في نفس العمود بدل ما يعمل عمود جديد.\n\n"+
+          "«موافق» = استخدم الموجود · «إلغاء» = اعمل بيان جديد باسمك")){
+          label = sim.f.label;
+          var fl = document.getElementById("fb_fl"); if(fl) fl.value = label;
+        }
+      }
+    }
+    var type = val("fb_ft") || "text";
+    if(!label){ toast("اكتب اسم البيان الجديد"); return; }
     var fd = { id:uid("fd"), label:label, type:type,
       required: !!(document.getElementById("fb_req") && document.getElementById("fb_req").checked) };
     if(type==="select"){
