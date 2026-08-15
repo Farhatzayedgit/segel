@@ -359,6 +359,16 @@ table.tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .who .tx small{color:var(--muted);font-size:11.5px}
 .lfoot{text-align:center;margin-top:15px;font-size:11.5px;color:rgba(255,255,255,.5);line-height:1.8}
 
+/* زرار الرصد السريع في كشف الغياب */
+.attx{
+  width:30px;height:30px;border-radius:9px;border:1.5px solid var(--line-2);
+  background:var(--panel);cursor:pointer;font-size:14px;font-weight:800;
+  color:var(--muted);line-height:1;transition:.12s;padding:0
+}
+.attx:hover{border-color:var(--muted)}
+.attx:focus-visible{outline:2px solid var(--seal);outline-offset:2px}
+@media print{ .attx{display:none} }
+
 /* ====== الطباعة ====== */
 @media print{
   header.top,nav.side,nav.bottom,.noprint,#toast{display:none!important}
@@ -8312,6 +8322,103 @@ function absScopeName(sc){
   return p.join(" — ");
 }
 
+/* ============================================================
+   شريط أيام الأسبوع + الرصد المباشر
+   بيكتب في نفس DB.attend اللي المعلم بيكتب فيه — فأي رصد هنا
+   بيبان عنده فورًا والعكس. مصدر واحد للبيانات، مفيش نسختين.
+   ============================================================ */
+function absWeekStart(d){
+  /* الأسبوع بيبدأ سبت — نرجع لأقرب سبت قبل التاريخ ده */
+  var dt = new Date(d + "T00:00:00");
+  dt.setDate(dt.getDate() - dayOfWeek(d));
+  return isoOf(dt);
+}
+function isoOf(dt){
+  return dt.getFullYear() + "-" + String(dt.getMonth()+1).padStart(2,"0") +
+         "-" + String(dt.getDate()).padStart(2,"0");
+}
+function absShiftDate(d, n){
+  var dt = new Date(d + "T00:00:00");
+  dt.setDate(dt.getDate() + n);
+  return isoOf(dt);
+}
+/* حالة اليوم: يوم دراسة · إجازة أسبوعية · إجازة رسمية */
+function absDayInfo(d){
+  var di = dayOfWeek(d);
+  var hol = holidayOn(d);
+  if(hol) return { ok:false, why:"رسمية", name:hol.name || "إجازة رسمية", di:di };
+  if(!isSchoolDayIdx(di)) return { ok:false, why:"أسبوعية", name:"إجازة "+(DAYS[di]||""), di:di };
+  return { ok:true, why:"", name:DAYS[di]||"", di:di };
+}
+/* شريط الأسبوع — بيظهر بس لما تختار فصل معيّن */
+function absWeekBar(sc){
+  var cid = sc.cls;
+  if(!cid || cid==="__none") return "";
+  var day = UI.abs.day || today();
+  var ws  = absWeekStart(day);
+  var days = [];
+  for(var i=0;i<7;i++) days.push(absShiftDate(ws, i));
+  var info = absDayInfo(day);
+  var rec  = DB.attend[attKey(cid, day)] || {};
+  var marked = 0; for(var k in rec) marked++;
+  var total = studentsOf(cid).length;
+
+  var h = '<div class="card noprint"><div class="bd" style="padding:11px 12px">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">'+
+      '<div style="font-size:11.5px;font-weight:700;color:var(--muted);font-family:Cairo,sans-serif">'+
+        'رصد الغياب — '+esc(className(cid))+'</div>'+
+      '<div class="row" style="gap:6px">'+
+        '<button class="btn ghost sm" data-act="absWeek" data-v="-7">‹ الأسبوع اللي فات</button>'+
+        '<button class="btn ghost sm" data-act="absWeek" data-v="today">النهاردة</button>'+
+        '<button class="btn ghost sm" data-act="absWeek" data-v="7">الأسبوع الجاي ›</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="chips" style="padding-bottom:2px">'+
+    days.map(function(d){
+      var nf = absDayInfo(d);
+      var on = (d===day);
+      var r2 = DB.attend[attKey(cid, d)] || {};
+      var n2 = 0; for(var q in r2) n2++;
+      var absN = 0; for(var q2 in r2) if(r2[q2]==="A") absN++;
+      return '<button class="'+(on?"on":"")+'" data-act="absDay" data-v="'+d+'"'+
+        (!nf.ok && !on ? ' style="opacity:.55"' : '')+'>'+
+        esc(DAYS[nf.di]||"")+' <small>'+esc(fmtDate(d).slice(0,5))+'</small>'+
+        (nf.ok && n2 ? ' <small style="background:'+(absN?"var(--danger)":"var(--ok)")+
+                       ';color:#fff">'+(absN||"✓")+'</small>' : '')+
+        '</button>';
+    }).join("")+'</div>';
+
+  if(!info.ok){
+    h += '<div class="note warn" style="margin-top:9px"><b>'+esc(info.name)+'</b> — '+
+      (info.why==="رسمية" ? 'إجازة رسمية من التقويم الدراسي.' : 'إجازة أسبوعية.')+
+      ' مفيش رصد غياب في اليوم ده.</div>';
+  }else{
+    h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px;'+
+      'padding-top:9px;border-top:1px solid var(--line-2)">'+
+      '<span style="font-size:12.5px;flex:1;min-width:150px"><b>'+esc(fmtDate(day))+'</b> — '+
+        (marked ? 'اترصد <b>'+marked+'</b> من '+total : '<span style="color:var(--warn)">لسه ماترصدش</span>')+
+      '</span>'+
+      (canEditAtt()
+        ? '<button class="btn ghost sm" data-act="absMarkAll" data-v="P">✓ الكل حاضر</button>'+
+          '<button class="btn ghost sm" data-act="absMarkAll" data-v="A" style="color:var(--danger)">✕ الكل غائب</button>'+
+          (marked ? '<button class="btn ghost sm" data-act="absMarkAll" data-v="">مسح رصد اليوم</button>' : '')
+        : '<span class="mini">الرصد من وكيل شئون الطلاب</span>')+
+      '</div>';
+  }
+  return h + '</div></div>';
+}
+/* خلية رصد — دوس تحطّ علامة، دوس تاني تشيلها */
+function absMarkCell(s, day, v, cur, live){
+  if(!live) return '<td class="num">—</td>';
+  var on = (cur===v);
+  var col = v==="A" ? "var(--danger)" : v==="E" ? "var(--info)" : "var(--warn)";
+  return '<td class="num" style="padding:3px">'+
+    '<button class="attx'+(on?" on":"")+'" data-act="absMark" data-sid="'+s.id+'" '+
+      'data-v="'+v+'" data-d="'+day+'" title="'+esc(ATT[v]||"")+'" '+
+      'style="'+(on?"background:"+col+";color:#fff;border-color:"+col:"")+'">'+
+      (on?"✓":"")+'</button></td>';
+}
+
 function viewAbsence(){
   var gAb = gate("classes","students");
   if(gAb) return pageHd("متابعة الغياب والإنذارات","")+gAb;
@@ -8403,20 +8510,36 @@ function viewAbsence(){
     '<div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line-2);font-size:12.5px">'+
       '<b>معروض:</b> '+esc(absScopeName(sc))+' — <b>'+rows.length+'</b> طالب</div>'+
     '</div></div>';
+  h += absWeekBar(sc);
 
+  /* وضع الرصد: فصل محدد + يوم دراسة */
+  var day  = UI.abs.day || today();
+  var live  = !!(sc.cls && sc.cls!=="__none" && absDayInfo(day).ok);
   h += printHd("كشف متابعة الغياب والإنذارات — "+absScopeName(sc));
   h += '<div class="card"><div class="hd"><h3>'+rows.length+' طالب</h3>'+
     exportBtns(true)+'</div><div class="bd flush"><div class="tbl-wrap">'+
     '<table class="tbl"><thead><tr><th>م</th><th>الاسم</th><th>الفصل</th><th>النوعية</th>'+
+    (live ? '<th colspan="3" style="text-align:center;background:rgba(255,176,46,.10)">'+
+            'رصد '+esc(fmtDate(day))+'</th>' : '')+
     '<th>أيام مرصودة</th><th>غياب</th><th>بعذر</th><th>تأخير</th><th>نسبة الحضور</th><th>الحالة</th>'+
-    '</tr></thead><tbody>';
-  if(!rows.length) h += '<tr><td colspan="10"><div class="empty"><b>'+
+    '</tr></thead><tbody>'+
+    (live ? '<tr><th></th><th></th><th></th><th></th>'+
+            '<th style="text-align:center">غائب</th><th style="text-align:center">بعذر</th>'+
+            '<th style="text-align:center">متأخر</th>'+
+            '<th></th><th></th><th></th><th></th><th></th><th></th></tr>' : '');
+  if(!rows.length) h += '<tr><td colspan="'+(live?13:10)+'"><div class="empty"><b>'+
     (sc.only?"مفيش طالب عليه إنذار":"مفيش بيانات في النطاق ده")+'</b><p>'+
     (sc.only?"الحمد لله، كل الطلاب تحت حد الإنذار.":"جرّب توسّع النطاق أو امسح الفلاتر.")+'</p></div></td></tr>';
   rows.forEach(function(r,i){
-    h += '<tr data-act="openStudent" data-id="'+r.s.id+'" style="cursor:pointer"><td class="rownum">'+(i+1)+'</td>'+
-      '<td><b style="font-weight:600">'+esc(r.s.name)+'</b></td><td>'+esc(className(r.s.classId)||"—")+'</td>'+
+    var cur = live ? (DB.attend[attKey(sc.cls, day)]||{})[r.s.id] : null;
+    h += '<tr><td class="rownum">'+(i+1)+'</td>'+
+      '<td data-act="openStudent" data-id="'+r.s.id+'" style="cursor:pointer">'+
+        '<b style="font-weight:600">'+esc(r.s.name)+'</b></td>'+
+      '<td>'+esc(className(r.s.classId)||"—")+'</td>'+
       '<td><small>'+esc(eduName(r.s.edu||"reg"))+'</small></td>'+
+      (live ? absMarkCell(r.s, day, "A", cur, live)+
+              absMarkCell(r.s, day, "E", cur, live)+
+              absMarkCell(r.s, day, "L", cur, live) : '')+
       '<td class="num">'+r.st.days+'</td><td class="num"><b>'+r.st.abs+'</b></td><td class="num">'+r.st.exc+'</td>'+
       '<td class="num">'+r.st.late+'</td><td class="num">'+r.st.rate+'%</td>'+
       '<td><span class="tag '+r.a.c+'">'+r.a.t+'</span></td></tr>';
@@ -12194,6 +12317,63 @@ var ACTS = {
   absClear:function(){ UI.abs={}; render(); },
   absAll:  function(){ UI.abs=UI.abs||{}; UI.abs.only=false; render(); },
   absWarn: function(){ UI.abs=UI.abs||{}; UI.abs.only=true; render(); },
+  /* ---------- رصد الغياب من شاشة المتابعة ---------- */
+  absDay:  function(el){ UI.abs=UI.abs||{}; UI.abs.day=el.dataset.v; render(); },
+  absWeek: function(el){
+    UI.abs=UI.abs||{};
+    var v=el.dataset.v;
+    UI.abs.day = (v==="today") ? today() : absShiftDate(UI.abs.day||today(), num(v,0));
+    render();
+  },
+  /* ============================================================
+     الرصد بيتكتب في DB.attend — نفس المكان اللي معلم الفصل
+     بيرصد فيه. فأي علامة هنا بتبان عنده فورًا، والعكس.
+     ============================================================ */
+  absMark: function(el){
+    if(!canEditAtt()){ toast("الرصد من وكيل شئون الطلاب أو المدير"); return; }
+    var cid = (UI.abs||{}).cls;
+    var d   = el.dataset.d || today();
+    if(!cid){ toast("اختار فصل الأول"); return; }
+    if(!absDayInfo(d).ok){ toast("اليوم ده إجازة — مفيش رصد"); return; }
+    var k = attKey(cid, d);
+    if(!DB.attend[k]) DB.attend[k] = {};
+    var sid = el.dataset.sid, v = el.dataset.v;
+    if(DB.attend[k][sid]===v) delete DB.attend[k][sid];   /* دوسة تانية = شيل العلامة */
+    else DB.attend[k][sid] = v;
+    /* سجل أول رصد غياب — نفس سجل المعلم */
+    var log = absLog(cid, d);
+    if(DB.attend[k][sid]==="A"){
+      if(!log[sid]) log[sid] = { p:1, at:Date.now(), by:(UI.user&&UI.user.teacherId)||"" };
+    }else{ delete log[sid]; }
+    touchSession("رصد غياب");
+    save(); render();
+  },
+  absMarkAll: function(el){
+    if(!canEditAtt()){ toast("الرصد من وكيل شئون الطلاب أو المدير"); return; }
+    var cid = (UI.abs||{}).cls;
+    var d   = UI.abs.day || today();
+    if(!cid) return;
+    if(!absDayInfo(d).ok){ toast("اليوم ده إجازة — مفيش رصد"); return; }
+    var v = el.dataset.v;
+    var list = studentsOf(cid);
+    if(!list.length){ toast("الفصل فاضي"); return; }
+    if(v==="A" && !confirm("تسجيل "+list.length+" طالب غايب في "+fmtDate(d)+"؟")) return;
+    if(v==="" && !confirm("مسح رصد "+fmtDate(d)+" كله؟")) return;
+    markUndo("رصد غياب جماعي");
+    var k = attKey(cid, d);
+    DB.attend[k] = {};
+    DB.attLog[attLogKey(cid,d)] = {};
+    if(v){
+      list.forEach(function(s){ DB.attend[k][s.id] = v; });
+      if(v==="A"){
+        var lg = absLog(cid, d);
+        list.forEach(function(s){ lg[s.id] = { p:1, at:Date.now(), by:"" }; });
+      }
+    }
+    touchSession("رصد غياب جماعي");
+    save(); render();
+    toastUndo(v==="" ? "اتمسح رصد اليوم" : "اتسجّل "+list.length+" طالب "+(ATT[v]||""));
+  },
   absPrints: function(){ modalAbsPrints(); },
   absDoc: function(el){
     UI.abs=UI.abs||{}; UI.abs.doc=el.dataset.d; UI.sub={absDoc:el.dataset.d};
