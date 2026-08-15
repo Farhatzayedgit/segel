@@ -6780,7 +6780,11 @@ function viewStudents(){
   var f = UI.filters;
   /* الوعاء: طلاب الفئة المختارة بس — الخدمات منفصلة تمامًا */
   var pool = catStudents(_cat);
+  /* الفلترة بالصف بتحصل هنا مرة واحدة — عشان كل الأعداد المعروضة
+     (سطر «معروض» ورأس الكشف والجدول) تتكلم عن نفس القايمة */
   var list = stuApply(pool, f).sort(function(a,b){ return sortAr(a.name,b.name); });
+  if(num(UI.stuLevel,0))
+    list = list.filter(function(x){ return studentLevelOf(x)===num(UI.stuLevel,0); });
 
   var can = UI.user.role!=="student";
   var g0 = gate("classes");
@@ -6837,11 +6841,15 @@ function viewStudents(){
       '</div>';
   }
 
-  /* الفلاتر: المنازل مالهاش فصول، والخدمات نوعيتها معروفة */
-  /* فلتر «نوعية التعليم» اتشال — التبويبات فوق هي اللي بتقسّم بالنوعية،
-     ووجوده جوه التبويب كان بيلخبط الأعداد ويخلّي المستخدم يفتكر إن فيه نوعيات تانية جوه. */
+  /* ============================================================
+     فلترا «الصف» و«نوعية التعليم» اتشالوا من الشريط ده.
+     التبويبات والشرائط فوق هما اللي بيقسّموا بيهم — ووجود فلتر تاني
+     لنفس البُعد كان بيتقاطع معاه: تختار الصف التالت من الشرائط
+     والفلتر لسه على الصف التاني، فالنتيجة صفر طلاب رغم إن العدّاد
+     بيقول ٣٤١. ده اللي كان بيخلّي الطلاب «يختفوا».
+     ============================================================ */
   h += stuFilterBar(pool, f,
-    _cat==="home" ? ["lvl","track","sub"] : ["lvl","track","sub","cls"]);
+    _cat==="home" ? ["track","sub"] : ["track","sub","cls"]);
 
   h += schedRoleNote("بيانات الطلاب");
   /* شريط الفئات — انتظام · خدمات · منازل */
@@ -6913,7 +6921,6 @@ function viewStudents(){
       'حتى لو الاسم متشابه.</div>';
   }
   if(_lv){
-    list = list.filter(function(x){ return studentLevelOf(x)===_lv; });
     /* فلتر «الناقص» — بيوريك اللي محتاج استكمال بس */
     var mw = UI.stuMiss;
     if(mw){
@@ -7028,8 +7035,27 @@ function viewStudents(){
     (canBulk?'<th class="noprint"></th>':'')+
     '</tr></thead><tbody>';
   if(!rows.length){
+    /* ============================================================
+       الاختفاء الصامت أسوأ حاجة: العدّاد بيقول ٣٤١ والكشف فاضي.
+       فبنقول بالظبط أنهي فلتر هو السبب، ونحط زرار يمسحه.
+       ============================================================ */
+    var why = [];
+    if(UI.filters){
+      if(UI.filters.q)     why.push("بحث: «"+esc(UI.filters.q)+"»");
+      if(UI.filters.cls)   why.push("فصل: "+esc(className(UI.filters.cls)||UI.filters.cls));
+      if(UI.filters.track) why.push("مسار/شعبة محدد");
+      if(UI.filters.sub)   why.push("مادة تخصص: "+esc(UI.filters.sub));
+      if(UI.filters.lvl)   why.push("صف: "+esc(levelName(UI.filters.lvl)));
+      if(UI.filters.edu)   why.push("نوعية: "+esc(eduName(UI.filters.edu)));
+    }
+    if(UI.stuMiss) why.push("فلتر الناقص: «"+esc(UI.stuMiss)+"»");
     h += '<tr><td colspan="'+(cols.length+(canBulk?2:0))+'"><div class="empty"><div class="big">'+icon("students",34)+'</div>'+
-      '<b>مفيش طلاب مطابقين</b><p>جرّب تغيّر الفلاتر أو امسحها.</p></div></td></tr>';
+      '<b>مفيش طلاب مطابقين</b>'+
+      (why.length
+        ? '<p>الفلاتر الشغالة دلوقتي: <b>'+why.join("</b> · <b>")+'</b></p>'+
+          '<button class="btn" data-act="stuClearF">✕ امسح الفلاتر واعرض الكل</button>'
+        : '<p>مفيش طلاب في النطاق ده أصلًا.</p>')+
+      '</div></td></tr>';
   }
   var can = roleIs("deputy") || roleIs("manager") || roleIs("admin");
   rows.forEach(function(s,i){
@@ -11359,7 +11385,16 @@ var ACTS = {
     render();
     if(!mine.length) toast(esc(levelName(L))+" لسه مالوش استمارة — اعملها من «+ استمارة جديدة»");
   },
-  stuLvl: function(el){ UI.stuLevel = num(el.dataset.l,0); UI.stuMiss = null; setPage("stu",1); render(); },
+  stuClearF: function(){ UI.filters = {}; UI.stuMiss = null; setPage("stu",1); render(); },
+  stuLvl: function(el){
+    UI.stuLevel = num(el.dataset.l,0);
+    UI.stuMiss = null;
+    /* فلاتر الصف السابق (الفصل والمسار والمادة) مالهاش معنى في صف تاني —
+       سيبهم يبقوا سبب في اختفاء الطلاب */
+    UI.filters = UI.filters || {};
+    ["lvl","cls","track","sub"].forEach(function(k){ delete UI.filters[k]; });
+    setPage("stu",1); render();
+  },
   goStudents: function(){
     UI.tab="students"; UI.sub=null; UI.stuCat="reg"; UI.sector="reg";
     UI.stuLevel=0; UI.stuMiss=null; render();
