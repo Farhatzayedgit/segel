@@ -4169,13 +4169,13 @@ function colName(id, def){
    مخفيهم أو حاذفهم من إعدادات الجدول بيرجعوا مرة واحدة بس.
    ============================================================ */
 function migrateKeepCols(){
-  if(DB.keepColMig) return 0;
-  DB.keepColMig = 1;
+  if(DB.keepColMig===2) return 0;
+  DB.keepColMig = 2;
   var n = 0;
   ["students","home"].forEach(function(tbl){
     var c = DB.tables && DB.tables[tbl];
     if(!c) return;
-    ["edu","cls"].forEach(function(k){
+    ["edu","cls","gender"].forEach(function(k){
       if(c.hide && c.hide[k]){ delete c.hide[k]; n++; }
       if(c.dropped && c.dropped[k]){ delete c.dropped[k]; n++; }
     });
@@ -4691,7 +4691,9 @@ function stuColDefs(){
     { k:"subj",  label:"مادة التخصص" },
     { k:"phone", label:"الهاتف",        off:true },
     { k:"guard", label:"ولي الأمر",      off:true },
-    { k:"gender",label:"النوع",          off:true },
+    /* النوع بيتملا لوحده من الرقم القومي — ظاهر افتراضيًا لكل الصفوف
+       والنوعيات، ومحمي من الحذف زي الفصل ونوعية التعليم. */
+    { k:"gender",label:"النوع",          keep:true },
     { k:"birth", label:"تاريخ الميلاد",   off:true },
     { k:"gov",   label:"محافظة الميلاد",  off:true },
     { k:"act",   label:"النشاط التربوي",  off:true },
