@@ -18626,11 +18626,57 @@ var PAPER_STU_KEYS = ["اسم_الطالب","الرقم_القومي","الصف"
 var PAPER_TCH_KEYS = ["اسم_المعلم","كود_المعلم","الرقم_القومي_للمعلم","مادة_التدريس","المؤهل",
   "نوع_المؤهل","تاريخ_التعيين","سنوات_الخدمة","الوظيفة","الدرجة_المالية","هاتف_المعلم",
   "تاريخ_ميلاد_المعلم","النصاب","الحِمل"];
+/* ============================================================
+   دليل المتغيرات بيتبني من paperVars نفسها — مش من قايمة ثابتة.
+   القايمة الثابتة كانت بتفوّت أي متغير جديد، فالمستخدم مايعرفش إنه
+   موجود. كده أي متغير نضيفه بيظهر في الدليل لوحده.
+   ============================================================ */
+function paperAllKeys(){
+  var probeS = DB.students.filter(function(x){ return x.status!=="left"; })[0];
+  var probeT = DB.teachers.filter(function(x){ return x.status!=="left"; })[0];
+  var v = {};
+  try{ v = paperVars(probeS?probeS.id:null, probeT?probeT.id:null); }catch(e){}
+  return v;
+}
 function paperStuKeys(){
-  return PAPER_STU_KEYS.concat(xfList("student").map(function(f){ return f.label.replace(/\s+/g,"_"); }));
+  var all = Object.keys(paperAllKeys());
+  var school = Object.keys(PAPER_SCHOOL_KEYS);
+  var tch = PAPER_TCH_KEYS.concat(xfList("teacher").map(function(f){ return f.label.replace(/\s+/g,"_"); }));
+  var out = all.filter(function(k){
+    return school.indexOf(k)<0 && tch.indexOf(k)<0 && !/معلم/.test(k);
+  });
+  /* لو مفيش طالب في القاعدة، نرجّع القايمة الثابتة عشان الدليل ما يفضاش */
+  PAPER_STU_KEYS.forEach(function(k){ if(out.indexOf(k)<0) out.push(k); });
+  xfList("student").forEach(function(f){
+    var k = f.label.replace(/\s+/g,"_");
+    if(out.indexOf(k)<0) out.push(k);
+  });
+  return out;
 }
 function paperTchKeys(){
-  return PAPER_TCH_KEYS.concat(xfList("teacher").map(function(f){ return f.label.replace(/\s+/g,"_"); }));
+  var all = Object.keys(paperAllKeys());
+  var out = all.filter(function(k){ return /معلم|النصاب|الحِمل|المؤهل|التعيين|الوظيفة|الدرجة_المالية|سنوات_الخدمة|مادة_التدريس|الإشراف/.test(k); });
+  PAPER_TCH_KEYS.forEach(function(k){ if(out.indexOf(k)<0) out.push(k); });
+  xfList("teacher").forEach(function(f){
+    var k = f.label.replace(/\s+/g,"_");
+    if(out.indexOf(k)<0) out.push(k);
+  });
+  return out;
+}
+/* فصول المعلم ومواده — من الإسناد مباشرة */
+function teacherClassIds(tid){
+  var m = {};
+  DB.assign.forEach(function(a){ if(a.teacherId===tid) m[a.classId] = 1; });
+  return Object.keys(m).filter(function(id){ return !!classById(id); });
+}
+function teacherSubjectNames(tid){
+  var m = {};
+  DB.assign.forEach(function(a){
+    if(a.teacherId!==tid) return;
+    var su = DB.subjects.filter(function(x){ return x.id===a.subjectId; })[0];
+    if(su) m[su.name] = 1;
+  });
+  return Object.keys(m);
 }
 function paperVars(sid, tid){
   var m = DB.meta || {};
@@ -18643,23 +18689,37 @@ function paperVars(sid, tid){
   if(st){
     var c = classById(st.classId);
     var att = attendStats(st.id, st.classId);
+    /* ============================================================
+       كل بيان بيتقرا بالاشتقاق (stuVal): المتسجّل الأول، وإلا اللي
+       ينفع يطلع من بيان تاني. فالورقة بتتملا لوحدها حتى لو الطالب
+       مالوش غير الاسم والرقم القومي — الميلاد والنوع والمحافظة
+       وولي الأمر والسن كلهم بيطلعوا منهم.
+       ============================================================ */
+    var _b = stuVal(st,"birth");
     v["اسم_الطالب"]   = st.name||"";
     v["الرقم_القومي"] = st.natId||"";
+    v["كود_الطالب"]   = st.code||"";
     v["الصف"]         = studentLevelOf(st)? levelName(studentLevelOf(st)) : "";
     v["الفصل"]        = c? c.name : "";
-    v["المسار"]       = st.bacTrack? wishTrackName(st.bacTrack) : (c? trackName(c.system,c.track) : "");
+    v["المسار"]       = st.bacTrack? trackName(c?c.system:sysOfLevel(studentLevelOf(st)), st.bacTrack)
+                                   : (c? trackName(c.system,c.track) : "");
+    v["الشعبة"]       = v["المسار"];
     v["مادة_التخصص"]  = st.bacSubject||"";
     v["النوعية"]      = eduName(st.edu||"reg");
-    v["ولي_الأمر"]    = st.guardian||"";
-    v["الهاتف"]       = st.phone||"";
-    v["تاريخ_الميلاد"]= st.birth? fmtDate(st.birth) : "";
-    v["السن"]         = st.age? st.age+" سنة" : "";
-    v["النوع"]        = st.gender||"";
+    v["ولي_الأمر"]    = stuVal(st,"guardian");
+    v["مهنة_ولي_الأمر"]= st.guardJob||"";
+    v["العنوان"]      = st.address||"";
+    v["الهاتف"]       = stuVal(st,"phone");
+    v["تاريخ_الميلاد"]= _b? fmtDate(_b) : "";
+    v["السن"]         = stuVal(st,"age1oct") || (st.age? st.age+" سنة" : "");
+    v["السن_في_أول_أكتوبر"] = stuVal(st,"age1oct");
+    v["النوع"]        = stuVal(st,"gender");
+    v["الجنسية"]      = stuVal(st,"nationality") || "مصري";
     v["الديانة"]      = st.religion||"";
     v["نسبة_الحضور"]  = att.days? att.rate+"٪" : "";
     v["أيام_الغياب"]  = String(att.abs||0);
     v["تاريخ_القيد"]  = st.joined? fmtDate(st.joined) : "";
-    v["محافظة_الميلاد"]= st.birthGov||"";
+    v["محافظة_الميلاد"]= stuVal(st,"birthGov");
     v["الفصل_السابق"] = st.prevClass||"";
     v["النظام"]       = c? systemName(c.system) : "";
     v["القسم"]        = sectorName(studentSector(st));
@@ -18692,7 +18752,17 @@ function paperVars(sid, tid){
     v["سنوات_الخدمة"]  = t.hireDate? String(serviceYears(t.hireDate)) : "";
     v["النصاب"]        = String(nisabOf(t.id));
     v["الحِمل"]        = String(plannedHours(t.id,{}));
-    v["تاريخ_ميلاد_المعلم"] = t.birth? fmtDate(t.birth) : "";
+    /* بيانات المعلم المشتقة من رقمه القومي — نفس منطق الطالب */
+    var _ti = parseNationalId(t.natId);
+    var _tb = t.birth || (_ti ? _ti.birth : "");
+    v["تاريخ_ميلاد_المعلم"] = _tb? fmtDate(_tb) : "";
+    v["نوع_المعلم"]     = t.gender || (_ti ? _ti.gender : "");
+    v["محافظة_ميلاد_المعلم"] = t.birthGov || (_ti ? _ti.govName : "");
+    v["سن_المعلم"]      = _tb? (ageFrom(_tb)+" سنة") : "";
+    v["حالة_المعلم"]    = t.status==="left" ? "خارج المدرسة" : "على رأس العمل";
+    v["عدد_فصول_المعلم"]= String(teacherClassIds(t.id).length);
+    v["مواد_المعلم"]    = teacherSubjectNames(t.id).join(" · ");
+    v["أيام_الإشراف"]   = dutyDaysOf(t.id).map(function(d){ return DAYS[d]; }).join(" · ");
     xfList("teacher").forEach(function(f){ v[f.label.replace(/\s+/g,"_")] = xfGet(t,f.id)||""; });
   }
   return v;
