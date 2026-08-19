@@ -18794,7 +18794,7 @@ function modalPaperFill(key){
 
   UI.pfKey = key; UI.pfNeedS = needsS; UI.pfNeedT = needsT;
   UI.pfPick = { s:[], t:[] };
-  UI.pfLevel = 0; UI.pfQ = "";
+  UI.pfLevel = 0; UI.pfEdu = ""; UI.pfQ = "";
   renderPaperFill();
 }
 /* اختيار الطلاب أو المعلمين — فلتر بالصف وبحث بالاسم والرقم القومي */
@@ -18808,21 +18808,43 @@ function renderPaperFill(){
   var body = "";
 
   if(needS){
-    var list = myStudents();
-    if(UI.pfLevel) list = list.filter(function(x){ return studentLevelOf(x)===UI.pfLevel; });
+    /* ============================================================
+       الوعاء = كل طلاب المدرسة، مش طلاب القسم اللي انت واقف فيه.
+       myStudents() كانت بترجّع الانتظام بس، فطلاب الخدمات والمنازل
+       ما كانوش بيظهروا والأعداد بتطلع ناقصة.
+       التقسيم بقى: الصف ← نوعية التعليم ← البحث.
+       ============================================================ */
+    var base = DB.students.filter(function(x){ return x.status!=="left"; });
+    var byLvl = UI.pfLevel ? base.filter(function(x){ return studentLevelOf(x)===UI.pfLevel; }) : base;
+    var list = UI.pfEdu ? byLvl.filter(function(x){ return (x.edu||"reg")===UI.pfEdu; }) : byLvl;
     if(q) list = list.filter(function(x){
-      return normAr(x.name).indexOf(qn)>=0 || (qd.length>=3 && String(x.natId||"").indexOf(qd)>=0);
+      return normAr(x.name).indexOf(qn)>=0 ||
+             (qd.length>=3 && String(x.natId||"").indexOf(qd)>=0) ||
+             (x.code && normCode(x.code).indexOf(normCode(q))>=0);
     });
     list = list.sort(function(a,b){ return sortAr(a.name,b.name); });
-    body += '<div class="chips" style="margin-bottom:8px">'+
-      '<button class="'+(!UI.pfLevel?"on":"")+'" data-act="pfLvl" data-l="0">كل الصفوف</button>'+
+    /* ١ الصف */
+    body += '<div style="font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:5px;'+
+      'font-family:Cairo,sans-serif">١ · الصف</div>'+
+      '<div class="chips" style="margin-bottom:8px">'+
+      '<button class="'+(!UI.pfLevel?"on":"")+'" data-act="pfLvl" data-l="0">كل الصفوف <small>'+base.length+'</small></button>'+
       LEVELS.map(function(l){
-        var n2 = myStudents().filter(function(x){ return studentLevelOf(x)===l.id; }).length;
+        var n2 = base.filter(function(x){ return studentLevelOf(x)===l.id; }).length;
         return '<button class="'+(UI.pfLevel===l.id?"on":"")+'" data-act="pfLvl" data-l="'+l.id+'">'+
-          esc(l.name)+' ('+n2+')</button>';
+          esc(l.name)+' <small>'+n2+'</small></button>';
+      }).join("")+'</div>'+
+      /* ٢ نوعية التعليم */
+      '<div style="font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:5px;'+
+      'font-family:Cairo,sans-serif">٢ · نوعية التعليم</div>'+
+      '<div class="chips" style="margin-bottom:8px">'+
+      '<button class="'+(!UI.pfEdu?"on":"")+'" data-act="pfEdu" data-e="">الكل <small>'+byLvl.length+'</small></button>'+
+      EDU_IDS.map(function(e){
+        var n3 = byLvl.filter(function(x){ return (x.edu||"reg")===e; }).length;
+        return '<button class="'+(UI.pfEdu===e?"on":"")+'" data-act="pfEdu" data-e="'+e+'">'+
+          esc(eduName(e))+' <small>'+n3+'</small></button>';
       }).join("")+'</div>'+
       '<input type="text" id="pfq" value="'+esc(q)+'" autocomplete="off" '+
-      'placeholder="بحث بالاسم أو الرقم القومي…" '+
+      'placeholder="بحث بالاسم أو الرقم القومي أو الكود…" '+
       'style="width:100%;padding:10px;border:1px solid var(--line-2);border-radius:9px;font:inherit;margin-bottom:8px">'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">'+
       '<button class="btn ghost sm" data-act="pfAll">تحديد الظاهر ('+list.length+')</button>'+
@@ -21392,7 +21414,8 @@ Object.assign(ACTS, {
     var saved = UI.fmRows;
     doFormMigrateWith(UI.fmFid, saved, UI.fmLevel);
   },
-  pfLvl:   function(el){ pfKeep(); UI.pfLevel = num(el.dataset.l,0); renderPaperFill(); },
+  pfLvl:   function(el){ pfKeep(); UI.pfLevel = num(el.dataset.l,0); UI.pfEdu=""; renderPaperFill(); },
+  pfEdu:   function(el){ pfKeep(); UI.pfEdu = el.dataset.e||""; renderPaperFill(); },
   pfAll:   function(){
     pfKeep();
     var q = String(UI.pfQ||"").trim(), qn = normAr(q), qd = toEnDigits(q).replace(/[^0-9]/g,"");
