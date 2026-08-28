@@ -537,59 +537,91 @@ var OFFICIAL_PLAN = {
      • ٤ مواد نجاح ورسوب فقط = ٩ حصص  · مش داخلة المجموع
      • نشاط واحد يختاره الطالب = حصة · مش داخل المجموع
      ============================================================ */
+  /* ============================================================
+     الصف الأول الثانوي — القرار ٢٣٤ لسنة ٢٠٢٥
+     الدرجة الفعلية لكل مادة مختلفة (مش كلها ١٠٠):
+       عربي ٨٠ · باقي مواد المجموع ٦٠ لكل مادة  →  المجموع ٣٨٠
+       الدينية ٤٠ (نجاح ٢٨ = ٧٠٪) · اللغة الثانية ٤٠
+       البرمجة ٢٠ · التربية الرياضية ٢٠ · النشاط ٢٠
+     الصيغة: [الاسم, الدرجة, للمجموع, النجاح, ـ, الحصص, النوع]
+     ============================================================ */
   "1|any|none":[
-    /* أولًا: تُضاف درجاتها للمجموع الكلي */
-    ["اللغة العربية",100,1,50,0,5,"core"],
-    ["اللغة الأجنبية الأولى",100,1,50,0,4,"core"],
-    ["التاريخ",100,1,50,0,4,"core"],
-    ["الرياضيات",100,1,50,0,5,"core"],
-    ["العلوم المتكاملة",100,1,50,0,5,"core"],
-    ["الفلسفة والمنطق",100,1,50,0,4,"core"],
-    /* ثانيًا: نجاح ورسوب فقط — لا تُضاف للمجموع */
-    ["التربية الدينية",100,0,70,0,2,"core"],
-    ["اللغة الأجنبية الثانية",100,0,50,0,2,"core"],
-    ["التربية الرياضية",100,0,50,0,1,"core"],
-    ["البرمجة والذكاء الاصطناعي",100,0,50,0,4,"core"],
+    /* أولًا: تُضاف درجاتها للمجموع الكلي — ٢٧ حصة · ٣٨٠ درجة · النجاح ١٩٠ */
+    ["اللغة العربية",80,1,40,0,5,"core"],
+    ["اللغة الأجنبية الأولى",60,1,30,0,4,"core"],
+    ["التاريخ",60,1,30,0,4,"core"],
+    ["الرياضيات",60,1,30,0,5,"core"],
+    ["العلوم المتكاملة",60,1,30,0,5,"core"],
+    ["الفلسفة والمنطق",60,1,30,0,4,"core"],
+    /* ثانيًا: نجاح ورسوب فقط — ٩ حصص — لا تُضاف للمجموع */
+    ["التربية الدينية",40,0,28,0,2,"core"],
+    ["اللغة الأجنبية الثانية",40,0,20,0,2,"core"],
+    ["البرمجة والذكاء الاصطناعي",20,0,10,0,4,"core"],
+    ["التربية الرياضية",20,0,10,0,1,"core"],
     /* ثالثًا: نشاط واحد يختاره الطالب — لا تُضاف درجته للمجموع */
-    ["النشاط التربوي",100,0,50,0,1,"activity"]
+    ["النشاط التربوي",20,0,10,0,1,"activity"]
   ],
-  /* الصف الثاني بكالوريا — ٣ مواد عامة + مادة تخصص واحدة يختارها الطالب */
+  /* ============================================================
+     الصف الثاني الثانوي — بكالوريا · القرار ١٥٠ لسنة ٢٠٢٦
+     ٣ مواد إجبارية لكل المسارات (٦ حصص لكل مادة = ١٨)
+     + مادة تخصص **واحدة** يختارها الطالب من مادتَي مساره (٦ حصص)
+     + الثقافة المالية (٢ حصة · لا تُضاف) + نشاط رياضي (١).
+     إجمالي حصص الطالب ٢٧ · والمجموع ٤٠٠ درجة.
+     المادتان الاختياريتان معلّمتان elective=1، والطالب بياخد واحدة.
+     ============================================================ */
   "2|bac|med":[
-    ["اللغة العربية",100,1,50,0,6],["التاريخ المصري",100,1,50,0,4],["اللغة الأجنبية الأولى",100,1,50,0,5],
-    ["الرياضيات",100,1,50,1,5],["الفيزياء",100,1,50,1,6],
-    ["التربية الدينية",100,0,70,0,2]
+    ["اللغة العربية",100,1,50,0,6],["اللغة الأجنبية الأولى",100,1,50,0,6],
+    ["التاريخ المصري",100,1,50,0,6],
+    ["الفيزياء",100,1,50,1,6],["الرياضيات",100,1,50,1,6],
+    ["الثقافة المالية",100,0,50,0,2],
+    ["نشاط التربية الرياضية",100,0,50,0,1,"activity"]
   ],
   "2|bac|eng":[
-    ["اللغة العربية",100,1,50,0,6],["التاريخ المصري",100,1,50,0,4],["اللغة الأجنبية الأولى",100,1,50,0,5],
-    ["الكيمياء",100,1,50,1,6],["البرمجة",100,1,50,1,6],
-    ["التربية الدينية",100,0,70,0,2]
+    ["اللغة العربية",100,1,50,0,6],["اللغة الأجنبية الأولى",100,1,50,0,6],
+    ["التاريخ المصري",100,1,50,0,6],
+    ["الكيمياء",100,1,50,1,6],["البرمجة والذكاء الاصطناعي",100,1,50,1,6],
+    ["الثقافة المالية",100,0,50,0,2],
+    ["نشاط التربية الرياضية",100,0,50,0,1,"activity"]
   ],
   "2|bac|bus":[
-    ["اللغة العربية",100,1,50,0,6],["التاريخ المصري",100,1,50,0,4],["اللغة الأجنبية الأولى",100,1,50,0,5],
-    ["إدارة الأعمال",100,1,50,1,6],["المحاسبة",100,1,50,1,6],
-    ["التربية الدينية",100,0,70,0,2]
+    ["اللغة العربية",100,1,50,0,6],["اللغة الأجنبية الأولى",100,1,50,0,6],
+    ["التاريخ المصري",100,1,50,0,6],
+    ["المحاسبة",100,1,50,1,6],["إدارة الأعمال",100,1,50,1,6],
+    ["الثقافة المالية",100,0,50,0,2],
+    ["نشاط التربية الرياضية",100,0,50,0,1,"activity"]
   ],
   "2|bac|art":[
-    ["اللغة العربية",100,1,50,0,6],["التاريخ المصري",100,1,50,0,4],["اللغة الأجنبية الأولى",100,1,50,0,5],
-    ["علم النفس",100,1,50,1,6],["اللغة الأجنبية الثانية",100,1,50,1,3],
-    ["التربية الدينية",100,0,70,0,2]
+    ["اللغة العربية",100,1,50,0,6],["اللغة الأجنبية الأولى",100,1,50,0,6],
+    ["التاريخ المصري",100,1,50,0,6],
+    ["علم النفس",100,1,50,1,6],["اللغة الأجنبية الثانية",100,1,50,1,6],
+    ["الثقافة المالية",100,0,50,0,2],
+    ["نشاط التربية الرياضية",100,0,50,0,1,"activity"]
   ],
-  /* الصف الثالث بكالوريا — مادتين تخصصيتين مستوى متقدم (ثابتة) + تربية دينية */
+  /* ============================================================
+     الصف الثالث الثانوي — بكالوريا · القرار ١٥٠ لسنة ٢٠٢٦
+     التربية الدينية ٦ حصص (لا تُضاف) + مادتا المسار مستوى متقدم
+     (٨ حصص لكل مادة · تُضافان للمجموع) + نشاط رياضي (١).
+     الإجمالي ٢٣ حصة.
+     ============================================================ */
   "3|bac|med":[
-    ["الأحياء (مستوى متقدم)",100,1,50,0,8],["الكيمياء (مستوى متقدم)",100,1,50,0,8],
-    ["التربية الدينية",100,0,70,0,2]
+    ["التربية الدينية",100,0,70,0,6],
+    ["الأحياء (مستوى متقدم)",100,1,50,1,8],["الكيمياء (مستوى متقدم)",100,1,50,1,8],
+    ["نشاط التربية الرياضية",100,0,50,0,1,"activity"]
   ],
   "3|bac|eng":[
-    ["الرياضيات (مستوى متقدم)",100,1,50,0,8],["الفيزياء (مستوى متقدم)",100,1,50,0,8],
-    ["التربية الدينية",100,0,70,0,2]
+    ["التربية الدينية",100,0,70,0,6],
+    ["الرياضيات (مستوى متقدم)",100,1,50,1,8],["الفيزياء (مستوى متقدم)",100,1,50,1,8],
+    ["نشاط التربية الرياضية",100,0,50,0,1,"activity"]
   ],
   "3|bac|bus":[
-    ["الاقتصاد (مستوى متقدم)",100,1,50,0,8],["الرياضيات",100,1,50,0,5],
-    ["التربية الدينية",100,0,70,0,2]
+    ["التربية الدينية",100,0,70,0,6],
+    ["الاقتصاد (مستوى متقدم)",100,1,50,1,8],["الرياضيات",100,1,50,1,8],
+    ["نشاط التربية الرياضية",100,0,50,0,1,"activity"]
   ],
   "3|bac|art":[
-    ["الجغرافيا (مستوى متقدم)",100,1,50,0,8],["الإحصاء",100,1,50,0,6],
-    ["التربية الدينية",100,0,70,0,2]
+    ["التربية الدينية",100,0,70,0,6],
+    ["الجغرافيا (مستوى متقدم)",100,1,50,1,8],["الإحصاء",100,1,50,1,8],
+    ["نشاط التربية الرياضية",100,0,50,0,1,"activity"]
   ],
   /* الثانوية العامة (النظام القديم) — لسه موجود للصفوف اللي عليه */
   /* ============================================================
@@ -917,6 +949,88 @@ function rawSet(v){
 var DB = null;
 var UI = { tab:"", sub:null, filters:{}, user:null, sector:"reg" };
 
+/* ============================================================
+   الخريطة الزمنية الرسمية للعام الدراسي ٢٠٢٦/٢٠٢٧
+   المصدر: خريطة وزارة التربية والتعليم المعتمدة.
+   • العام: السبت ١٢/٩/٢٠٢٦ → الخميس ٢٤/٦/٢٠٢٧ (٣٩ أسبوع)
+   • الفصل الأول: ١٢/٩/٢٠٢٦ → ٢١/١/٢٠٢٧ — ٩٣ يوم دراسة فعلية
+   • الفصل الثاني: ٦/٢/٢٠٢٧ → ٢٤/٦/٢٠٢٧ — ٩٠ يوم دراسة فعلية
+   • إجمالي أيام الدراسة الفعلية: ١٨٣ يوم
+   الأرقام دي بتغذّي حساب نسب الحضور وشرط الحرمان.
+   ============================================================ */
+var OFFICIAL_CAL = {
+  year: "2026 / 2027",
+  from: "2026-09-12", to: "2027-06-24", weeks: 39,
+  terms: [
+    { n:1, from:"2026-09-12", to:"2027-01-21", days:93, weeks:19 },
+    { n:2, from:"2027-02-06", to:"2027-06-24", days:90, weeks:20 }
+  ],
+  /* الإجازات الرسمية وإجازة نصف العام */
+  holidays: [
+    { from:"2026-10-05", to:"2026-10-05", name:"عيد الفطرات المسلحة (٦ أكتوبر)" },
+    { from:"2027-01-01", to:"2027-01-04", name:"إجازة الأعياد المسيحية (الميلاد والغطاس)" },
+    { from:"2027-01-23", to:"2027-02-04", name:"إجازة نصف العام" },
+    { from:"2027-03-09", to:"2027-03-11", name:"عيد الفطر المبارك" },
+    { from:"2027-04-22", to:"2027-04-24", name:"إجازة عيد الفطر" },
+    { from:"2027-05-08", to:"2027-05-11", name:"عيد الأضحى المبارك" },
+    { from:"2027-06-06", to:"2027-06-06", name:"عطلة نهاية أسبوع" }
+  ],
+  /* مواعيد الاختبارات والأحداث المهمة */
+  events: [
+    { date:"2026-10-01", name:"اللقاء التعريفي الأول لأولياء الأمور", kind:"meet" },
+    { date:"2026-10-18", to:"2026-10-22", name:"الاختبار الشهري الأول — الفصل الأول", kind:"exam" },
+    { date:"2026-10-29", name:"اللقاء التعريفي الثاني لأولياء الأمور", kind:"meet" },
+    { date:"2026-11-29", to:"2026-12-03", name:"الاختبار الشهري الثاني — الفصل الأول", kind:"exam" },
+    { date:"2026-12-10", name:"اللقاء التشاوري لأولياء الأمور", kind:"meet" },
+    { date:"2027-01-09", to:"2027-01-14", name:"امتحانات الفصل الأول — صفوف النقل", kind:"exam" },
+    { date:"2027-01-07", to:"2027-01-12", name:"امتحانات الفصل الأول — الشهادة الإعدادية", kind:"exam" },
+    { date:"2027-03-14", to:"2027-03-18", name:"الاختبار الشهري الأول — الفصل الثاني", kind:"exam" },
+    { date:"2027-04-06", name:"اللقاء التشاوري الأول لأولياء الأمور", kind:"meet" },
+    { date:"2027-04-17", to:"2027-05-01", name:"الاختبار الشهري الثاني — الفصل الثاني", kind:"exam" },
+    { date:"2027-05-02", name:"اللقاء التشاوري الثاني لأولياء الأمور", kind:"meet" },
+    { date:"2027-05-22", to:"2027-05-27", name:"امتحانات الفصل الثاني — صفوف النقل", kind:"exam" },
+    { date:"2027-05-29", to:"2027-06-03", name:"امتحانات الفصل الثاني — الشهادة الإعدادية", kind:"exam" },
+    { date:"2027-06-03", to:"2027-06-17", name:"امتحانات الدور الأول — الصف الثاني بكالوريا", kind:"exam" },
+    { date:"2027-06-26", to:"2027-07-21", name:"امتحانات الدور الأول — الثانوية العامة", kind:"exam" }
+  ]
+};
+/* أرقام الخريطة اللي الحسابات بتعتمد عليها */
+function calTerm(n){
+  var t = OFFICIAL_CAL.terms.filter(function(x){ return x.n===num(n,1); })[0];
+  return t || OFFICIAL_CAL.terms[0];
+}
+function officialDays(term){
+  if(!term) return OFFICIAL_CAL.terms.reduce(function(a,t){ return a+t.days; }, 0);
+  return calTerm(term).days;
+}
+/* الترم الحالي من التاريخ */
+function termOfDate(d){
+  d = d || today();
+  var t2 = calTerm(2);
+  return (d >= t2.from) ? 2 : 1;
+}
+/* تحميل الخريطة الرسمية — بيدمج مش بيمسح */
+function loadOfficialCal(){
+  DB.holidays = Array.isArray(DB.holidays) ? DB.holidays : [];
+  DB.events   = Array.isArray(DB.events)   ? DB.events   : [];
+  var addH = 0, addE = 0;
+  OFFICIAL_CAL.holidays.forEach(function(h){
+    var has = DB.holidays.some(function(x){ return x.from===h.from && x.to===(h.to||h.from); });
+    if(has) return;
+    DB.holidays.push({ id:uid("h"), from:h.from, to:h.to||h.from, name:h.name, official:1 });
+    addH++;
+  });
+  OFFICIAL_CAL.events.forEach(function(e){
+    var has = DB.events.some(function(x){ return x.date===e.date && normAr(x.title||x.name||"")===normAr(e.name); });
+    if(has) return;
+    DB.events.push({ id:uid("e"), date:e.date, to:e.to||e.date, title:e.name,
+                     kind:e.kind||"note", official:1 });
+    addE++;
+  });
+  DB.meta.calFrom = OFFICIAL_CAL.from;
+  DB.meta.calTo   = OFFICIAL_CAL.to;
+  return { holidays:addH, events:addE };
+}
 function blankDB(){
   return {
     v:1,
@@ -928,8 +1042,13 @@ function blankDB(){
            levelSys:{ "1":"prep", "2":"bac", "3":"gen" },
            classCap:45 },
     weights:{ fin:30, m1:15, m2:15, beh:10, note:15, weekly:15 },
-    bac:{ m1Max:50, m2Max:50, passPct:50, target:600 },
+    /* شرط دخول الفرصة الأولى: إنجاز ٦٠٪ من التقييمات والأداءات
+       والاختبارات الشهرية — تكليف وزير التربية والتعليم.
+       اللي مايحققهوش يدخل الفرصة التانية فقط. */
+    bac:{ m1Max:50, m2Max:50, passPct:60, target:600 },
     absRules:{ warn1:5, warn2:10, danger:15, denyPct:15 },
+    /* حدود الخريطة الرسمية — بتتملا من loadOfficialCal */
+    calFrom:"", calTo:"",
     users:[], teachers:[], classes:[], subjects:[], students:[],
     assign:[], schedule:[], attend:{}, marks:{}, behavior:[], notices:[],
     staff:[], leaves:[], staffAtt:{}, subs:{},
@@ -1635,9 +1754,47 @@ function bacCumulative(sid){
            total:Math.round((got+prev)*100)/100, target:num(DB.bac.target,600) };
 }
 
+/* ============================================================
+   توزيع الدرجات — بيختلف باختلاف النظام والصف
+   المصدر: القرار ١٣٨/٢٠٢٤ (الثانوية العامة) والقرار ٢٣٤/٢٠٢٥
+   (الصف الأول بكالوريا) والقرار ١٥٠/٢٠٢٦ (الثاني والثالث بكالوريا).
+
+   • الثانوية العامة (أول وتاني عام):
+       امتحان الفصل ٣٠٪ · شهري١ ١٥٪ · شهري٢ ١٥٪
+       السلوك والمواظبة ١٠٪ · كشكول الحصة والواجب ١٥٪ · أسبوعي ١٥٪
+   • الصف الأول بكالوريا:
+       واجب منزلي ١٥٪ · أسبوعي ١٥٪ · شهري١ ١٥٪ · شهري٢ ١٥٪
+       سلوك ومواظبة ١٠٪  (= أعمال ٧٠٪) · امتحان الترم ٣٠٪
+   • الثاني والثالث بكالوريا:
+       مشروع ١٥٪ · أسبوعي ٢٠٪ · أداء منزلي والحصة ١٥٪
+       السلوك والمواظبة ١٠٪ · شهري١ ٢٠٪ · شهري٢ ٢٠٪
+       (مفيش امتحان ترم — امتحان آخر العام بره المجموع)
+   ============================================================ */
+var WEIGHT_SETS = {
+  gen:   { fin:30, m1:15, m2:15, beh:10, note:15, weekly:15, proj:0,
+           label:"الثانوية العامة — قرار ١٣٨/٢٠٢٤" },
+  bac1:  { fin:30, m1:15, m2:15, beh:10, note:15, weekly:15, proj:0,
+           label:"الصف الأول بكالوريا — قرار ٢٣٤/٢٠٢٥" },
+  bac23: { fin:0,  m1:20, m2:20, beh:10, note:15, weekly:20, proj:15,
+           label:"الثاني والثالث بكالوريا — قرار ١٥٠/٢٠٢٦" }
+};
+/* أنهي توزيع يخص الفصل ده؟ */
+function weightKeyOf(c){
+  if(!c) return "gen";
+  var L = num(c.level,0);
+  if(c.system==="bac") return (L>=2) ? "bac23" : "bac1";
+  return "gen";
+}
+function weightsOf(c){
+  /* لو الوكيل عدّل التوزيع يدويًا من الإعدادات، تعديله هو اللي يغلب */
+  if(DB.weightsCustom) return DB.weights;
+  return WEIGHT_SETS[weightKeyOf(c)] || WEIGHT_SETS.gen;
+}
 /* الدرجة النهائية للمادة في الفصل الدراسي */
 function termTotal(studentId, subjectId, term){
-  var m = getMark(studentId, subjectId, term), w = DB.weights;
+  var m = getMark(studentId, subjectId, term);
+  var s0 = subjById(subjectId);
+  var w = weightsOf(s0 ? classById(s0.classId) : null);
   var s = subjById(subjectId), max = s? num(s.max,100) : 100;
   var c = s ? classById(s.classId) : null;
 
@@ -1650,7 +1807,7 @@ function termTotal(studentId, subjectId, term){
 
   var parts = [
     [m.fin,  w.fin ], [m.m1, w.m1], [m.m2, w.m2],
-    [m.beh,  w.beh ], [m.note, w.note]
+    [m.beh,  w.beh ], [m.note, w.note], [m.proj, w.proj||0]
   ];
   var got=0, of=0, any=false;
   for(var i=0;i<parts.length;i++){
@@ -3398,11 +3555,25 @@ function fixSectorMismatch(){
    الأهلية لدخول الامتحان — شرط الـ٥٠٪ في التقييمات والاختبارات
    ============================================================ */
 /* حالة الطالب في كل مواده: مؤهل / على الحافة / محروم */
+/* ============================================================
+   الأهلية لدخول امتحان الفرصة الأولى
+   الشرط بيخص صفوف الشهادة في البكالوريا (الثاني والثالث):
+   إنجاز ٦٠٪ على الأقل من التقييمات والأداءات والاختبارات الشهرية.
+   صفوف النقل والثانوية العامة مالهاش الشرط ده.
+   ============================================================ */
+function eligApplies(c){
+  if(!c) return false;
+  return c.system==="bac" && num(c.level,0)>=2;
+}
 function eligibilityOf(sid, classId){
+  var c0 = classById(classId);
   var subs = DB.subjects.filter(function(su){ return su.classId===classId; })
     .filter(function(su){ return !isActivitySubj(su); });
   var rows = [], ok=0, bad=0, none=0, risk=0;
-  var need = num(DB.bac.passPct,50);
+  var need = num(DB.bac.passPct,60);
+  if(!eligApplies(c0))
+    return { rows:[], ok:0, bad:0, none:0, risk:0, total:0,
+             verdict:"na", na:true };
   subs.forEach(function(su){
     var m = peekMark(sid, su.id, DB.meta.term);
     var p = bacScore(m);
@@ -12918,12 +13089,6 @@ function hookInputs(root){
     if(id==="mg_dest"){ UI.mgDest = e.target.value; modalMergeCols(UI.mgScope); }
     if(id==="mg_after"){ UI.mgAfter = e.target.value; }
     if(id==="mg_newname"){ UI.mgNewName = e.target.value; }
-    if(id==="pfq"){
-      pfKeep();
-      renderPaperFill();
-      var nq = document.getElementById("pfq");
-      if(nq){ nq.focus(); try{ nq.setSelectionRange(nq.value.length, nq.value.length); }catch(x){} }
-    }
     if(id==="trkLvl"){ DB.trackLevel = num(e.target.value,2); saveNow(); render(); toast("استمارة المسار بقت لطلاب "+levelName(DB.trackLevel)); }
     if(id==="attDate"){ UI.sub.date = e.target.value; render(); }
     if(id==="ctLvl" || id==="ctCls" || id==="ctScope"){
@@ -16938,8 +17103,28 @@ function viewCalendar(){
   var tab = UI.calTab==="exams" ? "exams" : "plan";
   var c = calCfg(), ph = currentPhase();
 
+  var loaded = (DB.holidays||[]).some(function(x){ return x.official; });
   var h = pageHd("التقويم الدراسي", "الخريطة الزمنية والامتحانات والإجازات الرسمية",
-    '<button class="btn" data-act="addHoliday">+ إجازة رسمية</button>');
+    (loaded?'':'<button class="btn" data-act="loadCal">↓ حمّل الخريطة الرسمية</button>')+
+    '<button class="btn ghost" data-act="addHoliday">+ إجازة رسمية</button>');
+
+  /* ملخّص الخريطة الرسمية — الأرقام اللي كل الحسابات بتعتمد عليها */
+  if(loaded || DB.meta.calFrom){
+    var t1 = calTerm(1), t2 = calTerm(2), curT = termOfDate(t);
+    h += '<div class="stats">'+
+      stat("العام الدراسي", esc(OFFICIAL_CAL.year),
+           fmtDate(OFFICIAL_CAL.from)+" → "+fmtDate(OFFICIAL_CAL.to), "")+
+      stat("الفصل الأول", t1.days+" يوم",
+           fmtDate(t1.from)+" → "+fmtDate(t1.to), curT===1?"acc":"")+
+      stat("الفصل الثاني", t2.days+" يوم",
+           fmtDate(t2.from)+" → "+fmtDate(t2.to), curT===2?"acc":"")+
+      stat("أيام الدراسة الفعلية", officialDays(), "بعد خصم الإجازات", "acc-g")+
+    '</div>';
+  }else{
+    h += '<div class="note warn">الخريطة الزمنية الرسمية لسه ماتحمّلتش. '+
+      'حمّلها عشان الإجازات والاختبارات تتسجّل، وحساب نسب الحضور يبقى على '+
+      '<b>أيام الدراسة الفعلية</b> زي ما الوزارة بتحسبها.</div>';
+  }
 
   h += '<div class="chips noprint">'+
     '<button class="'+(tab==="plan"?"on":"")+'" data-act="calTab" data-t="plan">الخريطة الزمنية</button>'+
@@ -17071,6 +17256,16 @@ Object.assign(ACTS, {
     DB.meta.weekMode = el.dataset.m==="exams" ? "exams" : "normal";
     saveNow(); render();
     toast(DB.meta.weekMode==="exams" ? "الأسبوع بقى السبت للخميس" : "الأسبوع بقى الأحد للخميس");
+  },
+  loadCal: function(){
+    if(!confirm("تحميل الخريطة الزمنية الرسمية للعام "+OFFICIAL_CAL.year+"؟\n\n"+
+      "هتتضاف "+OFFICIAL_CAL.holidays.length+" إجازة رسمية و"+OFFICIAL_CAL.events.length+" موعد "+
+      "(اختبارات شهرية · امتحانات · لقاءات أولياء الأمور).\n\n"+
+      "الإجازات والمواعيد اللي مسجّلها انت مش هتتلمس.")) return;
+    markUndo("تحميل الخريطة الزمنية");
+    var r = loadOfficialCal();
+    saveNow(); render();
+    toastUndo("اتحمّلت: "+r.holidays+" إجازة · "+r.events+" موعد");
   },
   addHoliday: function(){
     openModal(mHead("إجازة رسمية")+
@@ -18083,144 +18278,22 @@ function classForWishTrack(trackId, sector){
    الورقيات — نماذج ومطبوعات المدرسة الجاهزة للطباعة
    تظهر للمدير ووكيل شئون الطلاب ووكيل شئون العاملين.
    ============================================================ */
-var PAPER_CATS = [
-  {id:"student",  name:"ورقيات الطلاب"},
-  {id:"teacher",  name:"ورقيات المعلمين والعاملين"},
-  {id:"internal", name:"ورقيات داخل المدرسة"},
-  {id:"admin",    name:"مخاطبات الإدارة التعليمية"}
-];
-function paperCatName(id){ for(var i=0;i<PAPER_CATS.length;i++) if(PAPER_CATS[i].id===id) return PAPER_CATS[i].name; return id; }
-var DOT = "………………………";
-var DOTL = "……………………………………………";
-var PAPER_TEMPLATES = [
-  /* ---- الطلاب ---- */
-  { cat:"student", title:"إفادة قيد طالب",
-    body:'<p>تشهد إدارة مدرسة {المدرسة} بأن الطالب / {اسم_الطالب}</p>'+
-      '<p>المقيّد بالصف {الصف} — الفصل {الفصل} — الشعبة / المسار {المسار} — رقم قومي {الرقم_القومي}</p>'+
-      '<p>طالبٌ منتظمٌ بالدراسة بهذه المدرسة للعام الدراسي {العام_الدراسي}، وقد أُعطيت له هذه الإفادة '+
-      'بناءً على طلبه للتقديم لـ '+DOT+' دون أدنى مسؤولية على المدرسة.</p>'+
-      '<p style="margin-top:14px">حُرّر بتاريخ {التاريخ}</p>' },
-  { cat:"student", title:"إذن انصراف مبكّر لطالب",
-    body:'<p>يُسمح بانصراف الطالب / {اسم_الطالب}</p>'+
-      '<p>المقيّد بالصف {الصف} الفصل {الفصل}، في تمام الساعة '+DOT+' من يوم {اليوم} الموافق {التاريخ}</p>'+
-      '<p>وذلك بناءً على طلب ولي أمره / '+DOT+' وتحت مسؤوليته الكاملة.</p>'+
-      '<p>توقيع ولي الأمر: '+DOT+' &nbsp;&nbsp; صلة القرابة: '+DOT+'</p>' },
-  { cat:"student", title:"إنذار غياب لولي الأمر",
-    body:'<p>السيد ولي أمر الطالب / {اسم_الطالب}</p>'+
-      '<p>نحيطكم علمًا بأن نجلكم المقيّد بالصف {الصف} الفصل {الفصل} قد تغيّب عن الدراسة عدد {أيام_الغياب} يوم دون عذر مقبول، '+
-      'وهذا إنذار '+DOT+' له.</p>'+
-      '<p>ونلفت نظركم إلى أن تجاوز '+DOT+' يومًا يعرّضه للحرمان من دخول الامتحان طبقًا للائحة. '+
-      'برجاء سرعة الحضور للمدرسة لمناقشة الأمر.</p>'+
-      '<p>توقيع ولي الأمر بالعلم: '+DOT+'</p>' },
-  { cat:"student", title:"طلب تحويل / نقل طالب",
-    body:'<p>السيد الأستاذ / مدير المدرسة</p>'+
-      '<p>برجاء التكرم بالموافقة على تحويل الطالب / {اسم_الطالب}</p>'+
-      '<p>المقيّد بالصف {الصف} — رقم قومي {الرقم_القومي} — من مدرسة {المدرسة} إلى مدرسة '+DOT+'</p>'+
-      '<p>التابعة لإدارة '+DOT+' التعليمية، وذلك لـ '+DOT+'</p>'+
-      '<p>مقدمه ولي الأمر / '+DOT+' &nbsp; التوقيع: '+DOT+'</p>' },
-  { cat:"student", title:"إقرار وتعهد ولي أمر",
-    body:'<p>أقرّ أنا / {ولي_الأمر} ولي أمر الطالب / {اسم_الطالب}</p>'+
-      '<p>المقيّد بالصف {الصف} الفصل {الفصل}، بأنني قد اطّلعت على لائحة الانضباط المدرسي، وأتعهد بـ '+DOT+'</p>'+
-      '<p>'+DOTL+'</p>'+
-      '<p>وهذا إقرار مني بذلك.</p>'+
-      '<p>الاسم: '+DOT+' &nbsp; الرقم القومي: '+DOT+' &nbsp; التوقيع: '+DOT+'</p>' },
-  { cat:"student", title:"استمارة بيانات طالب مستجد",
-    body:'<p>الاسم رباعيًا (كما في شهادة الميلاد): '+DOTL+'</p>'+
-      '<p>الرقم القومي: '+DOT+' &nbsp; تاريخ الميلاد: '+DOT+' &nbsp; محل الميلاد: '+DOT+'</p>'+
-      '<p>الديانة: '+DOT+' &nbsp; الجنسية: '+DOT+' &nbsp; النوع: '+DOT+'</p>'+
-      '<p>اسم ولي الأمر: '+DOT+' &nbsp; صلة القرابة: '+DOT+'</p>'+
-      '<p>الوظيفة: '+DOT+' &nbsp; رقم الهاتف: '+DOT+'</p>'+
-      '<p>محل الإقامة: '+DOTL+'</p>'+
-      '<p>المدرسة المنقول منها: '+DOT+' &nbsp; الصف المقيّد به: '+DOT+'</p>' },
-  /* ---- المعلمون والعاملون ---- */
-  { cat:"teacher", title:"طلب إجازة اعتيادية",
-    body:'<p>السيد الأستاذ / مدير المدرسة</p>'+
-      '<p>برجاء الموافقة على منحي إجازة اعتيادية عدد '+DOT+' يوم، '+
-      'اعتبارًا من '+DOT+' حتى '+DOT+'، وذلك لـ '+DOT+'</p>'+
-      '<p>مقدمه / {اسم_المعلم} — الوظيفة: {الوظيفة} — التوقيع: '+DOT+'</p>'+
-      '<p style="margin-top:26px">رأي الإدارة: '+DOTL+'</p>' },
-  { cat:"teacher", title:"طلب إجازة عارضة",
-    body:'<p>السيد الأستاذ / مدير المدرسة</p>'+
-      '<p>برجاء الموافقة على منحي إجازة عارضة يوم '+DOT+' لظرف طارئ، '+
-      'مع العلم بأن رصيدي من الإجازات العارضة '+DOT+' يوم.</p>'+
-      '<p>مقدمه / {اسم_المعلم} — الوظيفة: {الوظيفة} — التوقيع: '+DOT+'</p>' },
-  { cat:"teacher", title:"إذن تأخير / انصراف لمعلم",
-    body:'<p>يُسمح للسيد / {اسم_المعلم}</p>'+
-      '<p>الوظيفة: {الوظيفة}، بالـ ( تأخير / انصراف ) في يوم {اليوم} الموافق {التاريخ} الساعة '+DOT+'</p>'+
-      '<p>وذلك لـ '+DOT+' على أن يُعوَّض ما يخصه من حصص.</p>'+
-      '<p>توقيع طالب الإذن: '+DOT+' &nbsp; اعتماد المدير: '+DOT+'</p>' },
-  { cat:"teacher", title:"إفادة عمل (إثبات عمل)",
-    body:'<p>تشهد إدارة مدرسة {المدرسة} بأن السيد / {اسم_المعلم}</p>'+
-      '<p>رقم قومي {الرقم_القومي_للمعلم}، يعمل بهذه المدرسة بوظيفة {الوظيفة} منذ {تاريخ_التعيين}</p>'+
-      '<p>وقد أُعطيت له هذه الإفادة بناءً على طلبه لتقديمها إلى '+DOT+' دون أدنى مسؤولية على المدرسة.</p>' },
-  { cat:"teacher", title:"إقرار استلام عهدة / كتب",
-    body:'<p>أقرّ أنا / {اسم_المعلم} — الوظيفة: {الوظيفة}</p>'+
-      '<p>باستلامي العهدة التالية بحالة جيدة، وأتعهد بالمحافظة عليها وردّها عند الطلب:</p>'+
-      '<p>'+DOTL+'</p><p>'+DOTL+'</p>'+
-      '<p>التاريخ: '+DOT+' &nbsp; التوقيع: '+DOT+'</p>' },
-  /* ---- داخل المدرسة ---- */
-  { cat:"internal", title:"محضر اجتماع",
-    body:'<p>إنه في يوم '+DOT+' الموافق '+DOT+' الساعة '+DOT+'، '+
-      'اجتمع '+DOTL+'</p>'+
-      '<p>لمناقشة الموضوعات التالية:</p>'+
-      '<p>١) '+DOTL+'</p><p>٢) '+DOTL+'</p><p>٣) '+DOTL+'</p>'+
-      '<p><b>القرارات:</b></p><p>'+DOTL+'</p><p>'+DOTL+'</p>'+
-      '<p>وقد حُرّر هذا المحضر إثباتًا لما تقدّم.</p>' },
-  { cat:"internal", title:"كشف متابعة يومي للحصص",
-    body:'<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px">'+
-      '<tr><th style="border:1px solid #333;padding:6px">الحصة</th><th style="border:1px solid #333;padding:6px">الفصل</th>'+
-      '<th style="border:1px solid #333;padding:6px">المادة</th><th style="border:1px solid #333;padding:6px">المعلم</th>'+
-      '<th style="border:1px solid #333;padding:6px">ملاحظات</th></tr>'+
-      Array.from({length:7}).map(function(_,i){ return '<tr><td style="border:1px solid #333;padding:12px 6px;text-align:center">'+(i+1)+'</td>'+
-        '<td style="border:1px solid #333"></td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td></tr>'; }).join("")+
-      '</table>'+
-      '<p style="margin-top:14px">اسم المتابِع: '+DOT+' &nbsp; التوقيع: '+DOT+'</p>' },
-  { cat:"internal", title:"إذن دخول زائر",
-    body:'<p>يُسمح بدخول السيد / '+DOTL+'</p>'+
-      '<p>صفته: '+DOT+' — رقم قومي: '+DOT+'، لمقابلة '+DOT+'</p>'+
-      '<p>الغرض من الزيارة: '+DOT+'</p>'+
-      '<p>وقت الدخول: '+DOT+' — وقت الخروج: '+DOT+' — اعتماد: '+DOT+'</p>' },
-  /* ---- الإدارة التعليمية ---- */
-  { cat:"admin", title:"خطاب موجّه للإدارة التعليمية",
-    body:'<p>السيد الأستاذ / مدير عام إدارة '+DOT+' التعليمية &nbsp; المحترم</p>'+
-      '<p>تحية طيبة وبعد،،</p>'+
-      '<p>'+DOTL+'</p><p>'+DOTL+'</p><p>'+DOTL+'</p>'+
-      '<p>وتفضلوا بقبول وافر الاحترام،،</p>'+
-      '<p style="margin-top:20px">مدير المدرسة / '+DOT+' &nbsp; التوقيع: '+DOT+'</p>' },
-  { cat:"admin", title:"بيان إحصائي بأعداد الطلاب",
-    body:'<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px">'+
-      '<tr><th style="border:1px solid #333;padding:6px">الصف</th><th style="border:1px solid #333;padding:6px">عدد الفصول</th>'+
-      '<th style="border:1px solid #333;padding:6px">بنين</th><th style="border:1px solid #333;padding:6px">بنات</th>'+
-      '<th style="border:1px solid #333;padding:6px">الإجمالي</th></tr>'+
-      ["الأول الثانوي","الثاني الثانوي","الثالث الثانوي","الإجمالي العام"].map(function(r){
-        return '<tr><td style="border:1px solid #333;padding:9px 6px">'+r+'</td><td style="border:1px solid #333"></td>'+
-          '<td style="border:1px solid #333"></td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td></tr>'; }).join("")+
-      '</table>'+
-      '<p style="margin-top:14px">اعتماد المدير: '+DOT+'</p>' }
-];
-
-function paperDoc(title, bodyHTML){
-  return '<div style="max-width:820px;margin:0 auto;background:#fff">'+
-    '<div style="text-align:center;border-bottom:2px solid #0d2b3e;padding-bottom:10px;margin-bottom:18px">'+
-      '<div style="font-size:12px">'+esc(DB.meta.moderia||"")+'</div>'+
-      '<div style="font-size:12px">'+esc(DB.meta.edara||"")+'</div>'+
-      '<div style="font-size:18px;font-weight:700;font-family:Cairo,sans-serif;margin-top:4px">'+esc(DB.meta.school||"")+'</div>'+
-      '<div style="font-size:11px;color:#5d6b72;margin-top:2px">العام الدراسي '+esc(DB.meta.year||"")+'</div>'+
-    '</div>'+
-    '<h2 style="text-align:center;font-size:17px;margin:0 0 16px;text-decoration:underline">'+esc(title)+'</h2>'+
-    '<div style="font-size:14.5px;line-height:2.2">'+bodyHTML+'</div>'+
-    '<div style="margin-top:44px;display:flex;justify-content:space-between;font-size:13.5px;font-weight:600">'+
-      '<div>التاريخ: …… / …… / ٢٠……م</div><div>الختم والتوقيع: '+DOT+'</div></div>'+
-    '</div>';
+/* دوال مساعدة كانت جزء من نظام النماذج المحذوف — الورقيات محتاجاها */
+function teacherClassIds(tid){
+  var m = {};
+  DB.assign.forEach(function(a){ if(a.teacherId===tid) m[a.classId] = 1; });
+  return Object.keys(m).filter(function(id){ return !!classById(id); });
+}
+function teacherSubjectNames(tid){
+  var m = {};
+  DB.assign.forEach(function(a){
+    if(a.teacherId!==tid) return;
+    var su = DB.subjects.filter(function(x){ return x.id===a.subjectId; })[0];
+    if(su) m[su.name] = 1;
+  });
+  return Object.keys(m);
 }
 
-/* ============================================================
-   ورقيات الإدارة — السجلات الرسمية لشئون الطلبة
-   دي مش نماذج فاضية: كل سجل بيتبني من بيانات الطلاب مباشرة،
-   بأعمدته الرسمية زي ما الإدارة التعليمية بتطلبه.
-   المرجع: تعليمات شئون الطلبة — سجل قيد ٣١ · كشوف ٤١/٤٢ مستجدين
-   · كشوف ١٢د تنسيق · سجل المحولين · سجل الغياب · إحصاء شهري.
-   ============================================================ */
 var REG_DOCS = [
   { id:"r31", title:"سجل قيد الطلاب (دفتر ٣١)",
     desc:"السجل الأساسي لقيد الطلاب — بيتعمل بعد نتيجة الدور الثاني وقبل بداية العام. بيتراجع في شئون الطلبة بالإدارة.",
@@ -18556,19 +18629,21 @@ function regStatsHTML(){
   return h;
 }
 
+/* ============================================================
+   الورقيات — سجلات شئون الطلبة الرسمية
+   نظام «النماذج» القديم اتشال بالكامل (هيتعمل بشكل مختلف بعدين).
+   السجلات دي مبنية من قاعدة الطلاب مباشرة.
+   ============================================================ */
 function viewPapers(){
-  var can = ["manager","deputy","admin"].indexOf(UI.user.role)>=0;
-  var cat = UI.filters.paperCat || "all";
-  var h = pageHd("الورقيات","نماذج ومطبوعات المدرسة الجاهزة — بترويسة المدرسة وجاهزة للطباعة",
-    can?'<button class="btn" data-act="paperNew">+ نموذج مخصص</button>':'');
-
-  /* ورقيات الإدارة — سجلات رسمية مربوطة بالبيانات، مش نماذج فاضية */
+  var h = pageHd("ورقيات الإدارة",
+    "سجلات رسمية من بيانات طلابك — بترويسة المدرسة وجاهزة للطباعة والتصدير", "");
   h += '<div class="card"><div class="hd"><div style="flex:1">'+
-    '<span class="eyebrow">شئون الطلبة</span><h3>ورقيات الإدارة</h3></div>'+
+    '<span class="eyebrow">شئون الطلبة</span><h3>السجلات</h3></div>'+
     '<span class="tag gold">'+REG_DOCS.length+' سجل</span></div>'+
     '<div class="bd flush">'+
-    '<div class="note">سجلات رسمية <b>مبنية من بيانات طلابك مباشرة</b> بأعمدتها المعتمدة — '+
-    'تفتحها، تختار الصف أو الفصل، وتطبعها أو تنزّلها إكسيل منسّق.</div>';
+    '<div class="note">افتح السجل، اختار الصف أو الفصل أو نوعية التعليم، '+
+    'واطبعه أو نزّله إكسيل. البيانات بتتقرا من قاعدة الطلاب مباشرة — '+
+    'واللي ينفع يتحسب من بيان تاني بيتحسب لوحده.</div>';
   REG_DOCS.forEach(function(d){
     var cnt = 0;
     try{ cnt = regStudents(d, {level:d.level||0}).length; }catch(e){}
@@ -18578,33 +18653,7 @@ function viewPapers(){
       (d.scope==="stats" ? '' : '<span class="tag">'+cnt+' طالب</span>')+
       '<span class="chev">‹</span></div>';
   });
-  h += '</div></div>';
-
-  h += '<div class="chips noprint">'+
-    '<button class="'+(cat==="all"?"on":"")+'" data-act="paperCat" data-c="all">الكل</button>'+
-    PAPER_CATS.map(function(c){ return '<button class="'+(cat===c.id?"on":"")+'" data-act="paperCat" data-c="'+c.id+'">'+esc(c.name)+'</button>'; }).join("")+
-    '</div>';
-
-  var all = PAPER_TEMPLATES.map(function(t,i){ return {key:"b"+i, cat:t.cat, title:t.title, builtin:true}; })
-    .concat((DB.papers||[]).map(function(p){ return {key:p.id, cat:p.cat, title:p.title, builtin:false}; }));
-  var visible = cat==="all" ? all : all.filter(function(t){ return t.cat===cat; });
-
-  PAPER_CATS.forEach(function(c){
-    var items = visible.filter(function(t){ return t.cat===c.id; });
-    if(!items.length) return;
-    h += '<div class="card"><div class="hd"><h3>'+esc(c.name)+'</h3><span class="tag">'+items.length+'</span></div><div class="bd flush">';
-    items.forEach(function(t){
-      h += '<div class="list-item">'+
-        '<span class="av" style="background:var(--seal)">▤</span>'+
-        '<span class="tx"><b>'+esc(t.title)+'</b><small>'+esc(paperCatName(t.cat))+(t.builtin?'':' · نموذج مخصص')+'</small></span>'+
-        '<button class="btn ghost sm" data-act="paperOpen" data-k="'+t.key+'">فتح وطباعة</button>'+
-        (t.builtin?'':'<button class="btn ghost sm" data-act="paperDel" data-id="'+t.key+'" style="color:var(--danger);margin-right:6px">حذف</button>')+
-        '</div>';
-    });
-    h += '</div></div>';
-  });
-  if(!visible.length) h += '<div class="card"><div class="bd"><div class="empty"><div class="big">'+icon("papers",34)+'</div><b>مفيش نماذج في التصنيف ده</b></div></div></div>';
-  return h;
+  return h + '</div></div>';
 }
 /* ============================================================
    تعبئة الورقيات تلقائيًا ببيانات طالب أو معلم + بيانات المدرسة
@@ -18615,384 +18664,6 @@ function viewPapers(){
    {اسم_المعلم} {كود_المعلم} {مادة_التدريس} {المؤهل} {تاريخ_التعيين} {الوظيفة}
    {المدرسة} {الإدارة} {المديرية} {العام_الدراسي} {الفصل_الدراسي} {التاريخ} {اليوم}
    ============================================================ */
-var PAPER_SCHOOL_KEYS = { "المدرسة":1,"الإدارة":1,"المديرية":1,"العام_الدراسي":1,
-                          "الفصل_الدراسي":1,"التاريخ":1,"اليوم":1 };
-/* المفاتيح الثابتة — مستقلة عن وجود بيانات، عشان القائمة تبان دايمًا */
-var PAPER_STU_KEYS = ["اسم_الطالب","الرقم_القومي","الصف","الفصل","المسار","مادة_التخصص","النوعية",
-  "القسم","النظام","ولي_الأمر","الهاتف","تاريخ_الميلاد","السن","النوع","الديانة","محافظة_الميلاد",
-  "الفصل_السابق","رقم_الجلوس","النشاط","التربية_المهنية","تاريخ_القيد","حالة_الطالب",
-  "نسبة_الحضور","أيام_الحضور","أيام_الغياب","الغياب_بعذر","مرات_التأخير",
-  "الموقف_من_الامتحان","مواد_تحت_الحد"];
-var PAPER_TCH_KEYS = ["اسم_المعلم","كود_المعلم","الرقم_القومي_للمعلم","مادة_التدريس","المؤهل",
-  "نوع_المؤهل","تاريخ_التعيين","سنوات_الخدمة","الوظيفة","الدرجة_المالية","هاتف_المعلم",
-  "تاريخ_ميلاد_المعلم","النصاب","الحِمل"];
-/* ============================================================
-   دليل المتغيرات بيتبني من paperVars نفسها — مش من قايمة ثابتة.
-   القايمة الثابتة كانت بتفوّت أي متغير جديد، فالمستخدم مايعرفش إنه
-   موجود. كده أي متغير نضيفه بيظهر في الدليل لوحده.
-   ============================================================ */
-function paperAllKeys(){
-  var probeS = DB.students.filter(function(x){ return x.status!=="left"; })[0];
-  var probeT = DB.teachers.filter(function(x){ return x.status!=="left"; })[0];
-  var v = {};
-  try{ v = paperVars(probeS?probeS.id:null, probeT?probeT.id:null); }catch(e){}
-  return v;
-}
-function paperStuKeys(){
-  var all = Object.keys(paperAllKeys());
-  var school = Object.keys(PAPER_SCHOOL_KEYS);
-  var tch = PAPER_TCH_KEYS.concat(xfList("teacher").map(function(f){ return f.label.replace(/\s+/g,"_"); }));
-  var out = all.filter(function(k){
-    return school.indexOf(k)<0 && tch.indexOf(k)<0 && !/معلم/.test(k);
-  });
-  /* لو مفيش طالب في القاعدة، نرجّع القايمة الثابتة عشان الدليل ما يفضاش */
-  PAPER_STU_KEYS.forEach(function(k){ if(out.indexOf(k)<0) out.push(k); });
-  xfList("student").forEach(function(f){
-    var k = f.label.replace(/\s+/g,"_");
-    if(out.indexOf(k)<0) out.push(k);
-  });
-  return out;
-}
-function paperTchKeys(){
-  var all = Object.keys(paperAllKeys());
-  var out = all.filter(function(k){ return /معلم|النصاب|الحِمل|المؤهل|التعيين|الوظيفة|الدرجة_المالية|سنوات_الخدمة|مادة_التدريس|الإشراف/.test(k); });
-  PAPER_TCH_KEYS.forEach(function(k){ if(out.indexOf(k)<0) out.push(k); });
-  xfList("teacher").forEach(function(f){
-    var k = f.label.replace(/\s+/g,"_");
-    if(out.indexOf(k)<0) out.push(k);
-  });
-  return out;
-}
-/* فصول المعلم ومواده — من الإسناد مباشرة */
-function teacherClassIds(tid){
-  var m = {};
-  DB.assign.forEach(function(a){ if(a.teacherId===tid) m[a.classId] = 1; });
-  return Object.keys(m).filter(function(id){ return !!classById(id); });
-}
-function teacherSubjectNames(tid){
-  var m = {};
-  DB.assign.forEach(function(a){
-    if(a.teacherId!==tid) return;
-    var su = DB.subjects.filter(function(x){ return x.id===a.subjectId; })[0];
-    if(su) m[su.name] = 1;
-  });
-  return Object.keys(m);
-}
-function paperVars(sid, tid){
-  var m = DB.meta || {};
-  var v = {
-    "المدرسة": m.school||"", "الإدارة": m.edara||"", "المديرية": m.moderia||"",
-    "العام_الدراسي": m.year||"", "الفصل_الدراسي": (m.term===1?"الأول":"الثاني"),
-    "التاريخ": fmtDate(today()), "اليوم": DAYS[dayOfWeek(today())]||""
-  };
-  var st = sid ? studentById(sid) : null;
-  if(st){
-    var c = classById(st.classId);
-    var att = attendStats(st.id, st.classId);
-    /* ============================================================
-       كل بيان بيتقرا بالاشتقاق (stuVal): المتسجّل الأول، وإلا اللي
-       ينفع يطلع من بيان تاني. فالورقة بتتملا لوحدها حتى لو الطالب
-       مالوش غير الاسم والرقم القومي — الميلاد والنوع والمحافظة
-       وولي الأمر والسن كلهم بيطلعوا منهم.
-       ============================================================ */
-    var _b = stuVal(st,"birth");
-    v["اسم_الطالب"]   = st.name||"";
-    v["الرقم_القومي"] = st.natId||"";
-    v["كود_الطالب"]   = st.code||"";
-    v["الصف"]         = studentLevelOf(st)? levelName(studentLevelOf(st)) : "";
-    v["الفصل"]        = c? c.name : "";
-    v["المسار"]       = st.bacTrack? trackName(c?c.system:sysOfLevel(studentLevelOf(st)), st.bacTrack)
-                                   : (c? trackName(c.system,c.track) : "");
-    v["الشعبة"]       = v["المسار"];
-    v["مادة_التخصص"]  = st.bacSubject||"";
-    v["النوعية"]      = eduName(st.edu||"reg");
-    v["ولي_الأمر"]    = stuVal(st,"guardian");
-    v["مهنة_ولي_الأمر"]= st.guardJob||"";
-    v["العنوان"]      = st.address||"";
-    v["الهاتف"]       = stuVal(st,"phone");
-    v["تاريخ_الميلاد"]= _b? fmtDate(_b) : "";
-    v["السن"]         = stuVal(st,"age1oct") || (st.age? st.age+" سنة" : "");
-    v["السن_في_أول_أكتوبر"] = stuVal(st,"age1oct");
-    v["النوع"]        = stuVal(st,"gender");
-    v["الجنسية"]      = stuVal(st,"nationality") || "مصري";
-    v["الديانة"]      = st.religion||"";
-    v["نسبة_الحضور"]  = att.days? att.rate+"٪" : "";
-    v["أيام_الغياب"]  = String(att.abs||0);
-    v["تاريخ_القيد"]  = st.joined? fmtDate(st.joined) : "";
-    v["محافظة_الميلاد"]= stuVal(st,"birthGov");
-    v["الفصل_السابق"] = st.prevClass||"";
-    v["النظام"]       = c? systemName(c.system) : "";
-    v["القسم"]        = sectorName(studentSector(st));
-    v["رقم_الجلوس"]   = st.seat||"";
-    v["النشاط"]       = st.actId? actName(st.actId) : "";
-    v["التربية_المهنية"]= st.vocId? actName(st.vocId) : "";
-    v["أيام_الحضور"]  = String(att.present||0);
-    v["الغياب_بعذر"]  = String(att.exc||0);
-    v["مرات_التأخير"] = String(att.late||0);
-    v["حالة_الطالب"]  = st.status==="left"? "خارج المدرسة" : "منتظم";
-    /* الموقف من الامتحان */
-    var e = eligibilityOf(st.id, st.classId);
-    v["الموقف_من_الامتحان"] = e.verdict==="bad" ? "غير مسموح بدخول الامتحان"
-                            : (e.verdict==="none" ? "لم تُرصد تقييمات" : "مسموح بدخول الامتحان");
-    v["مواد_تحت_الحد"] = String(e.bad||0);
-    xfList("student").forEach(function(f){ v[f.label.replace(/\s+/g,"_")] = xfGet(st,f.id)||""; });
-  }
-  var t = tid ? teacherById(tid) : null;
-  if(t){
-    v["اسم_المعلم"]    = t.name||"";
-    v["كود_المعلم"]    = t.code||"";
-    v["مادة_التدريس"]  = t.subject||"";
-    v["المؤهل"]        = t.qual||"";
-    v["تاريخ_التعيين"] = t.hireDate? fmtDate(t.hireDate) : "";
-    v["الوظيفة"]       = t.cadreJob || t.jobNow || "";
-    v["الرقم_القومي_للمعلم"] = t.natId||"";
-    v["هاتف_المعلم"]   = t.phone||"";
-    v["الدرجة_المالية"]= t.finGrade||"";
-    v["نوع_المؤهل"]    = t.qualType||"";
-    v["سنوات_الخدمة"]  = t.hireDate? String(serviceYears(t.hireDate)) : "";
-    v["النصاب"]        = String(nisabOf(t.id));
-    v["الحِمل"]        = String(plannedHours(t.id,{}));
-    /* بيانات المعلم المشتقة من رقمه القومي — نفس منطق الطالب */
-    var _ti = parseNationalId(t.natId);
-    var _tb = t.birth || (_ti ? _ti.birth : "");
-    v["تاريخ_ميلاد_المعلم"] = _tb? fmtDate(_tb) : "";
-    v["نوع_المعلم"]     = t.gender || (_ti ? _ti.gender : "");
-    v["محافظة_ميلاد_المعلم"] = t.birthGov || (_ti ? _ti.govName : "");
-    v["سن_المعلم"]      = _tb? (ageFrom(_tb)+" سنة") : "";
-    v["حالة_المعلم"]    = t.status==="left" ? "خارج المدرسة" : "على رأس العمل";
-    v["عدد_فصول_المعلم"]= String(teacherClassIds(t.id).length);
-    v["مواد_المعلم"]    = teacherSubjectNames(t.id).join(" · ");
-    v["أيام_الإشراف"]   = dutyDaysOf(t.id).map(function(d){ return DAYS[d]; }).join(" · ");
-    xfList("teacher").forEach(function(f){ v[f.label.replace(/\s+/g,"_")] = xfGet(t,f.id)||""; });
-  }
-  return v;
-}
-/* بيبدّل الرموز بالقيم — واللي مالوش قيمة بيفضل نقط للكتابة باليد */
-function fillPaper(body, sid, tid){
-  var v = paperVars(sid, tid);
-  return String(body||"").replace(/\{([^}]+)\}/g, function(all, key){
-    var k = key.trim().replace(/\s+/g,"_");
-    var val = v[k];
-    if(val===undefined) return all;                  /* رمز مش معروف — نسيبه */
-    if(!String(val).trim()) return DOT;              /* فاضي — نقط للكتابة */
-    return '<b style="border-bottom:1px dotted #999;padding:0 4px">'+esc(String(val))+'</b>';
-  });
-}
-/* نافذة اختيار الطالب/المعلم قبل الطباعة */
-function modalPaperFill(key){
-  var t = paperByKey(key);
-  if(!t){ toast("النموذج مش موجود"); return; }
-  var body = t.custom ? esc(t.body).replace(/\n/g,"<br>") : t.body;
-  /* الرموز اللي بتحتاج طالب أو معلم — من نفس جدول القيم عشان ما يبقاش فيه اختلاف */
-  var sKeys = paperStuKeys(), tKeys = paperTchKeys();
-  function usesAny(keys){
-    for(var i=0;i<keys.length;i++) if(body.indexOf("{"+keys[i]+"}")>=0) return true;
-    return false;
-  }
-  var needsS = usesAny(sKeys), needsT = usesAny(tKeys);
-  if(!needsS && !needsT){ openPaper(key, "", ""); return; }
-
-  UI.pfKey = key; UI.pfNeedS = needsS; UI.pfNeedT = needsT;
-  UI.pfPick = { s:[], t:[] };
-  UI.pfLevel = 0; UI.pfEdu = ""; UI.pfQ = "";
-  renderPaperFill();
-}
-/* اختيار الطلاب أو المعلمين — فلتر بالصف وبحث بالاسم والرقم القومي */
-function renderPaperFill(){
-  var t = paperByKey(UI.pfKey);
-  if(!t) return;
-  var needS = UI.pfNeedS, needT = UI.pfNeedT;
-  var q = String(UI.pfQ||"").trim();
-  var qn = normAr(q), qd = toEnDigits(q).replace(/[^0-9]/g,"");
-  var pickS = UI.pfPick.s, pickT = UI.pfPick.t;
-  var body = "";
-
-  if(needS){
-    /* ============================================================
-       الوعاء = كل طلاب المدرسة، مش طلاب القسم اللي انت واقف فيه.
-       myStudents() كانت بترجّع الانتظام بس، فطلاب الخدمات والمنازل
-       ما كانوش بيظهروا والأعداد بتطلع ناقصة.
-       التقسيم بقى: الصف ← نوعية التعليم ← البحث.
-       ============================================================ */
-    var base = DB.students.filter(function(x){ return x.status!=="left"; });
-    var byLvl = UI.pfLevel ? base.filter(function(x){ return studentLevelOf(x)===UI.pfLevel; }) : base;
-    var list = UI.pfEdu ? byLvl.filter(function(x){ return (x.edu||"reg")===UI.pfEdu; }) : byLvl;
-    if(q) list = list.filter(function(x){
-      return normAr(x.name).indexOf(qn)>=0 ||
-             (qd.length>=3 && String(x.natId||"").indexOf(qd)>=0) ||
-             (x.code && normCode(x.code).indexOf(normCode(q))>=0);
-    });
-    list = list.sort(function(a,b){ return sortAr(a.name,b.name); });
-    /* ١ الصف */
-    body += '<div style="font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:5px;'+
-      'font-family:Cairo,sans-serif">١ · الصف</div>'+
-      '<div class="chips" style="margin-bottom:8px">'+
-      '<button class="'+(!UI.pfLevel?"on":"")+'" data-act="pfLvl" data-l="0">كل الصفوف <small>'+base.length+'</small></button>'+
-      LEVELS.map(function(l){
-        var n2 = base.filter(function(x){ return studentLevelOf(x)===l.id; }).length;
-        return '<button class="'+(UI.pfLevel===l.id?"on":"")+'" data-act="pfLvl" data-l="'+l.id+'">'+
-          esc(l.name)+' <small>'+n2+'</small></button>';
-      }).join("")+'</div>'+
-      /* ٢ نوعية التعليم */
-      '<div style="font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:5px;'+
-      'font-family:Cairo,sans-serif">٢ · نوعية التعليم</div>'+
-      '<div class="chips" style="margin-bottom:8px">'+
-      '<button class="'+(!UI.pfEdu?"on":"")+'" data-act="pfEdu" data-e="">الكل <small>'+byLvl.length+'</small></button>'+
-      EDU_IDS.map(function(e){
-        var n3 = byLvl.filter(function(x){ return (x.edu||"reg")===e; }).length;
-        return '<button class="'+(UI.pfEdu===e?"on":"")+'" data-act="pfEdu" data-e="'+e+'">'+
-          esc(eduName(e))+' <small>'+n3+'</small></button>';
-      }).join("")+'</div>'+
-      '<input type="text" id="pfq" value="'+esc(q)+'" autocomplete="off" '+
-      'placeholder="بحث بالاسم أو الرقم القومي أو الكود…" '+
-      'style="width:100%;padding:10px;border:1px solid var(--line-2);border-radius:9px;font:inherit;margin-bottom:8px">'+
-      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">'+
-      '<button class="btn ghost sm" data-act="pfAll">تحديد الظاهر ('+list.length+')</button>'+
-      '<button class="btn ghost sm" data-act="pfNone">إلغاء التحديد</button>'+
-      '<span style="flex:1"></span>'+
-      '<span class="tag '+(pickS.length?"ok":"")+'">'+pickS.length+' محدّد</span></div>'+
-      '<div style="max-height:38vh;overflow:auto;border:1px solid var(--line-2);border-radius:9px">';
-    if(!list.length) body += '<div class="empty"><b>مفيش نتائج</b><p>جرّب صف تاني أو غيّر البحث.</p></div>';
-    list.slice(0,300).forEach(function(x){
-      var c = classById(x.classId);
-      body += '<label class="list-item" style="cursor:pointer;margin:0">'+
-        '<input type="checkbox" class="pfck" data-k="s" data-id="'+x.id+'"'+
-        (pickS.indexOf(x.id)>=0?" checked":"")+' style="width:18px;height:18px;flex:0 0 18px">'+
-        '<span class="tx"><b>'+esc(x.name)+'</b><small><span style="direction:ltr">'+esc(x.natId||"")+'</span>'+
-        ' \u00b7 '+esc(studentLevelOf(x)?levelName(studentLevelOf(x)):"")+
-        (c?' \u00b7 '+esc(c.name):' \u00b7 غير مسكّن')+' \u00b7 '+esc(eduName(x.edu||"reg"))+'</small></span></label>';
-    });
-    if(list.length>300) body += '<div class="note">…وكمان '+(list.length-300)+' — ضيّق البحث</div>';
-    body += '</div>';
-  }
-
-  if(needT){
-    var tl = DB.teachers.filter(function(x){ return x.status!=="left"; });
-    if(q && !needS) tl = tl.filter(function(x){
-      return normAr(x.name).indexOf(qn)>=0 || String(x.code||"").indexOf(q)>=0 ||
-             (qd.length>=3 && String(x.natId||"").indexOf(qd)>=0);
-    });
-    tl = tl.sort(function(a,b){ return sortAr(a.name,b.name); });
-    if(needS) body += '<div style="height:12px"></div>';
-    body += '<div style="font-weight:700;font-family:Cairo,sans-serif;font-size:13px;margin-bottom:6px">المعلمون</div>';
-    if(!needS) body += '<input type="text" id="pfq" value="'+esc(q)+'" autocomplete="off" '+
-      'placeholder="بحث بالاسم أو الكود أو الرقم القومي…" '+
-      'style="width:100%;padding:10px;border:1px solid var(--line-2);border-radius:9px;font:inherit;margin-bottom:8px">';
-    body += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">'+
-      '<button class="btn ghost sm" data-act="pfAllT">تحديد الكل ('+tl.length+')</button>'+
-      '<button class="btn ghost sm" data-act="pfNoneT">إلغاء</button>'+
-      '<span style="flex:1"></span>'+
-      '<span class="tag '+(pickT.length?"ok":"")+'">'+pickT.length+' محدّد</span></div>'+
-      '<div style="max-height:'+(needS?"22vh":"42vh")+';overflow:auto;border:1px solid var(--line-2);border-radius:9px">';
-    tl.forEach(function(x){
-      body += '<label class="list-item" style="cursor:pointer;margin:0">'+
-        '<input type="checkbox" class="pfck" data-k="t" data-id="'+x.id+'"'+
-        (pickT.indexOf(x.id)>=0?" checked":"")+' style="width:18px;height:18px;flex:0 0 18px">'+
-        '<span class="tx"><b>'+esc(x.name)+'</b><small>'+esc(x.subject||"—")+
-        (x.code?' \u00b7 كود '+esc(x.code):'')+'</small></span></label>';
-    });
-    body += '</div>';
-  }
-
-  var nn = (needS?pickS.length:0) + (needT?pickT.length:0);
-  openModal(mHead("تعبئة: "+t.title)+
-    '<div class="mb">'+
-    '<div class="note">اختار مين تطبع له — تقدر تختار <b>أكتر من واحد</b> وكل واحد هياخد ورقة مستقلة. '+
-    'وأي بيان مش موجود هيفضل نقط للكتابة باليد.</div>'+
-    body+'</div>'+
-    '<div class="mf"><button class="btn ghost" data-act="close">إلغاء</button>'+
-    '<button class="btn ghost" data-act="doPaperFill" data-blank="1">ورقة فاضية</button>'+
-    '<button class="btn" data-act="doPaperFill">'+(nn>1? "فتح "+nn+" ورقة" : "فتح للطباعة")+'</button></div>');
-}
-/* بيحفظ اللي اتعلّم عليه والبحث قبل إعادة الرسم */
-function pfKeep(){
-  UI.pfPick = UI.pfPick || { s:[], t:[] };
-  var q = document.getElementById("pfq");
-  if(q) UI.pfQ = q.value;
-  Array.prototype.slice.call(document.querySelectorAll(".pfck")).forEach(function(b){
-    var arr = (b.dataset.k==="t") ? UI.pfPick.t : UI.pfPick.s;
-    var i = arr.indexOf(b.dataset.id);
-    if(b.checked && i<0) arr.push(b.dataset.id);
-    if(!b.checked && i>=0) arr.splice(i,1);
-  });
-}
-/* ورقة لكل واحد اتحدد — ورا بعض، كل واحدة في صفحة */
-function openPapers(key, sids, tids){
-  var t = paperByKey(key);
-  if(!t) return;
-  var raw = t.custom ? esc(t.body).replace(/\n/g,"<br>") : t.body;
-  var pairs = [];
-  if(sids.length && tids.length) sids.forEach(function(sid){ pairs.push([sid, tids[0]]); });
-  else if(sids.length) sids.forEach(function(sid){ pairs.push([sid, ""]); });
-  else if(tids.length) tids.forEach(function(tid){ pairs.push(["", tid]); });
-  else pairs.push(["",""]);
-  var docs = pairs.map(function(pr){
-    return '<div class="paper-doc">'+paperDoc(t.title, fillPaper(raw, pr[0], pr[1]))+'</div>';
-  }).join("");
-  UI.sub = { paper: docs, paperN: pairs.length };
-  closeModal();
-  render();
-}
-function paperByKey(k){
-  if(!k) return null;
-  if(k.charAt(0)==="b"){
-    var t = PAPER_TEMPLATES[Number(k.slice(1))];
-    return t ? { title:t.title, body:t.body, custom:false } : null;
-  }
-  var p = (DB.papers||[]).filter(function(x){ return x.id===k; })[0];
-  return p ? { title:p.title, body:p.body, custom:true } : null;
-}
-function openPaper(key, sid, tid){
-  var t = paperByKey(key);
-  if(!t) return;
-  var body = t.custom ? esc(t.body).replace(/\n/g,"<br>") : t.body;
-  body = fillPaper(body, sid, tid);
-  UI.sub = { paper: paperDoc(t.title, body) };
-  closeModal();
-  render();
-}
-/* قائمة الرموز المتاحة — بتتبني من نفس جدول القيم فما تختلفش أبدًا */
-function paperVarsHelp(){
-  var groups = {
-    "بيانات المدرسة": Object.keys(PAPER_SCHOOL_KEYS),
-    "بيانات الطالب":  paperStuKeys(),
-    "بيانات المعلم":  paperTchKeys()
-  };
-  return '<div style="max-height:150px;overflow:auto;border:1px solid var(--line-2);border-radius:9px;padding:8px">'+
-    Object.keys(groups).map(function(g){
-      if(!groups[g].length) return "";
-      return '<div style="font-size:11.5px;color:var(--muted);font-weight:700;margin:4px 0 3px">'+esc(g)+'</div>'+
-        '<div style="display:flex;flex-wrap:wrap;gap:4px">'+
-        groups[g].map(function(k){
-          return '<button class="btn ghost" data-act="ppVar" data-v="'+esc(k)+'" '+
-            'style="padding:3px 7px;font-size:11.5px;border-radius:6px">{'+esc(k)+'}</button>';
-        }).join("")+'</div>';
-    }).join("")+'</div>';
-}
-function modalPaper(){
-  openModal(mHead("نموذج ورقي مخصص")+'<div class="mb">'+
-    '<label class="f"><span>عنوان النموذج</span><input type="text" id="pp_title" placeholder="مثال: إقرار متابعة"></label>'+
-    '<label class="f"><span>التصنيف</span><select id="pp_cat">'+
-      PAPER_CATS.map(function(c){ return '<option value="'+c.id+'">'+esc(c.name)+'</option>'; }).join("")+'</select></label>'+
-    '<label class="f"><span>نص النموذج</span><textarea id="pp_body" style="min-height:190px" '+
-      'placeholder="اكتب نص الورقة، وحط الرموز في أماكن البيانات — مثال: الطالب / {اسم_الطالب} بالصف {الصف}"></textarea></label>'+
-    '<div class="note ok"><b>التعبئة التلقائية:</b> حط الرمز في نصك والبرنامج هيملاه من القاعدة. '+
-      'أي بيان مش موجود هيبقى نقط للكتابة باليد.</div>'+
-    '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:9px 0 5px;font-size:12.5px">'+
-      'الرموز المتاحة — اضغط على أي واحد عشان ينسخ</div>'+
-    paperVarsHelp()+
-    '<div class="note">بيتطبع تلقائيًا بترويسة المدرسة (المديرية، الإدارة، اسم المدرسة، العام الدراسي) فوق، وخانة التاريخ والتوقيع تحت.</div>'+
-    '</div>'+mFoot("حفظ النموذج","savePaper"));
-}
-function savePaper(){
-  var title = val("pp_title").trim();
-  if(!title){ toast("اكتب عنوان النموذج"); return; }
-  var body = val("pp_body");
-  if(!body.trim()){ toast("اكتب نص النموذج"); return; }
-  if(!Array.isArray(DB.papers)) DB.papers = [];
-  DB.papers.push({ id:uid("pp"), cat:val("pp_cat")||"internal", title:title, body:body, createdAt:today() });
-  saveNow(); closeModal(); render(); toast("اتحفظ النموذج");
-}
 
 
 /* ============================================================
@@ -21386,23 +21057,8 @@ function downloadBlob(content, filename, type){
 Object.assign(ACTS, {
 });
 
-/* ---------- أكشنات الورقيات ---------- */
+/* ---------- أكشنات الترحيل ---------- */
 Object.assign(ACTS, {
-  paperCat: function(el){ UI.filters.paperCat = el.dataset.c; render(); },
-  paperNew: function(){ modalPaper(); },
-  savePaper: savePaper,
-  paperDel: function(el){
-    if(!confirm("حذف النموذج المخصص ده؟")) return;
-    DB.papers = (DB.papers||[]).filter(function(p){ return p.id!==el.dataset.id; });
-    saveNow(); render(); toast("اتحذف");
-  },
-  ppVar: function(el){
-    var ta = document.getElementById("pp_body");
-    if(!ta) return;
-    ta.value = (ta.value||"") + "{"+el.dataset.v+"}";
-    ta.focus();
-  },
-  paperOpen:   function(el){ modalPaperFill(el.dataset.k); },
   fmGo: function(){
     UI.fieldMap = UI.fieldMap || {};
     Array.prototype.slice.call(document.querySelectorAll(".fmSel")).forEach(function(sel){
@@ -21414,33 +21070,6 @@ Object.assign(ACTS, {
     var saved = UI.fmRows;
     doFormMigrateWith(UI.fmFid, saved, UI.fmLevel);
   },
-  pfLvl:   function(el){ pfKeep(); UI.pfLevel = num(el.dataset.l,0); UI.pfEdu=""; renderPaperFill(); },
-  pfEdu:   function(el){ pfKeep(); UI.pfEdu = el.dataset.e||""; renderPaperFill(); },
-  pfAll:   function(){
-    pfKeep();
-    var q = String(UI.pfQ||"").trim(), qn = normAr(q), qd = toEnDigits(q).replace(/[^0-9]/g,"");
-    var list = myStudents();
-    if(UI.pfLevel) list = list.filter(function(x){ return studentLevelOf(x)===UI.pfLevel; });
-    if(q) list = list.filter(function(x){
-      return normAr(x.name).indexOf(qn)>=0 || (qd.length>=3 && String(x.natId||"").indexOf(qd)>=0); });
-    UI.pfPick.s = list.map(function(x){ return x.id; });
-    renderPaperFill();
-  },
-  pfNone:  function(){ pfKeep(); UI.pfPick.s = []; renderPaperFill(); },
-  pfAllT:  function(){
-    pfKeep();
-    UI.pfPick.t = DB.teachers.filter(function(x){ return x.status!=="left"; }).map(function(x){ return x.id; });
-    renderPaperFill();
-  },
-  pfNoneT: function(){ pfKeep(); UI.pfPick.t = []; renderPaperFill(); },
-  doPaperFill: function(el){
-    pfKeep();
-    if(el && el.dataset && el.dataset.blank==="1"){ openPaper(UI.pfKey, "", ""); return; }
-    var ss = UI.pfNeedS ? UI.pfPick.s : [];
-    var tt = UI.pfNeedT ? UI.pfPick.t : [];
-    if(!ss.length && !tt.length){ toast("اختار واحد على الأقل، أو اضغط «ورقة فاضية»"); return; }
-    openPapers(UI.pfKey, ss, tt);
-  }
 });
 
 /* ---------- أكشنات إدارة الاستمارات ---------- */
