@@ -1040,6 +1040,10 @@ function blankDB(){
            /* نظام كل صف — بيتغيّر سنة بسنة مع تدرّج تطبيق البكالوريا.
               ٢٠٢٦/٢٠٢٧: الأول تمهيدي · الثاني بكالوريا (أول دفعة) · الثالث ثانوية عامة */
            levelSys:{ "1":"prep", "2":"bac", "3":"gen" },
+           /* أسماء المسؤولين اللي بتتطبع تحت الورقيات — فاضية = بتتسحب من الحسابات */
+           sigStat:"", sigAffairs:"", sigManager:"",
+           /* الأدوار المسموح لها تعدّل قوالب النماذج */
+           paperEdit:["manager","stat"],
            classCap:45 },
     weights:{ fin:30, m1:15, m2:15, beh:10, note:15, weekly:15 },
     /* شرط دخول الفرصة الأولى: إنجاز ٦٠٪ من التقييمات والأداءات
@@ -1053,7 +1057,7 @@ function blankDB(){
     assign:[], schedule:[], attend:{}, marks:{}, behavior:[], notices:[],
     staff:[], leaves:[], staffAtt:{}, subs:{},
     locations:[], dutyPlan:[], duty:{}, dutyWeek:{}, subsPlan:{}, events:[], holidays:[],
-    sectors:{}, wishes:[],
+    sectors:{}, wishes:[], paperTpl:{},
     forms:[], formSubs:{}, papers:[], trackOpen:true, activities:[], calendar:{}, exams:[], extraFields:{}, oplog:[], lessons:{}, msgs:[], dupOk:[], trackExtra:[], trackEdus:[], tables:{}, lastMig:{}, sessions:[], attLog:{}, attDone:{}, schedCfg:{}, roll:{history:[],repeat:{}}
   };
 }
@@ -1651,7 +1655,7 @@ function attLocked(cid, date, sid){
    والتعديل الكامل على الطلاب والمعلمين للوكيل وADMIN.
    ============================================================ */
 function canEditData(){
-  return roleIs("deputy") || roleIs("admin") || iAmOwner();
+  return roleIs("deputy") || roleIs("admin") || iAmOwner() || hasRole("stat");
 }
 /* شريط توضيحي: مسؤول الجدول بيشوف البيانات ومش بيعدّلها */
 function schedRoleNote(what){
@@ -1662,6 +1666,7 @@ function schedRoleNote(what){
     'لكن التعديل والحذف والإضافة من صلاحية وكيل شئون الطلاب.</div>';
 }
 function canEditAtt(){
+  if(hasRole("stat")) return true;
   return roleIs("deputy") || roleIs("manager") || roleIs("admin");
 }
 /* هل الفصل اترصد غيابه النهاردة؟ */
@@ -7354,6 +7359,7 @@ function viewStudent(id){
     (msgsOf(s.id,"in").filter(function(m){ return !m.reply; }).length?
       '<span class="tag bad" style="align-self:center">'+msgsOf(s.id,"in").filter(function(m){ return !m.reply; }).length+' سؤال منتظر رد</span>':'')+
     '</div></div>';
+  h += studentPapersCard(s);
   if(UI.stmtFor===s.id){
     return '<button class="btn ghost sm noprint" data-act="closeStmt" style="margin-bottom:10px">→ رجوع لملف الطالب</button>'+
       parentStatement(s);
@@ -9279,6 +9285,37 @@ function viewSettings(){
     '<option value="2"'+(m.term===2?" selected":"")+'>الفصل الدراسي الثاني</option></select></label>'+
     '<button class="btn" data-act="saveMeta">حفظ بيانات المدرسة</button></div></div>';
 
+  /* المسؤولون اللي بتتطبع أسماؤهم تحت الورقيات */
+  h += '<div class="card"><div class="hd"><h3>المسؤولون في الورقيات</h3></div><div class="bd">'+
+    '<div class="note">الأسماء دي بتتطبع تحت كل نموذج رسمي. لو سِبت الخانة فاضية، '+
+    'البرنامج بيجيب الاسم من الحساب صاحب الدور تلقائيًا — واللي تكتبه هنا بيغلب على التلقائي.</div>'+
+    '<div class="grid3">'+
+    SIG_ROLES.map(function(r){
+      var auto = officialName(r.id);
+      var manual = String((m[r.key]||"")).trim();
+      return '<label class="f"><span>'+esc(r.label)+'</span>'+
+        '<input type="text" id="sg_'+r.id+'" value="'+esc(manual)+'" placeholder="'+
+        esc(auto ? auto+" (من الحساب)" : "مش مسجّل — اكتب الاسم")+'"></label>';
+    }).join("")+
+    '</div>'+
+    '<div class="note" style="margin-top:6px"><b>اللي هيتطبع دلوقتي:</b> '+
+    SIG_ROLES.map(function(r){
+      var n = officialName(r.id);
+      return esc(r.label)+': '+(n?esc(n):'<span style="color:var(--bad)">مش محدد</span>');
+    }).join(" · ")+'</div>'+
+    '<div style="font-weight:700;font-family:Cairo,sans-serif;margin:12px 0 4px;font-size:13px">'+
+    'مين يعدّل قوالب النماذج؟</div>'+
+    '<div style="display:flex;gap:14px;flex-wrap:wrap">'+
+    [["manager","مدير المدرسة"],["deputy","وكيل شئون الطلاب"],["stat","مسؤول الإحصاء"]]
+      .map(function(p){
+        return '<label class="f" style="flex-direction:row;align-items:center;gap:6px">'+
+          '<input type="checkbox" id="pe_'+p[0]+'"'+
+          (paperEditRoles().indexOf(p[0])>=0?' checked':'')+'><span>'+esc(p[1])+'</span></label>';
+      }).join("")+
+    '</div>'+
+    '<div class="note">الطباعة والاستخدام متاحين للتلاتة دايمًا — الاختيار هنا للتعديل في شكل القالب نفسه.</div>'+
+    '<button class="btn" data-act="saveSigs">حفظ إعدادات الورقيات</button></div></div>';
+
   /* نظام كل صف + سعة الفصل */
   h += '<div class="card"><div class="hd"><h3>نظام الصفوف وسعة الفصل</h3></div><div class="bd">'+
     '<div class="note">البكالوريا بتتطبّق بالتدريج — أول دفعة على الصف الثاني، وبعد سنة بتطلع معاهم للثالث. '+
@@ -10538,7 +10575,9 @@ function modalLinkAccounts(){
    ============================================================ */
 var EXTRA_ROLES = {
   sched: { name:"مسؤول الجدول", av:"جد",
-           desc:"إنشاء وتعديل الجداول وتوزيع المعلمين — من غير تعديل بيانات الطلاب أو المعلمين" }
+           desc:"إنشاء وتعديل الجداول وتوزيع المعلمين — من غير تعديل بيانات الطلاب أو المعلمين" },
+  stat:  { name:"مسؤول الإحصاء", av:"إح",
+           desc:"صلاحيات كاملة زي وكيل شئون الطلاب — بيانات الطلاب والفصول والورقيات والنماذج" }
 };
 /* أدوار الحساب الإضافية */
 function userRoles(u){
@@ -12658,6 +12697,65 @@ var ACTS = {
   repWarn: function(){ repWarn(); },
   repTeachers: function(){ repTeachers(); },
   runReport: runReport,
+
+  /* ---------- الورقيات ---------- */
+  saveSigs: function(){
+    SIG_ROLES.forEach(function(r){ DB.meta[r.key] = val("sg_"+r.id).trim(); });
+    var roles = [];
+    ["manager","deputy","stat"].forEach(function(k){
+      var cb = document.getElementById("pe_"+k);
+      if(cb && cb.checked) roles.push(k);
+    });
+    DB.meta.paperEdit = roles;
+    saveNow(); render(); toast("اتحفظت إعدادات الورقيات");
+  },
+  stuPapersTgl: function(el){
+    UI.papersOpen = (UI.papersOpen===el.dataset.id) ? null : el.dataset.id;
+    render();
+  },
+  paperOpen: function(el){ modalPaper(el.dataset.id, el.dataset.stu); },
+  paperPrint: function(){
+    var p = UI.paperNow; if(!p) return;
+    closeModal(); paperPrint(p.doc, p.stu);
+  },
+  paperEdit: function(el){ modalPaperEdit(el.dataset.id); },
+  pbEdit: function(el){ modalPBlock(Number(el.dataset.i)); },
+  pbUp: function(el){
+    var i = Number(el.dataset.i), B = UI.pEdit.blocks;
+    if(i>0){ var t=B[i-1]; B[i-1]=B[i]; B[i]=t; }
+    renderPaperEdit();
+  },
+  pbDn: function(el){
+    var i = Number(el.dataset.i), B = UI.pEdit.blocks;
+    if(i<B.length-1){ var t=B[i+1]; B[i+1]=B[i]; B[i]=t; }
+    renderPaperEdit();
+  },
+  pbDel: function(el){
+    UI.pEdit.blocks.splice(Number(el.dataset.i), 1);
+    renderPaperEdit();
+  },
+  pbAdd: function(){
+    UI.pEdit.blocks.push(pbBlank(val("pe_new")));
+    renderPaperEdit();
+  },
+  pbApply: function(){
+    var i = UI.pbIdx, B = UI.pEdit.blocks;
+    if(B[i]) pbReadForm(B[i]);
+    renderPaperEdit();
+  },
+  pbSave: function(){
+    var E = UI.pEdit; if(!E) return;
+    var t = document.getElementById("pe_title");
+    if(t) E.title = t.value.trim() || E.title;
+    if(!DB.paperTpl) DB.paperTpl = {};
+    DB.paperTpl[E.id] = { title:E.title, blocks:E.blocks };
+    saveNow(); closeModal(); render(); toast("اتحفظ القالب");
+  },
+  pbReset: function(){
+    var E = UI.pEdit; if(!E) return;
+    paperResetTpl(E.id);
+    closeModal(); render(); toast("رجع القالب الأصلي");
+  },
 
   saveMeta: function(){
     DB.meta.school = val("st_school").trim() || DB.meta.school;
@@ -18656,14 +18754,944 @@ function viewPapers(){
   return h + '</div></div>';
 }
 /* ============================================================
-   تعبئة الورقيات تلقائيًا ببيانات طالب أو معلم + بيانات المدرسة
-   الرموز المدعومة داخل نص النموذج:
-   {اسم_الطالب} {الرقم_القومي} {الصف} {الفصل} {المسار} {مادة_التخصص}
-   {النوعية} {ولي_الأمر} {الهاتف} {تاريخ_الميلاد} {السن} {النوع} {الديانة}
-   {نسبة_الحضور} {أيام_الغياب} {تاريخ_القيد}
-   {اسم_المعلم} {كود_المعلم} {مادة_التدريس} {المؤهل} {تاريخ_التعيين} {الوظيفة}
-   {المدرسة} {الإدارة} {المديرية} {العام_الدراسي} {الفصل_الدراسي} {التاريخ} {اليوم}
+   ورقيات شئون الطلبة — النماذج الرسمية
+   ------------------------------------------------------------
+   الفكرة: النموذج مش نص ثابت في الكود، ده قايمة «بلوكات».
+   كل بلوك له نوع (عنوان · فقرة · جدول · حقول · سطور · توقيعات …)
+   وجواه رموز زي {اسم_الطالب} بتتبدّل ببيانات الطالب وقت الطباعة.
+   القوالب الافتراضية في PAPER_DOCS، وأي تعديل بيتخزن في
+   DB.paperTpl[id] فبيفضل القالب الأصلي موجود للرجوع ليه.
    ============================================================ */
+
+/* ---------- أسماء المسؤولين اللي بتتطبع تحت الورقة ----------
+   بتتسحب تلقائيًا من الحسابات المسجّلة، وتفضل قابلة للتعديل
+   اليدوي من الإعدادات لو المسؤول مش مسجّل على البرنامج. */
+var SIG_ROLES = [
+  { id:"stat",    label:"الإحصاء والمعلومات", key:"sigStat"    },
+  { id:"affairs", label:"شئون الطلبة",        key:"sigAffairs" },
+  { id:"manager", label:"مدير المدرسة",       key:"sigManager" }
+];
+function sigKeyOf(kind){
+  for(var i=0;i<SIG_ROLES.length;i++) if(SIG_ROLES[i].id===kind) return SIG_ROLES[i].key;
+  return "";
+}
+/* الاسم اليدوي من الإعدادات لو موجود، وإلا من الحساب صاحب الدور */
+function officialName(kind){
+  var k = sigKeyOf(kind);
+  var manual = String((DB.meta && DB.meta[k]) || "").trim();
+  if(manual) return manual;
+  var list = DB.users || [];
+  for(var i=0;i<list.length;i++){
+    var x = list[i];
+    if(kind==="manager" && x.role==="manager") return x.name||"";
+    if(kind==="affairs" && x.role==="deputy")  return x.name||"";
+    if(kind==="stat" && userRoles(x).indexOf("stat")>=0) return x.name||"";
+  }
+  return "";
+}
+function officialSource(kind){
+  var k = sigKeyOf(kind);
+  if(String((DB.meta && DB.meta[k])||"").trim()) return "يدوي";
+  return officialName(kind) ? "من الحساب" : "";
+}
+
+/* ---------- اسم النظام الدراسي ---------- */
+function sysNameOf(sys){
+  if(sys==="bac")  return "بكالوريا";
+  if(sys==="gen")  return "ثانوية عامة";
+  if(sys==="prep") return "تمهيدي";
+  return "";
+}
+
+/* ---------- الرموز المتاحة داخل النماذج ----------
+   كل رمز بيتكتب بين قوسين: {اسم_الطالب} — والقوسين المزدوجين
+   {{اسم_الطالب}} بيشتغلوا كمان عشان اللي متعوّد عليهم. */
+var PAPER_TOKENS = [
+  { k:"اسم_الطالب",    d:"اسم الطالب رباعي" },
+  { k:"كود_الطالب",    d:"كود الطالب" },
+  { k:"الرقم_القومي",  d:"الرقم القومي" },
+  { k:"الصف",          d:"الصف الدراسي" },
+  { k:"الفصل",         d:"الفصل المسكّن عليه" },
+  { k:"النوعية",       d:"انتظام / خدمات / منازل" },
+  { k:"المسار",        d:"المسار أو الشعبة" },
+  { k:"مادة_التخصص",   d:"مادة التخصص للبكالوريا" },
+  { k:"النظام",        d:"بكالوريا / ثانوية عامة" },
+  { k:"تاريخ_الميلاد", d:"من الرقم القومي" },
+  { k:"محافظة_الميلاد",d:"من الرقم القومي" },
+  { k:"النوع",         d:"ذكر / أنثى" },
+  { k:"السن",          d:"السن بالسنوات" },
+  { k:"الديانة",       d:"ديانة الطالب" },
+  { k:"ولي_الأمر",     d:"اسم ولي الأمر" },
+  { k:"مهنة_ولي_الأمر",d:"وظيفة ولي الأمر" },
+  { k:"الهاتف",        d:"هاتف ولي الأمر" },
+  { k:"العنوان",       d:"عنوان الطالب" },
+  { k:"تاريخ_القيد",   d:"تاريخ قيد الطالب" },
+  { k:"رقم_الجلوس",    d:"رقم جلوس الطالب" },
+  { k:"أيام_الغياب",   d:"الغياب بدون عذر" },
+  { k:"نسبة_الحضور",   d:"نسبة الحضور %" },
+  { k:"المدرسة",       d:"اسم المدرسة" },
+  { k:"الإدارة",       d:"الإدارة التعليمية" },
+  { k:"المديرية",      d:"المديرية" },
+  { k:"العام_الدراسي", d:"العام الدراسي" },
+  { k:"الفصل_الدراسي", d:"الأول / الثاني" },
+  { k:"التاريخ",       d:"تاريخ الطباعة" },
+  { k:"الإحصاء",       d:"اسم مسؤول الإحصاء" },
+  { k:"شئون_الطلبة",   d:"اسم مسؤول شئون الطلبة" },
+  { k:"مدير_المدرسة",  d:"اسم مدير المدرسة" }
+];
+
+/* ---------- بناء قيم الرموز لطالب معيّن ---------- */
+function paperVars(s){
+  var m = DB.meta || {}, v = {};
+  v["المدرسة"]       = m.school  || "";
+  v["الإدارة"]       = m.edara   || "";
+  v["المديرية"]      = m.moderia || "";
+  v["العام_الدراسي"] = m.year    || "";
+  v["الفصل_الدراسي"] = (m.term===2 ? "الثاني" : "الأول");
+  v["التاريخ"]       = fmtDate(today());
+  v["الإحصاء"]       = officialName("stat");
+  v["شئون_الطلبة"]   = officialName("affairs");
+  v["مدير_المدرسة"]  = officialName("manager");
+  if(s){
+    var c   = classById(s.classId);
+    var L   = studentLevelOf(s);
+    var nid = null;
+    try{ nid = parseNationalId(s.natId); }catch(e){}
+    var st  = { abs:0, rate:0 };
+    try{ st = attendStats(s.id, s.classId) || st; }catch(e){}
+    v["اسم_الطالب"]     = s.name || "";
+    v["كود_الطالب"]     = s.code || "";
+    v["الرقم_القومي"]   = s.natId || "";
+    v["الصف"]           = L ? levelName(L) : "";
+    v["الفصل"]          = c ? c.name : "";
+    v["النوعية"]        = eduName(s.edu || "reg");
+    v["المسار"]         = s.bacTrack ? wishTrackName(s.bacTrack)
+                          : (c ? trackName(c.system, c.track) : "");
+    v["مادة_التخصص"]    = s.bacSubject || "";
+    v["النظام"]         = L ? sysNameOf(sysOfLevel(L)) : "";
+    v["تاريخ_الميلاد"]  = nid ? fmtDate(nid.birth) : (s.birth ? fmtDate(s.birth) : "");
+    v["محافظة_الميلاد"] = nid ? (nid.govName||"") : (s.gov || "");
+    v["النوع"]          = nid ? (nid.gender||"") : (s.gender || "");
+    v["السن"]           = String(s.age || ageFrom(s.birth) || "");
+    v["الديانة"]        = s.religion || s.rel || "";
+    v["ولي_الأمر"]      = s.guardian || s.guard || guardianFromName(s.name) || "";
+    v["مهنة_ولي_الأمر"] = s.guardJob || "";
+    v["الهاتف"]         = s.phone || "";
+    v["العنوان"]        = s.addr || "";
+    v["تاريخ_القيد"]    = s.joined ? fmtDate(s.joined) : "";
+    v["رقم_الجلوس"]     = s.seat || "";
+    v["أيام_الغياب"]    = String(st.abs || 0);
+    v["نسبة_الحضور"]    = String(st.rate || 0) + "%";
+  }
+  return v;
+}
+/* استبدال الرموز داخل أي نص */
+function fillTokens(txt, vars){
+  return String(txt==null ? "" : txt).replace(/\{\{?\s*([^{}]+?)\s*\}?\}/g, function(all, key){
+    var k = String(key).trim().replace(/\s+/g, "_");
+    if(Object.prototype.hasOwnProperty.call(vars, k)){
+      var out = vars[k];
+      return (out===null || out===undefined || out==="") ? "……………" : out;
+    }
+    return all;
+  });
+}
+
+/* ============================================================
+   القوالب الافتراضية
+   ============================================================ */
+function sigBlock(){
+  return { t:"sign", cols:[
+    { label:"الإحصاء والمعلومات", name:"{الإحصاء}" },
+    { label:"شئون الطلبة",        name:"{شئون_الطلبة}" },
+    { label:"مدير المدرسة",       name:"{مدير_المدرسة}" }
+  ]};
+}
+function sig2Block(){
+  return { t:"sign", cols:[
+    { label:"شئون الطلبة",  name:"{شئون_الطلبة}" },
+    { label:"مدير المدرسة", name:"{مدير_المدرسة}" }
+  ]};
+}
+var PAPER_DOCS = [
+  /* ---------- ١ · بيان حالة طالب ---------- */
+  { id:"state", title:"بيان حالة طالب", cat:"بيانات",
+    desc:"بيان رسمي ببيانات الطالب الدراسية — بيتبني كامل من ملف الطالب.",
+    blocks:[
+      { t:"title", tx:"بيان حالة طالب", size:19, align:"center" },
+      { t:"gap", h:6 },
+      { t:"kv", head:["البيان","البيانات"], rows:[
+        ["اسم الطالب",    "{اسم_الطالب}"],
+        ["كود الطالب",    "{كود_الطالب}"],
+        ["الرقم القومي",  "{الرقم_القومي}"],
+        ["الصف الدراسي",  "{الصف}"],
+        ["الفصل",         "{الفصل}"],
+        ["النوعية",       "{النوعية}"],
+        ["الشعبة / المسار","{المسار}"],
+        ["النظام",        "{النظام}"]
+      ]},
+      { t:"gap", h:14 },
+      sigBlock()
+    ]},
+
+  /* ---------- ٢ · تحويل طبي ---------- */
+  { id:"med", title:"تحويل طبي", cat:"صحة",
+    desc:"تحويل الطالب للتأمين الصحي، وتحته جزء منفصل لرد الطبيب.",
+    blocks:[
+      { t:"title", tx:"تحويل طبي", size:19, align:"center" },
+      { t:"gap", h:8 },
+      { t:"text", tx:"السيد الدكتور / التأمين الصحي", align:"right", bold:true },
+      { t:"text", tx:"تحية طيبة وبعد،", align:"right" },
+      { t:"text", tx:"نرجو التكرم بتوقيع الكشف الطبي على الطالب الموضّحة بياناته:", align:"right" },
+      { t:"gap", h:6 },
+      { t:"fields", rows:[
+        "اسم الطالب: {اسم_الطالب}",
+        "الصف الدراسي: {الصف}",
+        "الفصل الدراسي: {الفصل_الدراسي}",
+        "الرقم القومي: {الرقم_القومي}"
+      ]},
+      { t:"gap", h:14 },
+      sig2Block(),
+      { t:"gap", h:10 },
+      { t:"cut" },
+      { t:"box", title:"رد الطبيب", blocks:[
+        { t:"fields", rows:[
+          "اسم الطالب: {اسم_الطالب}",
+          "الصف الدراسي: {الصف}"
+        ]},
+        { t:"text", tx:"نتيجة الكشف / ملاحظات الطبيب:", align:"right" },
+        { t:"lines", n:4 },
+        { t:"gap", h:8 },
+        { t:"sign", cols:[{ label:"توقيع الطبيب", name:"" }] }
+      ]}
+    ]},
+
+  /* ---------- ٣ · طلب تحويل طالب ---------- */
+  { id:"transfer", title:"طلب تحويل طالب", cat:"قيد وتحويل",
+    desc:"طلب نقل الطالب من المدرسة إلى مدرسة أخرى.",
+    blocks:[
+      { t:"title", tx:"طلب تحويل طالب", size:19, align:"center" },
+      { t:"gap", h:8 },
+      { t:"text", tx:"السيد الأستاذ / مدير عام الإدارة التعليمية", align:"right", bold:true },
+      { t:"text", tx:"تحية طيبة وبعد،", align:"right" },
+      { t:"text", tx:"نرجو الموافقة على تحويل الطالب الموضّحة بياناته:", align:"right" },
+      { t:"gap", h:6 },
+      { t:"kv", head:["البيان","البيانات"], rows:[
+        ["اسم الطالب",   "{اسم_الطالب}"],
+        ["الرقم القومي", "{الرقم_القومي}"],
+        ["الصف الدراسي", "{الصف}"],
+        ["الفصل",        "{الفصل}"],
+        ["النوعية",      "{النوعية}"],
+        ["تاريخ القيد",  "{تاريخ_القيد}"]
+      ]},
+      { t:"fields", rows:[
+        "المدرسة المحوَّل إليها: ",
+        "سبب التحويل: "
+      ]},
+      { t:"gap", h:12 },
+      sig2Block()
+    ]},
+
+  /* ---------- ٤ · إقرار ولي أمر ---------- */
+  { id:"guardian", title:"إقرار ولي الأمر", cat:"إقرارات",
+    desc:"إقرار يوقّعه ولي الأمر بعلمه بحالة الطالب.",
+    blocks:[
+      { t:"title", tx:"إقرار ولي أمر", size:19, align:"center" },
+      { t:"gap", h:8 },
+      { t:"text", tx:"أقر أنا الموقّع أدناه ولي أمر الطالب:", align:"right" },
+      { t:"fields", rows:[
+        "اسم الطالب: {اسم_الطالب}",
+        "الصف الدراسي: {الصف}",
+        "الفصل: {الفصل}",
+        "الرقم القومي: {الرقم_القومي}"
+      ]},
+      { t:"text", tx:"بأنني على علم تام بما يلي:", align:"right" },
+      { t:"lines", n:4 },
+      { t:"text", tx:"وهذا إقرار مني بذلك.", align:"right" },
+      { t:"gap", h:10 },
+      { t:"fields", rows:[
+        "اسم ولي الأمر: {ولي_الأمر}",
+        "رقم الهاتف: {الهاتف}",
+        "التوقيع: "
+      ]},
+      { t:"gap", h:10 },
+      sig2Block()
+    ]},
+
+  /* ---------- ٥ · استمارة بيانات الطالب ---------- */
+  { id:"data", title:"استمارة بيانات الطالب", cat:"بيانات",
+    desc:"كل بيانات الطالب المسجّلة في ورقة واحدة.",
+    blocks:[
+      { t:"title", tx:"استمارة بيانات طالب", size:19, align:"center" },
+      { t:"gap", h:6 },
+      { t:"kv", head:["البيان","البيانات"], rows:[
+        ["اسم الطالب",      "{اسم_الطالب}"],
+        ["كود الطالب",      "{كود_الطالب}"],
+        ["الرقم القومي",    "{الرقم_القومي}"],
+        ["تاريخ الميلاد",   "{تاريخ_الميلاد}"],
+        ["محافظة الميلاد",  "{محافظة_الميلاد}"],
+        ["النوع",           "{النوع}"],
+        ["الديانة",         "{الديانة}"],
+        ["الصف الدراسي",    "{الصف}"],
+        ["الفصل",           "{الفصل}"],
+        ["النوعية",         "{النوعية}"],
+        ["الشعبة / المسار", "{المسار}"],
+        ["مادة التخصص",     "{مادة_التخصص}"],
+        ["اسم ولي الأمر",   "{ولي_الأمر}"],
+        ["مهنة ولي الأمر",  "{مهنة_ولي_الأمر}"],
+        ["هاتف ولي الأمر",  "{الهاتف}"],
+        ["العنوان",         "{العنوان}"],
+        ["تاريخ القيد",     "{تاريخ_القيد}"]
+      ]},
+      { t:"gap", h:12 },
+      sigBlock()
+    ]},
+
+  /* ---------- ٦ · إفادة قيد ---------- */
+  { id:"enroll", title:"إفادة قيد", cat:"إفادات",
+    desc:"إفادة بأن الطالب مقيد بالمدرسة في العام الدراسي الحالي.",
+    blocks:[
+      { t:"title", tx:"إفادة قيد", size:19, align:"center" },
+      { t:"gap", h:10 },
+      { t:"text", tx:"تشهد إدارة {المدرسة} بأن الطالب / {اسم_الطالب} — الرقم القومي {الرقم_القومي} — مقيد بالصف {الصف} ({النوعية}) بهذه المدرسة خلال العام الدراسي {العام_الدراسي}.", align:"right" },
+      { t:"gap", h:6 },
+      { t:"text", tx:"وقد أُعطيت له هذه الإفادة بناءً على طلبه دون أدنى مسؤولية على المدرسة.", align:"right" },
+      { t:"gap", h:6 },
+      { t:"text", tx:"تحريرًا في {التاريخ}", align:"left" },
+      { t:"gap", h:14 },
+      sig2Block()
+    ]},
+
+  /* ---------- ٧ · إفادة انتظام ---------- */
+  { id:"regular", title:"إفادة انتظام", cat:"إفادات",
+    desc:"إفادة بانتظام الطالب في الدراسة مع نسبة حضوره.",
+    blocks:[
+      { t:"title", tx:"إفادة انتظام", size:19, align:"center" },
+      { t:"gap", h:10 },
+      { t:"text", tx:"تشهد إدارة {المدرسة} بأن الطالب / {اسم_الطالب} — المقيد بالصف {الصف} فصل {الفصل} — منتظم في الدراسة خلال العام الدراسي {العام_الدراسي}.", align:"right" },
+      { t:"gap", h:6 },
+      { t:"fields", rows:[
+        "نسبة الحضور: {نسبة_الحضور}",
+        "أيام الغياب بدون عذر: {أيام_الغياب}"
+      ]},
+      { t:"gap", h:6 },
+      { t:"text", tx:"تحريرًا في {التاريخ}", align:"left" },
+      { t:"gap", h:14 },
+      sig2Block()
+    ]},
+
+  /* ---------- ٨ · إفادة حضور ---------- */
+  { id:"attend", title:"إفادة حضور", cat:"إفادات",
+    desc:"إفادة بحضور الطالب في يوم أو فترة محددة.",
+    blocks:[
+      { t:"title", tx:"إفادة حضور", size:19, align:"center" },
+      { t:"gap", h:10 },
+      { t:"text", tx:"تشهد إدارة {المدرسة} بأن الطالب / {اسم_الطالب} — المقيد بالصف {الصف} — قد حضر بالمدرسة في:", align:"right" },
+      { t:"fields", rows:[
+        "التاريخ / الفترة: ",
+        "من الساعة:  إلى الساعة: ",
+        "سبب الحضور: "
+      ]},
+      { t:"gap", h:6 },
+      { t:"text", tx:"تحريرًا في {التاريخ}", align:"left" },
+      { t:"gap", h:14 },
+      sig2Block()
+    ]},
+
+  /* ---------- ٩ · بيان نجاح أو رسوب ---------- */
+  { id:"result", title:"بيان نجاح أو رسوب", cat:"نتيجة",
+    desc:"بيان بنتيجة الطالب في نهاية العام.",
+    blocks:[
+      { t:"title", tx:"بيان نتيجة طالب", size:19, align:"center" },
+      { t:"gap", h:6 },
+      { t:"kv", head:["البيان","البيانات"], rows:[
+        ["اسم الطالب",   "{اسم_الطالب}"],
+        ["الرقم القومي", "{الرقم_القومي}"],
+        ["الصف الدراسي", "{الصف}"],
+        ["الفصل",        "{الفصل}"],
+        ["العام الدراسي","{العام_الدراسي}"]
+      ]},
+      { t:"gap", h:6 },
+      { t:"fields", rows:[
+        "المجموع الكلي: ",
+        "النسبة المئوية: ",
+        "النتيجة (ناجح / راسب / له دور ثانٍ): ",
+        "المواد المتخلّف فيها: "
+      ]},
+      { t:"gap", h:12 },
+      sigBlock()
+    ]},
+
+  /* ---------- ١٠ · طلب استخراج مستند ---------- */
+  { id:"docreq", title:"طلب استخراج مستند", cat:"طلبات",
+    desc:"طلب يقدّمه ولي الأمر لاستخراج مستند من ملف الطالب.",
+    blocks:[
+      { t:"title", tx:"طلب استخراج مستند", size:19, align:"center" },
+      { t:"gap", h:8 },
+      { t:"text", tx:"السيد الأستاذ / مدير المدرسة", align:"right", bold:true },
+      { t:"text", tx:"تحية طيبة وبعد،", align:"right" },
+      { t:"text", tx:"مقدّمه لسيادتكم ولي أمر الطالب:", align:"right" },
+      { t:"fields", rows:[
+        "اسم الطالب: {اسم_الطالب}",
+        "الصف الدراسي: {الصف}",
+        "الرقم القومي: {الرقم_القومي}",
+        "اسم ولي الأمر: {ولي_الأمر}",
+        "رقم الهاتف: {الهاتف}"
+      ]},
+      { t:"text", tx:"وأرجو التكرم بالموافقة على استخراج:", align:"right" },
+      { t:"lines", n:2 },
+      { t:"fields", rows:["الغرض من المستند: "] },
+      { t:"gap", h:10 },
+      { t:"fields", rows:["توقيع مقدّم الطلب: "] },
+      { t:"gap", h:10 },
+      sig2Block()
+    ]},
+
+  /* ---------- ١١ · استمارة غياب ---------- */
+  { id:"absform", title:"استمارة غياب", cat:"غياب",
+    desc:"بيان غياب الطالب مع حالة الإنذار.",
+    blocks:[
+      { t:"title", tx:"استمارة غياب طالب", size:19, align:"center" },
+      { t:"gap", h:6 },
+      { t:"kv", head:["البيان","البيانات"], rows:[
+        ["اسم الطالب",           "{اسم_الطالب}"],
+        ["الصف الدراسي",         "{الصف}"],
+        ["الفصل",                "{الفصل}"],
+        ["الرقم القومي",         "{الرقم_القومي}"],
+        ["أيام الغياب بدون عذر", "{أيام_الغياب}"],
+        ["نسبة الحضور",          "{نسبة_الحضور}"]
+      ]},
+      { t:"fields", rows:[
+        "أيام الغياب بالتواريخ: ",
+        "الإجراء المتخذ: "
+      ]},
+      { t:"gap", h:10 },
+      { t:"text", tx:"تم إخطار ولي الأمر بتاريخ:  ………………… بوسيلة: …………………", align:"right" },
+      { t:"gap", h:10 },
+      sigBlock()
+    ]},
+
+  /* ---------- ١٢ · إنذار غياب وتأخير ---------- */
+  { id:"warn", title:"إنذار غياب وتأخير", cat:"غياب",
+    desc:"إنذار رسمي لولي الأمر بسبب الغياب أو التأخير.",
+    blocks:[
+      { t:"title", tx:"إنذار غياب / تأخير", size:19, align:"center" },
+      { t:"gap", h:8 },
+      { t:"text", tx:"السيد / ولي أمر الطالب {اسم_الطالب}", align:"right", bold:true },
+      { t:"text", tx:"تحية طيبة وبعد،", align:"right" },
+      { t:"text", tx:"نحيط سيادتكم علمًا بأن نجلكم المقيد بالصف {الصف} فصل {الفصل} قد بلغ عدد أيام غيابه بدون عذر {أيام_الغياب} يومًا، ونسبة حضوره {نسبة_الحضور}.", align:"right" },
+      { t:"text", tx:"ونرجو سرعة الحضور إلى المدرسة لبحث الأمر، علمًا بأن استمرار الغياب يعرّض الطالب للحرمان طبقًا للائحة.", align:"right" },
+      { t:"gap", h:8 },
+      { t:"fields", rows:[
+        "تاريخ الإنذار: {التاريخ}",
+        "رقم الإنذار: ",
+        "توقيع ولي الأمر بالاستلام: "
+      ]},
+      { t:"gap", h:10 },
+      sigBlock()
+    ]},
+
+  /* ---------- ١٣ · إقرار استلام ملف ---------- */
+  { id:"file", title:"إقرار استلام ملف", cat:"إقرارات",
+    desc:"إقرار بتسلّم ولي الأمر ملف الطالب من المدرسة.",
+    blocks:[
+      { t:"title", tx:"إقرار استلام ملف طالب", size:19, align:"center" },
+      { t:"gap", h:10 },
+      { t:"text", tx:"أقر أنا / {ولي_الأمر} — ولي أمر الطالب {اسم_الطالب} المقيد بالصف {الصف} — بأنني تسلّمت ملف الطالب كاملًا بمحتوياته من مدرسة {المدرسة} بتاريخ {التاريخ}.", align:"right" },
+      { t:"gap", h:6 },
+      { t:"fields", rows:[
+        "محتويات الملف المستلمة: ",
+        "رقم بطاقة المستلم: ",
+        "صفة المستلم: ",
+        "التوقيع: "
+      ]},
+      { t:"gap", h:12 },
+      sig2Block()
+    ]},
+
+  /* ---------- ١٤ · إقرار استلام الكتب ---------- */
+  { id:"books", title:"إقرار استلام الكتب", cat:"إقرارات",
+    desc:"إقرار بتسلّم الطالب الكتب الدراسية.",
+    blocks:[
+      { t:"title", tx:"إقرار استلام الكتب الدراسية", size:19, align:"center" },
+      { t:"gap", h:10 },
+      { t:"text", tx:"أقر أنا الطالب / {اسم_الطالب} — المقيد بالصف {الصف} فصل {الفصل} — بأنني تسلّمت الكتب الدراسية الخاصة بالعام الدراسي {العام_الدراسي} كاملة.", align:"right" },
+      { t:"gap", h:6 },
+      { t:"lines", n:3, label:"بيان الكتب المستلمة" },
+      { t:"gap", h:8 },
+      { t:"fields", rows:[
+        "تاريخ الاستلام: {التاريخ}",
+        "توقيع الطالب: ",
+        "توقيع ولي الأمر: "
+      ]},
+      { t:"gap", h:10 },
+      sig2Block()
+    ]},
+
+  /* ---------- ١٥ · إخلاء طرف طالب ---------- */
+  { id:"clear", title:"إخلاء طرف طالب", cat:"قيد وتحويل",
+    desc:"إخلاء طرف الطالب من عُهد المدرسة قبل النقل أو التخرج.",
+    blocks:[
+      { t:"title", tx:"إخلاء طرف طالب", size:19, align:"center" },
+      { t:"gap", h:8 },
+      { t:"fields", rows:[
+        "اسم الطالب: {اسم_الطالب}",
+        "الصف الدراسي: {الصف}",
+        "الرقم القومي: {الرقم_القومي}",
+        "سبب إخلاء الطرف: "
+      ]},
+      { t:"gap", h:6 },
+      { t:"kv", head:["الجهة","الحالة والتوقيع"], rows:[
+        ["الكتب الدراسية",   ""],
+        ["المكتبة",          ""],
+        ["المعامل والأنشطة", ""],
+        ["الأخصائي الاجتماعي",""],
+        ["شئون الطلبة",      ""]
+      ]},
+      { t:"gap", h:6 },
+      { t:"text", tx:"تم إخلاء طرف الطالب من جميع عُهد المدرسة بتاريخ {التاريخ}.", align:"right" },
+      { t:"gap", h:10 },
+      sig2Block()
+    ]},
+
+  /* ---------- ١٦ · استمارة نقل طالب ---------- */
+  { id:"move", title:"استمارة نقل طالب", cat:"قيد وتحويل",
+    desc:"استمارة النقل المعتمدة بين المدارس.",
+    blocks:[
+      { t:"title", tx:"استمارة نقل طالب", size:19, align:"center" },
+      { t:"gap", h:6 },
+      { t:"kv", head:["البيان","البيانات"], rows:[
+        ["اسم الطالب",    "{اسم_الطالب}"],
+        ["الرقم القومي",  "{الرقم_القومي}"],
+        ["تاريخ الميلاد", "{تاريخ_الميلاد}"],
+        ["الصف الدراسي",  "{الصف}"],
+        ["النوعية",       "{النوعية}"],
+        ["الشعبة / المسار","{المسار}"],
+        ["المدرسة المنقول منها","{المدرسة}"],
+        ["الإدارة التعليمية","{الإدارة}"]
+      ]},
+      { t:"fields", rows:[
+        "المدرسة المنقول إليها: ",
+        "الإدارة التابعة لها: ",
+        "سبب النقل: "
+      ]},
+      { t:"gap", h:10 },
+      { t:"text", tx:"يُعتمد،", align:"right" },
+      { t:"gap", h:6 },
+      sigBlock()
+    ]},
+
+  /* ---------- ١٧ · بيان حالة خاصة ---------- */
+  { id:"special", title:"بيان حالة خاصة", cat:"حالات",
+    desc:"بيان لحالة الطالب الاجتماعية أو الصحية أو السلوكية.",
+    blocks:[
+      { t:"title", tx:"بيان حالة خاصة", size:19, align:"center" },
+      { t:"gap", h:8 },
+      { t:"fields", rows:[
+        "اسم الطالب: {اسم_الطالب}",
+        "الصف الدراسي: {الصف}",
+        "الفصل: {الفصل}",
+        "الرقم القومي: {الرقم_القومي}",
+        "نوع الحالة: "
+      ]},
+      { t:"text", tx:"وصف الحالة:", align:"right" },
+      { t:"lines", n:4 },
+      { t:"text", tx:"الإجراء المقترح:", align:"right" },
+      { t:"lines", n:3 },
+      { t:"gap", h:8 },
+      { t:"sign", cols:[
+        { label:"الأخصائي الاجتماعي", name:"" },
+        { label:"شئون الطلبة",        name:"{شئون_الطلبة}" },
+        { label:"مدير المدرسة",       name:"{مدير_المدرسة}" }
+      ]}
+    ]}
+];
+
+/* ---------- الوصول للقوالب (الأصلي أو المعدَّل) ---------- */
+function paperBase(id){
+  for(var i=0;i<PAPER_DOCS.length;i++) if(PAPER_DOCS[i].id===id) return PAPER_DOCS[i];
+  return null;
+}
+function paperDoc(id){
+  if(!DB.paperTpl) DB.paperTpl = {};
+  var edited = DB.paperTpl[id];
+  var base = paperBase(id);
+  if(edited && edited.blocks) {
+    return { id:id, title:edited.title || (base?base.title:""),
+             cat:(base?base.cat:""), desc:(base?base.desc:""),
+             blocks:edited.blocks, edited:true };
+  }
+  return base ? JSON.parse(JSON.stringify(base)) : null;
+}
+function paperIsEdited(id){ return !!(DB.paperTpl && DB.paperTpl[id]); }
+function paperResetTpl(id){
+  if(DB.paperTpl && DB.paperTpl[id]){ delete DB.paperTpl[id]; saveNow(); }
+}
+function paperCats(){
+  var seen = {}, out = [];
+  PAPER_DOCS.forEach(function(d){ if(!seen[d.cat]){ seen[d.cat]=1; out.push(d.cat); } });
+  return out;
+}
+
+/* ============================================================
+   بناء الورقة: البلوكات ← HTML
+   ============================================================ */
+function pAlign(a){ return (a==="center"||a==="left") ? a : "right"; }
+function blockHtml(b, vars){
+  var al = pAlign(b.align), sz;
+  switch(b.t){
+    case "title":
+      sz = num(b.size,18);
+      return '<div class="p-title" style="text-align:'+al+';font-size:'+sz+'px">'+
+             esc(fillTokens(b.tx, vars))+'</div>';
+    case "text":
+      sz = num(b.size,13);
+      return '<div class="p-text" style="text-align:'+al+';font-size:'+sz+'px'+
+             (b.bold?';font-weight:700':'')+'">'+esc(fillTokens(b.tx, vars))+'</div>';
+    case "kv":
+      var head = b.head || ["البيان","البيانات"];
+      var trs = (b.rows||[]).map(function(r){
+        return '<tr><th>'+esc(fillTokens(r[0], vars))+'</th>'+
+               '<td>'+esc(fillTokens(r[1], vars))+'</td></tr>';
+      }).join("");
+      return '<table class="p-kv"><thead><tr><th>'+esc(head[0])+'</th>'+
+             '<th>'+esc(head[1])+'</th></tr></thead><tbody>'+trs+'</tbody></table>';
+    case "fields":
+      return '<div class="p-fields">'+(b.rows||[]).map(function(r){
+        var s = fillTokens(r, vars);
+        return '<div class="p-f"><span class="l">'+esc(s)+'</span><span class="d"></span></div>';
+      }).join("")+'</div>';
+    case "lines":
+      var n = Math.max(1, num(b.n,3)), out = "";
+      if(b.label) out += '<div class="p-text">'+esc(fillTokens(b.label, vars))+'</div>';
+      for(var i=0;i<n;i++) out += '<div class="p-line"></div>';
+      return out;
+    case "sign":
+      var cols = b.cols || [];
+      if(!cols.length) return "";
+      return '<div class="p-sign">'+cols.map(function(c){
+        var nm = esc(fillTokens(c.name||"", vars)).trim();
+        return '<div class="p-sg"><div class="lb">'+esc(fillTokens(c.label||"", vars))+'</div>'+
+               '<div class="nm">'+(nm||"&nbsp;")+'</div><div class="ln"></div></div>';
+      }).join("")+'</div>';
+    case "box":
+      return '<div class="p-box">'+
+             (b.title?'<div class="p-box-t">'+esc(fillTokens(b.title, vars))+'</div>':'')+
+             (b.blocks||[]).map(function(x){ return blockHtml(x, vars); }).join("")+
+             '</div>';
+    case "cut":
+      return '<div class="p-cut"><span>✂</span></div>';
+    case "hr":
+      return '<div class="p-hr"></div>';
+    case "gap":
+      return '<div style="height:'+num(b.h,10)+'px"></div>';
+  }
+  return "";
+}
+/* ستايل الورقة — مشترك بين المعاينة والطباعة */
+function paperCss(){
+  return '@page{size:A4;margin:14mm}'+
+  '.p-wrap{font-family:"Cairo","Tahoma",sans-serif;color:#0d2b3e;direction:rtl;font-size:13px;line-height:1.85}'+
+  '.p-hd{text-align:center;border-bottom:2px solid #0d2b3e;padding-bottom:8px;margin-bottom:14px}'+
+  '.p-hd .a{font-size:12px;font-weight:600}'+
+  '.p-hd .b{font-size:15px;font-weight:700;margin-top:2px}'+
+  '.p-hd .c{font-size:10.5px;color:#5d6b72;margin-top:3px}'+
+  '.p-title{font-weight:700;margin:6px 0 4px;text-decoration:underline;text-underline-offset:6px}'+
+  '.p-text{margin:3px 0}'+
+  '.p-kv{width:100%;border-collapse:collapse;margin:6px 0;font-size:12.5px}'+
+  '.p-kv thead th{background:#eef1ec;border:1px solid #9aa89e;padding:6px;font-size:12px}'+
+  '.p-kv tbody th{border:1px solid #c9d1c8;padding:6px 8px;text-align:right;'+
+    'background:#f7faf6;font-weight:600;width:38%}'+
+  '.p-kv tbody td{border:1px solid #c9d1c8;padding:6px 8px;text-align:right}'+
+  '.p-fields{margin:4px 0}'+
+  '.p-f{display:flex;align-items:baseline;gap:6px;margin:5px 0}'+
+  '.p-f .l{white-space:nowrap}'+
+  '.p-f .d{flex:1;border-bottom:1px dotted #6b7a82;height:14px}'+
+  '.p-line{border-bottom:1px dotted #6b7a82;height:22px;margin:4px 0}'+
+  '.p-sign{display:flex;justify-content:space-around;gap:14px;margin-top:22px;text-align:center}'+
+  '.p-sg{flex:1}'+
+  '.p-sg .lb{font-size:12px;font-weight:600}'+
+  '.p-sg .nm{font-size:12.5px;margin-top:3px;min-height:18px}'+
+  '.p-sg .ln{border-bottom:1px solid #0d2b3e;margin-top:4px}'+
+  '.p-box{border:1px solid #0d2b3e;border-radius:4px;padding:10px 12px;margin-top:8px}'+
+  '.p-box-t{font-weight:700;text-align:center;margin-bottom:6px;font-size:14px}'+
+  '.p-cut{border-top:1px dashed #6b7a82;text-align:center;margin:16px 0 4px;position:relative}'+
+  '.p-cut span{position:relative;top:-10px;background:#fff;padding:0 8px;font-size:12px;color:#6b7a82}'+
+  '.p-hr{border-top:1px solid #c9d1c8;margin:8px 0}'+
+  '.p-ft{text-align:center;font-size:9.5px;color:#5d6b72;margin-top:18px;'+
+    'border-top:1px solid #d5dbd4;padding-top:6px}';
+}
+/* ترويسة الورقة */
+function paperHeadHtml(vars){
+  return '<div class="p-hd">'+
+    '<div class="a">'+esc(vars["الإدارة"]||"")+'</div>'+
+    '<div class="b">'+esc(vars["المدرسة"]||"")+'</div>'+
+    '<div class="c">العام الدراسي '+esc(vars["العام_الدراسي"]||"")+
+      ' — الفصل الدراسي '+esc(vars["الفصل_الدراسي"]||"")+'</div></div>';
+}
+/* الورقة كاملة */
+function paperBodyHtml(doc, vars){
+  return '<div class="p-wrap">'+paperHeadHtml(vars)+
+    (doc.blocks||[]).map(function(b){ return blockHtml(b, vars); }).join("")+
+    '<div class="p-ft">'+esc(vars["المدرسة"]||"")+' — '+esc(vars["الإدارة"]||"")+
+    ' · تاريخ الطباعة '+esc(vars["التاريخ"]||"")+'</div></div>';
+}
+/* فتح نافذة الطباعة */
+function paperPrint(docId, stuId){
+  var doc = paperDoc(docId);
+  if(!doc){ toast("النموذج مش موجود"); return; }
+  var s = stuId ? studentById(stuId) : null;
+  var vars = paperVars(s);
+  var html = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8">'+
+    '<title>'+esc(doc.title)+(s?' — '+esc(s.name):'')+'</title>'+
+    '<style>body{margin:0}'+paperCss()+'</style></head><body>'+
+    paperBodyHtml(doc, vars)+'</body></html>';
+  var w = window.open("", "_blank");
+  if(!w){
+    downloadBlob(html, String(doc.title).replace(/[\\/:*?"<>|]/g,"")+"-"+today()+".html",
+                 "text/html;charset=utf-8");
+    toast("المتصفح منع النافذة — اتنزّل الملف، افتحه واطبعه PDF");
+    return;
+  }
+  w.document.write(html); w.document.close();
+  setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 500);
+  toast("اختار «حفظ كـ PDF» من نافذة الطباعة");
+}
+
+/* ============================================================
+   الصلاحيات
+   ============================================================ */
+/* مين يقدر يستخدم النماذج ويطبعها */
+function canPapersUse(){
+  return canEditData() || roleIs("manager") || hasRole("stat");
+}
+/* الأدوار المسموح لها بتعديل القوالب — من الإعدادات */
+function paperEditRoles(){
+  var r = DB.meta && DB.meta.paperEdit;
+  return Array.isArray(r) ? r : ["manager","stat"];
+}
+function canPapersEdit(){
+  if(iAmOwner()) return true;
+  var allowed = paperEditRoles();
+  if(roleIs("manager") && allowed.indexOf("manager")>=0) return true;
+  if(roleIs("deputy")  && allowed.indexOf("deputy")>=0)  return true;
+  if(hasRole("stat")   && allowed.indexOf("stat")>=0)    return true;
+  return false;
+}
+
+/* ============================================================
+   تبويب الورقيات داخل صفحة الطالب
+   ============================================================ */
+function studentPapersCard(s){
+  if(!canPapersUse()) return "";
+  var open = UI.papersOpen === s.id;
+  var h = '<div class="card noprint"><div class="hd">'+
+    '<div style="flex:1"><span class="eyebrow">شئون الطلبة</span><h3>الورقيات</h3></div>'+
+    '<button class="btn ghost sm" data-act="stuPapersTgl" data-id="'+s.id+'">'+
+      (open?"إخفاء":"عرض النماذج")+'</button></div>';
+  if(!open){
+    h += '<div class="bd"><div class="note">'+PAPER_DOCS.length+' نموذج رسمي جاهز — '+
+      'بيتملا تلقائيًا من بيانات الطالب من غير ما تكتب حاجة.</div></div></div>';
+    return h;
+  }
+  h += '<div class="bd flush"><div class="note">اختار النموذج، شوف المعاينة، واطبعه أو احفظه PDF. '+
+    'البيانات بتتقرا من ملف الطالب مباشرة — لو عدّلت الملف، النموذج الجديد بيتغيّر معاه.</div>';
+  paperCats().forEach(function(cat){
+    h += '<div style="padding:8px 12px 2px;font-weight:700;font-family:Cairo,sans-serif;'+
+      'font-size:12px;color:var(--muted)">'+esc(cat)+'</div>';
+    PAPER_DOCS.filter(function(d){ return d.cat===cat; }).forEach(function(d){
+      h += '<div class="list-item" data-act="paperOpen" data-id="'+d.id+'" data-stu="'+s.id+'" '+
+        'style="cursor:pointer">'+
+        '<span class="av" style="background:var(--seal)">▤</span>'+
+        '<span class="tx"><b>'+esc(d.title)+'</b><small>'+esc(d.desc)+'</small></span>'+
+        (paperIsEdited(d.id)?'<span class="tag info">معدَّل</span>':'')+
+        '<span class="chev">‹</span></div>';
+    });
+  });
+  return h + '</div></div>';
+}
+/* نافذة المعاينة */
+function modalPaper(docId, stuId){
+  var doc = paperDoc(docId);
+  if(!doc){ toast("النموذج مش موجود"); return; }
+  var s = studentById(stuId);
+  var vars = paperVars(s);
+  UI.paperNow = { doc:docId, stu:stuId };
+  var h = mHead(doc.title + (s ? " — " + s.name : ""));
+  h += '<div class="mb">'+
+    '<style>'+paperCss().replace(/@page\{[^}]*\}/,"")+
+    '.p-prev{background:#fff;border:1px solid var(--line);border-radius:8px;padding:16px;'+
+    'max-height:56vh;overflow:auto}</style>'+
+    '<div class="p-prev">'+paperBodyHtml(doc, vars)+'</div>'+
+    '<div class="note" style="margin-top:8px">دي معاينة مطابقة للورقة اللي هتطلع من الطابعة.</div>'+
+    '</div>';
+  h += '<div class="mf">'+
+    (canPapersEdit()?'<button class="btn ghost" data-act="paperEdit" data-id="'+docId+'">✎ تعديل القالب</button>':'')+
+    '<button class="btn ghost" data-act="close">إغلاق</button>'+
+    '<button class="btn" data-act="paperPrint">⎙ طباعة / PDF</button></div>';
+  openModal(h);
+}
+
+/* ============================================================
+   محرر القوالب — بلوكات
+   ============================================================ */
+var PBLOCK_TYPES = [
+  { t:"title",  n:"عنوان" },
+  { t:"text",   n:"فقرة نص" },
+  { t:"kv",     n:"جدول بيانات" },
+  { t:"fields", n:"حقول بخط منقّط" },
+  { t:"lines",  n:"سطور فارغة" },
+  { t:"sign",   n:"توقيعات" },
+  { t:"box",    n:"إطار منفصل" },
+  { t:"cut",    n:"خط قص" },
+  { t:"hr",     n:"خط فاصل" },
+  { t:"gap",    n:"مسافة" }
+];
+function pbTypeName(t){
+  for(var i=0;i<PBLOCK_TYPES.length;i++) if(PBLOCK_TYPES[i].t===t) return PBLOCK_TYPES[i].n;
+  return t;
+}
+function pbSummary(b){
+  if(b.t==="title"||b.t==="text") return String(b.tx||"").slice(0,60);
+  if(b.t==="kv")     return (b.rows||[]).length+" صف";
+  if(b.t==="fields") return (b.rows||[]).length+" حقل";
+  if(b.t==="lines")  return num(b.n,3)+" سطر";
+  if(b.t==="sign")   return (b.cols||[]).map(function(c){ return c.label; }).join(" · ");
+  if(b.t==="box")    return (b.title||"")+" — "+((b.blocks||[]).length)+" بلوك";
+  if(b.t==="gap")    return num(b.h,10)+"px";
+  return "";
+}
+function modalPaperEdit(docId){
+  if(!canPapersEdit()){ toast("تعديل القوالب مقصور على الأدوار المحددة في الإعدادات"); return; }
+  var doc = paperDoc(docId);
+  if(!doc) return;
+  UI.pEdit = { id:docId, blocks:JSON.parse(JSON.stringify(doc.blocks||[])), title:doc.title };
+  renderPaperEdit();
+}
+function renderPaperEdit(){
+  var E = UI.pEdit; if(!E) return;
+  var h = mHead("تعديل القالب — " + E.title);
+  h += '<div class="mb">'+
+    '<label class="f"><span>عنوان النموذج</span>'+
+    '<input type="text" id="pe_title" value="'+esc(E.title)+'"></label>'+
+    '<div class="note">الورقة عبارة عن بلوكات فوق بعض. رتّبها بالأسهم، اضغط على أي بلوك تعدّله، '+
+    'واستخدم الرموز زي <b>{اسم_الطالب}</b> جوه أي نص وهتتبدّل ببيانات الطالب وقت الطباعة.</div>'+
+    '<div class="list">';
+  if(!E.blocks.length) h += '<div class="empty"><b>القالب فاضي</b><p>ضيف بلوك من تحت.</p></div>';
+  E.blocks.forEach(function(b, i){
+    h += '<div class="list-item">'+
+      '<span class="av" style="background:var(--ink)">'+(i+1)+'</span>'+
+      '<span class="tx" data-act="pbEdit" data-i="'+i+'" style="cursor:pointer">'+
+        '<b>'+esc(pbTypeName(b.t))+'</b><small>'+esc(pbSummary(b))+'</small></span>'+
+      '<button class="btn ghost sm" data-act="pbUp" data-i="'+i+'" '+(i===0?'disabled':'')+'>▲</button>'+
+      '<button class="btn ghost sm" data-act="pbDn" data-i="'+i+'" '+(i===E.blocks.length-1?'disabled':'')+'>▼</button>'+
+      '<button class="btn ghost sm" data-act="pbDel" data-i="'+i+'">×</button>'+
+      '</div>';
+  });
+  h += '</div>'+
+    '<div style="display:flex;gap:6px;align-items:center;margin-top:10px;flex-wrap:wrap">'+
+    '<select id="pe_new" style="flex:1;min-width:140px">'+
+      PBLOCK_TYPES.map(function(x){ return '<option value="'+x.t+'">'+esc(x.n)+'</option>'; }).join("")+
+    '</select>'+
+    '<button class="btn ghost sm" data-act="pbAdd">+ إضافة بلوك</button></div>'+
+    '<div class="note" style="margin-top:8px"><b>الرموز المتاحة:</b> '+
+      PAPER_TOKENS.map(function(x){ return "{"+x.k+"}"; }).join(" · ")+'</div>'+
+    '</div>';
+  h += '<div class="mf">'+
+    (paperIsEdited(E.id)?'<button class="btn ghost" data-act="pbReset">↺ رجوع للأصلي</button>':'')+
+    '<button class="btn ghost" data-act="close">إلغاء</button>'+
+    '<button class="btn" data-act="pbSave">حفظ القالب</button></div>';
+  openModal(h);
+}
+/* تعديل بلوك واحد */
+function modalPBlock(i){
+  var E = UI.pEdit; if(!E) return;
+  var b = E.blocks[i]; if(!b) return;
+  UI.pbIdx = i;
+  var h = mHead("بلوك — " + pbTypeName(b.t));
+  h += '<div class="mb">';
+  if(b.t==="title" || b.t==="text"){
+    h += '<label class="f"><span>النص</span><textarea id="pb_tx" rows="3">'+esc(b.tx||"")+'</textarea></label>'+
+      '<div class="grid2">'+
+      '<label class="f"><span>حجم الخط</span><input type="number" id="pb_size" value="'+num(b.size, b.t==="title"?18:13)+'"></label>'+
+      '<label class="f"><span>المحاذاة</span><select id="pb_align">'+
+        ['right:يمين','center:وسط','left:يسار'].map(function(o){
+          var p=o.split(":"); return '<option value="'+p[0]+'"'+(pAlign(b.align)===p[0]?' selected':'')+'>'+p[1]+'</option>';
+        }).join("")+'</select></label></div>'+
+      (b.t==="text"?'<label class="f" style="flex-direction:row;align-items:center;gap:8px">'+
+        '<input type="checkbox" id="pb_bold"'+(b.bold?' checked':'')+'><span>خط عريض</span></label>':'');
+  } else if(b.t==="kv"){
+    h += '<div class="grid2">'+
+      '<label class="f"><span>رأس العمود الأول</span><input type="text" id="pb_h1" value="'+esc((b.head||[])[0]||"البيان")+'"></label>'+
+      '<label class="f"><span>رأس العمود الثاني</span><input type="text" id="pb_h2" value="'+esc((b.head||[])[1]||"البيانات")+'"></label>'+
+      '</div>'+
+      '<label class="f"><span>الصفوف — كل سطر: البيان = القيمة</span>'+
+      '<textarea id="pb_rows" rows="8">'+esc((b.rows||[]).map(function(r){ return r[0]+" = "+r[1]; }).join("\n"))+'</textarea></label>';
+  } else if(b.t==="fields"){
+    h += '<label class="f"><span>الحقول — كل سطر حقل</span>'+
+      '<textarea id="pb_rows" rows="7">'+esc((b.rows||[]).join("\n"))+'</textarea></label>';
+  } else if(b.t==="lines"){
+    h += '<label class="f"><span>عنوان فوق السطور (اختياري)</span><input type="text" id="pb_label" value="'+esc(b.label||"")+'"></label>'+
+      '<label class="f"><span>عدد السطور</span><input type="number" id="pb_n" value="'+num(b.n,3)+'"></label>';
+  } else if(b.t==="sign"){
+    h += '<label class="f"><span>التوقيعات — كل سطر: الصفة = الاسم</span>'+
+      '<textarea id="pb_rows" rows="4">'+esc((b.cols||[]).map(function(c){ return c.label+" = "+(c.name||""); }).join("\n"))+'</textarea></label>'+
+      '<div class="note">سيب الاسم فاضي لو عايز خانة توقيع فاضية. استخدم '+
+      '<b>{مدير_المدرسة}</b> أو <b>{شئون_الطلبة}</b> أو <b>{الإحصاء}</b> عشان الاسم يتحدّث لوحده من الإعدادات.</div>';
+  } else if(b.t==="box"){
+    h += '<label class="f"><span>عنوان الإطار</span><input type="text" id="pb_title" value="'+esc(b.title||"")+'"></label>'+
+      '<div class="note">الإطار ده جواه '+((b.blocks||[]).length)+' بلوك. '+
+      'لتعديل محتواه استخدم «رجوع للأصلي» وابنِ إطار جديد، أو سيبه زي ما هو.</div>';
+  } else if(b.t==="gap"){
+    h += '<label class="f"><span>الارتفاع بالبكسل</span><input type="number" id="pb_h" value="'+num(b.h,10)+'"></label>';
+  } else {
+    h += '<div class="note">البلوك ده مالوش إعدادات.</div>';
+  }
+  h += '</div>'+mFoot("حفظ البلوك","pbApply");
+  openModal(h);
+}
+function pbReadForm(b){
+  if(b.t==="title" || b.t==="text"){
+    b.tx = val("pb_tx");
+    b.size = num(val("pb_size"), b.t==="title"?18:13);
+    b.align = val("pb_align") || "right";
+    if(b.t==="text"){ var cb=document.getElementById("pb_bold"); b.bold = !!(cb&&cb.checked); }
+  } else if(b.t==="kv"){
+    b.head = [ val("pb_h1")||"البيان", val("pb_h2")||"البيانات" ];
+    b.rows = String(val("pb_rows")||"").split(/\n/).map(function(l){
+      l = l.trim(); if(!l) return null;
+      var p = l.split("=");
+      return [ (p[0]||"").trim(), (p.slice(1).join("=")||"").trim() ];
+    }).filter(Boolean);
+  } else if(b.t==="fields"){
+    b.rows = String(val("pb_rows")||"").split(/\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+  } else if(b.t==="lines"){
+    b.label = val("pb_label"); b.n = Math.max(1, num(val("pb_n"),3));
+  } else if(b.t==="sign"){
+    b.cols = String(val("pb_rows")||"").split(/\n/).map(function(l){
+      l = l.trim(); if(!l) return null;
+      var p = l.split("=");
+      return { label:(p[0]||"").trim(), name:(p.slice(1).join("=")||"").trim() };
+    }).filter(Boolean);
+  } else if(b.t==="box"){
+    b.title = val("pb_title");
+  } else if(b.t==="gap"){
+    b.h = num(val("pb_h"),10);
+  }
+  return b;
+}
+function pbBlank(t){
+  if(t==="title")  return { t:"title", tx:"عنوان النموذج", size:18, align:"center" };
+  if(t==="text")   return { t:"text", tx:"نص جديد", size:13, align:"right" };
+  if(t==="kv")     return { t:"kv", head:["البيان","البيانات"], rows:[["اسم الطالب","{اسم_الطالب}"]] };
+  if(t==="fields") return { t:"fields", rows:["اسم الطالب: {اسم_الطالب}"] };
+  if(t==="lines")  return { t:"lines", n:3, label:"" };
+  if(t==="sign")   return sig2Block();
+  if(t==="box")    return { t:"box", title:"إطار جديد", blocks:[{ t:"lines", n:3 }] };
+  if(t==="gap")    return { t:"gap", h:10 };
+  return { t:t };
+}
+
 
 
 /* ============================================================
