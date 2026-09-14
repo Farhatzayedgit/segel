@@ -12714,6 +12714,9 @@ var ACTS = {
     render();
   },
   paperOpen: function(el){ modalPaper(el.dataset.id, el.dataset.stu); },
+  paperPick: function(el){ modalPickStudent(el.dataset.id); },
+  paperForStu: function(el){ modalPaper(UI.pickDoc, el.dataset.stu); },
+  paperBlank: function(el){ closeModal(); paperPrint(el.dataset.id, null); },
   paperPrint: function(){
     var p = UI.paperNow; if(!p) return;
     closeModal(); paperPrint(p.doc, p.stu);
@@ -18751,7 +18754,77 @@ function viewPapers(){
       (d.scope==="stats" ? '' : '<span class="tag">'+cnt+' طالب</span>')+
       '<span class="chev">‹</span></div>';
   });
+  h += '</div></div>';
+  h += papersFormsCard();
+  return h;
+}
+/* قسم نماذج الطلاب جوه تبويب الورقيات */
+function papersFormsCard(){
+  if(!canPapersUse()) return "";
+  var h = '<div class="card"><div class="hd"><div style="flex:1">'+
+    '<span class="eyebrow">شئون الطلبة</span><h3>نماذج الطلاب</h3></div>'+
+    '<span class="tag gold">'+PAPER_DOCS.length+' نموذج</span></div>'+
+    '<div class="bd flush">'+
+    '<div class="note">دي نماذج بتخص طالب واحد. اختار النموذج، اختار الطالب، '+
+    'والبرنامج بيملا الورقة كاملة من ملفه — من غير ما تكتب اسم ولا رقم قومي. '+
+    'وتقدر تطبع نسخة فاضية لو محتاج تملاها بالإيد.</div>';
+  paperCats().forEach(function(cat){
+    h += '<div style="padding:9px 12px 2px;font-weight:700;font-family:Cairo,sans-serif;'+
+      'font-size:12px;color:var(--muted)">'+esc(cat)+'</div>';
+    PAPER_DOCS.filter(function(d){ return d.cat===cat; }).forEach(function(d){
+      h += '<div class="list-item" data-act="paperPick" data-id="'+d.id+'" style="cursor:pointer">'+
+        '<span class="av" style="background:var(--seal)">▤</span>'+
+        '<span class="tx"><b>'+esc(d.title)+'</b><small>'+esc(d.desc)+'</small></span>'+
+        (paperIsEdited(d.id)?'<span class="tag info">معدَّل</span>':'')+
+        '<span class="chev">‹</span></div>';
+    });
+  });
   return h + '</div></div>';
+}
+/* اختيار الطالب قبل فتح النموذج */
+function modalPickStudent(docId){
+  var doc = paperDoc(docId);
+  if(!doc){ toast("النموذج مش موجود"); return; }
+  UI.pickDoc = docId;
+  var h = mHead(doc.title + " — اختار الطالب");
+  h += '<div class="mb">'+
+    '<label class="f"><span>ابحث بالاسم أو الكود أو الرقم القومي</span>'+
+    '<input type="text" id="ps_q" placeholder="اكتب أول حروف الاسم…" oninput="psFilter()"></label>'+
+    '<div id="ps_list" class="list">'+pickStuList("")+'</div></div>'+
+    '<div class="mf">'+
+    (canPapersEdit()?'<button class="btn ghost" data-act="paperEdit" data-id="'+docId+'">✎ تعديل القالب</button>':'')+
+    '<button class="btn ghost" data-act="paperBlank" data-id="'+docId+'">⎙ نسخة فاضية</button>'+
+    '<button class="btn ghost" data-act="close">إغلاق</button></div>';
+  openModal(h);
+}
+function pickStuList(q){
+  q = normAr(String(q||"").trim());
+  var list = DB.students || [];
+  if(q){
+    list = list.filter(function(s){
+      return normAr(s.name||"").indexOf(q)>=0 ||
+             String(s.code||"").indexOf(q)>=0 ||
+             String(s.natId||"").indexOf(q)>=0;
+    });
+  }
+  var total = list.length;
+  if(!q && total>40) list = list.slice(0,40);
+  else list = list.slice(0,60);
+  if(!total) return '<div class="empty"><b>مفيش طالب بالبحث ده</b></div>';
+  var out = list.map(function(s){
+    var c = classById(s.classId);
+    return '<div class="list-item" data-act="paperForStu" data-stu="'+s.id+'" style="cursor:pointer">'+
+      '<span class="av">'+esc(initials(s.name))+'</span>'+
+      '<span class="tx"><b>'+esc(s.name)+'</b><small>'+
+        (c?esc(c.name)+' · ':'')+esc(s.code||s.natId||"")+'</small></span>'+
+      '<span class="chev">‹</span></div>';
+  }).join("");
+  if(!q && total>40) out += '<div class="note">أول ٤٠ طالب من '+total+' — اكتب في البحث توصل لطالبك.</div>';
+  return out;
+}
+function psFilter(){
+  var el = document.getElementById("ps_list");
+  if(el) el.innerHTML = pickStuList(val("ps_q"));
 }
 /* ============================================================
    ورقيات شئون الطلبة — النماذج الرسمية
